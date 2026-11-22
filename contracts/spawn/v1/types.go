@@ -1,0 +1,132 @@
+// Package v1 is the spawn-controller contract: spaces built from
+// layer templates, passports compiled into one effective spec with a
+// digest, and the runtime lifecycle claim that precedes every
+// container launch (blueprint §2.1).
+package v1
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+
+	"github.com/letya999/h-hub/shared/httpapi"
+)
+
+// CreateSpaceReq provisions a space from a layer template. Phase 3 has
+// one built-in template; Name selects it.
+type CreateSpaceReq struct {
+	Owner    string `json:"owner"`
+	Name     string `json:"name"`
+	Template string `json:"template"`
+}
+
+// CreateSpaceResp acknowledges a space.
+type CreateSpaceResp struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+// SpaceInfo describes a space and its live runtime.
+type SpaceInfo struct {
+	ID       string `json:"id"`
+	Owner    string `json:"owner"`
+	Name     string `json:"name"`
+	Digest   string `json:"digest"`
+	Runtime  string `json:"runtime"`
+	Endpoint string `json:"endpoint"`
+}
+
+// GetSpaceReq reads one space scoped to its owner.
+type GetSpaceReq struct {
+	Owner string `json:"owner"`
+	ID    string `json:"id"`
+}
+
+// GetSpaceResp is the space read result.
+type GetSpaceResp struct {
+	Space SpaceInfo `json:"space"`
+}
+
+// DestroySpaceReq removes a space and drains its runtime.
+type DestroySpaceReq struct {
+	Owner string `json:"owner"`
+	ID    string `json:"id"`
+}
+
+// DestroySpaceResp acknowledges destruction.
+type DestroySpaceResp struct {
+	OK bool `json:"ok"`
+}
+
+// EnsureRuntimeReq asks for a running runtime for a space; the digest
+// binds the claim to the spec revision the caller holds.
+type EnsureRuntimeReq struct {
+	Space  string `json:"space"`
+	Digest string `json:"digest"`
+}
+
+// EnsureRuntimeResp returns the runtime endpoint once it is warm.
+type EnsureRuntimeResp struct {
+	Runtime  string `json:"runtime"`
+	Endpoint string `json:"endpoint"`
+	Digest   string `json:"digest"`
+	Ready    bool   `json:"ready"`
+}
+
+// ResolveSpecReq compiles (or reads the persisted) effective spec.
+type ResolveSpecReq struct {
+	Space string `json:"space"`
+}
+
+// ResolveSpecResp carries the spec bytes and their digest.
+type ResolveSpecResp struct {
+	Spec   string `json:"spec"`
+	Digest string `json:"digest"`
+}
+
+// ReleaseRuntimeReq marks a runtime free after a run settles.
+type ReleaseRuntimeReq struct {
+	Runtime string `json:"runtime"`
+}
+
+// ReleaseRuntimeResp acknowledges the release.
+type ReleaseRuntimeResp struct {
+	OK bool `json:"ok"`
+}
+
+// Handlers is the server-side operation table.
+type Handlers struct {
+	CreateSpace    func(context.Context, CreateSpaceReq) (CreateSpaceResp, error)
+	GetSpace       func(context.Context, GetSpaceReq) (GetSpaceResp, error)
+	DestroySpace   func(context.Context, DestroySpaceReq) (DestroySpaceResp, error)
+	EnsureRuntime  func(context.Context, EnsureRuntimeReq) (EnsureRuntimeResp, error)
+	ResolveSpec    func(context.Context, ResolveSpecReq) (ResolveSpecResp, error)
+	ReleaseRuntime func(context.Context, ReleaseRuntimeReq) (ReleaseRuntimeResp, error)
+}
+
+// Ops maps operation names to request handlers.
+func Ops(h Handlers) map[string]httpapi.Handler {
+	return map[string]httpapi.Handler{
+		"CreateSpace":    op(h.CreateSpace),
+		"GetSpace":       op(h.GetSpace),
+		"DestroySpace":   op(h.DestroySpace),
+		"EnsureRuntime":  op(h.EnsureRuntime),
+		"ResolveSpec":    op(h.ResolveSpec),
+		"ReleaseRuntime": op(h.ReleaseRuntime),
+	}
+}
+
+func op[Req, Resp any](fn func(context.Context, Req) (Resp, error)) httpapi.Handler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		var req Req
+		if err := httpapi.Decode(r, &req); err != nil {
+			return fmt.Errorf("decode: %w", err)
+		}
+		resp, err := fn(r.Context(), req)
+		if err != nil {
+			return err
+		}
+		httpapi.WriteJSON(w, resp)
+		return nil
+	}
+}
