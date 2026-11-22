@@ -53,6 +53,14 @@ func (c *Client) MintRunToken(ctx context.Context, r MintRunTokenReq) (MintRunTo
 	return out, err
 }
 
+// ActAs requests an audited owner-scoped token. The transport carries
+// an operator-signed bearer token bound to the same owner and audience.
+func (c *Client) ActAs(ctx context.Context, r ActAsReq) (ActAsResp, error) {
+	var out ActAsResp
+	err := c.call(ctx, "ActAs", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

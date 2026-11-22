@@ -73,8 +73,15 @@ type envelope struct {
 // (sub, op) — the single implementation of rule 31.
 func ServiceVerifier(pub ed25519.PublicKey, self string, tab edges.Table,
 	now func() time.Time) Verifier {
+	return EdgeVerifier(pub, "service", self, tab, now)
+}
+
+// EdgeVerifier checks a signed token of the requested purpose and the
+// descriptor edge for its subject and HTTP operation.
+func EdgeVerifier(pub ed25519.PublicKey, purpose, self string, tab edges.Table,
+	now func() time.Time) Verifier {
 	return func(r *http.Request) (Principal, error) {
-		p, err := verify(bearer(r), pub, "service", now)
+		p, err := verify(bearer(r), pub, purpose, now)
 		if err != nil {
 			return p, err
 		}

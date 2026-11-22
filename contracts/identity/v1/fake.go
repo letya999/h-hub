@@ -48,7 +48,26 @@ func (f *Fake) Handlers() Handlers {
 	return Handlers{
 		IssueServiceToken: f.issueService,
 		MintRunToken:      f.mintRun,
+		ActAs:             f.actAs,
 	}
+}
+
+func (f *Fake) actAs(_ context.Context, r ActAsReq) (ActAsResp, error) {
+	if r.Owner == "" || r.Aud == "" {
+		return ActAsResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
+	}
+	exp := f.now() + ServiceTTL
+	claims, err := json.Marshal(OwnerClaims{
+		Sub: "operator", Owner: r.Owner, Aud: []string{r.Aud}, Exp: exp, Kid: f.kid,
+	})
+	if err != nil {
+		return ActAsResp{}, fmt.Errorf("owner claims: %w", err)
+	}
+	tok, err := f.sign("owner", claims)
+	if err != nil {
+		return ActAsResp{}, fmt.Errorf("sign owner: %w", err)
+	}
+	return ActAsResp{Token: tok, ExpiresAt: exp}, nil
 }
 
 func (f *Fake) issueService(_ context.Context, r IssueServiceTokenReq) (IssueServiceTokenResp, error) {
