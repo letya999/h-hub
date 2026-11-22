@@ -12,9 +12,12 @@ import (
 	"github.com/letya999/h-hub/internal/descriptor"
 )
 
-var envRe = regexp.MustCompile(`HHUB_[A-Z0-9_]+`)
+// envRe matches environment *reads* — os.Getenv/os.LookupEnv calls.
+// Names a service writes for its children (spawn-controller's runtime
+// env allowlist) are not reads and need no declaration of their own.
+var envRe = regexp.MustCompile(`(?:Getenv|LookupEnv)\(\s*"(HHUB_[A-Z0-9_]+)"`)
 
-// EnvDeclared checks that every HHUB_* variable used in a service's
+// EnvDeclared checks that every HHUB_* variable read in a service's
 // code is declared in its descriptor env list (enforcement.md 3).
 func EnvDeclared(root string) error {
 	used, err := usedEnv(root)
@@ -51,8 +54,8 @@ func usedEnv(root string) (map[string]map[string]bool, error) {
 		if used[parts[1]] == nil {
 			used[parts[1]] = map[string]bool{}
 		}
-		for _, m := range envRe.FindAll(data, -1) {
-			used[parts[1]][string(m)] = true
+		for _, m := range envRe.FindAllSubmatch(data, -1) {
+			used[parts[1]][string(m[1])] = true
 		}
 		return nil
 	})

@@ -236,6 +236,9 @@ linters:
       comparison: true
   exclusions:
     rules:
+      - path: 'services/.*/internal/config'
+        linters: [forbidigo]
+        text: 'os\.(Getenv|LookupEnv)'
       - path: 'cmd/hubctl/install'
         linters: [forbidigo]
         text: 'os\.(Getenv|LookupEnv)'
