@@ -7,12 +7,12 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
@@ -81,22 +81,23 @@ func ScratchSchema(t *testing.T, ctx context.Context, db *sql.DB) string {
 }
 
 const (
-	victimMarker = "HHUB_TESTKIT_VICTIM"
-	victimPrefix = "HHUB_V_"
+	victimMarker  = "HHUB_TESTKIT_VICTIM"
+	victimPayload = "HHUB_TESTKIT_PAYLOAD"
 )
 
 // Spawn re-runs this test binary executing only the named test, with
-// env entries passed to the victim as HHUB_V_<KEY>. The named test is
+// env entries passed to the victim as one JSON payload. The named test is
 // the crash-test victim; it detects its role through Victim. The
 // returned command is started and its stdout buffered for sync
 // markers; cleanup kills a survivor.
 func Spawn(t *testing.T, testName string, env map[string]string) (*exec.Cmd, *bufio.Reader) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^"+testName+"$")
-	cmd.Env = append(os.Environ(), victimMarker+"=1")
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, victimPrefix+k+"="+v)
+	payload, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("spawn env: %v", err)
 	}
+	cmd.Env = append(cmd.Environ(), victimMarker+"=1", victimPayload+"="+string(payload))
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("spawn stdout: %v", err)
@@ -111,20 +112,17 @@ func Spawn(t *testing.T, testName string, env map[string]string) (*exec.Cmd, *bu
 }
 
 // Victim reports whether this process is a Spawn-launched victim and
-// returns the env map Spawn was given (keys without the HHUB_V_
-// prefix). A victim test starts with `env, ok := testkit.Victim(t)` and
+// returns the env map Spawn was given. A victim test starts with
+// `env, ok := testkit.Victim(t)` and
 // returns early when ok is false — a plain return, never a skip.
 func Victim(t *testing.T) (map[string]string, bool) {
 	t.Helper()
 	if os.Getenv(victimMarker) != "1" {
 		return nil, false
 	}
-	env := map[string]string{}
-	for _, kv := range os.Environ() {
-		if rest, ok := strings.CutPrefix(kv, victimPrefix); ok {
-			k, v, _ := strings.Cut(rest, "=")
-			env[k] = v
-		}
+	var env map[string]string
+	if err := json.Unmarshal([]byte(os.Getenv(victimPayload)), &env); err != nil {
+		t.Fatalf("victim env: %v", err)
 	}
 	return env, true
 }
