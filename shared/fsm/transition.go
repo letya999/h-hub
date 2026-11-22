@@ -41,14 +41,14 @@ func (m *Machine) Create(ctx context.Context, tx *sql.Tx, clk Clock, r CreateReq
 		return specErr("state", r.Initial, "unknown initial")
 	}
 	d := m.deadlineFor(r.Initial, clk.Now())
-	_, err := tx.ExecContext(ctx, `INSERT INTO fsm.machines
+	_, err := tx.ExecContext(ctx, `INSERT INTO `+m.table("machines")+`
 		(kind, id, state, deadline_at, deadline_event, deadline_actor, actor)
 		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		m.kind, r.ID, r.Initial, d.at, d.event, d.actor, r.Actor)
 	if err != nil {
 		return fmt.Errorf("create machine %s/%s: %w", m.kind, r.ID, err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO fsm.history
+	_, err = tx.ExecContext(ctx, `INSERT INTO `+m.table("history")+`
 		(kind, id, from_state, event, to_state, actor)
 		VALUES ($1,$2,'','create',$3,$4)`, m.kind, r.ID, r.Initial, r.Actor)
 	if err != nil {
@@ -95,7 +95,7 @@ func (m *Machine) readRow(ctx context.Context, tx *sql.Tx, id string) (string, i
 	var state string
 	var version int64
 	err := tx.QueryRowContext(ctx,
-		"SELECT state, version FROM fsm.machines WHERE kind=$1 AND id=$2",
+		"SELECT state, version FROM "+m.table("machines")+" WHERE kind=$1 AND id=$2",
 		m.kind, id).Scan(&state, &version)
 	if err == sql.ErrNoRows {
 		return "", 0, herrors.New(herrors.CodeNotFound, "err.not-found"). //nolint:wrapcheck // shared error form
@@ -109,7 +109,7 @@ func (m *Machine) readRow(ctx context.Context, tx *sql.Tx, id string) (string, i
 
 func (m *Machine) commitTransition(ctx context.Context, tx *sql.Tx, version int64, chg Change, hook Hook) error {
 	d := m.deadlineFor(chg.To, time.Now().UTC())
-	res, err := tx.ExecContext(ctx, `UPDATE fsm.machines SET
+	res, err := tx.ExecContext(ctx, `UPDATE `+m.table("machines")+` SET
 		state=$1, deadline_at=$2, deadline_event=$3, deadline_actor=$4,
 		actor=$5, version=version+1, updated_at=now()
 		WHERE kind=$6 AND id=$7 AND state=$8 AND version=$9`,
@@ -139,7 +139,7 @@ func (m *Machine) commitTransition(ctx context.Context, tx *sql.Tx, version int6
 }
 
 func (m *Machine) writeHistory(ctx context.Context, tx *sql.Tx, chg Change) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO fsm.history
+	_, err := tx.ExecContext(ctx, `INSERT INTO `+m.table("history")+`
 		(kind, id, from_state, event, to_state, actor)
 		VALUES ($1,$2,$3,$4,$5,$6)`, m.kind, chg.ID, chg.From, chg.Event, chg.To, chg.Actor)
 	if err != nil {
@@ -150,7 +150,7 @@ func (m *Machine) writeHistory(ctx context.Context, tx *sql.Tx, chg Change) erro
 
 func (m *Machine) writeEffects(ctx context.Context, tx *sql.Tx, id string, fx []Effect) error {
 	for _, f := range fx {
-		_, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
+		_, err := tx.ExecContext(ctx, `INSERT INTO `+m.table("outbox")+`
 			(kind, machine_id, topic, payload) VALUES ($1,$2,$3,$4)`,
 			m.kind, id, f.Topic, f.Payload)
 		if err != nil {

@@ -15,27 +15,32 @@ import (
 	"github.com/letya999/h-hub/shared/testkit"
 )
 
-func db(t *testing.T) *sql.DB {
+// db opens a pool and gives the test its own scratch schema with the
+// fsm tables in it; the schema is dropped on cleanup, so tests never
+// share or clean tables by hand.
+func db(t *testing.T) (*sql.DB, string) {
 	t.Helper()
 	ctx := context.Background()
 	conn, err := store.Connect(ctx, testkit.DSN())
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	if err := EnsureSchema(ctx, conn); err != nil {
-		t.Fatalf("schema: %v", err)
-	}
 	t.Cleanup(func() {
 		if err := conn.Close(); err != nil {
 			t.Logf("conn close: %v", err)
 		}
 	})
-	return conn
+	schema := testkit.ScratchSchema(t, ctx, conn)
+	if err := EnsureSchema(ctx, conn, schema); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	return conn, schema
 }
 
-func machine(t *testing.T, conn *sql.DB) *Machine {
+func machine(t *testing.T, schema string) *Machine {
 	t.Helper()
 	spec := testSpec()
+	spec.Schema = schema
 	spec.Kind = "t_" + strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
 			return r
@@ -46,17 +51,6 @@ func machine(t *testing.T, conn *sql.DB) *Machine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		for _, q := range []string{
-			"DELETE FROM fsm.outbox WHERE kind=$1",
-			"DELETE FROM fsm.history WHERE kind=$1",
-			"DELETE FROM fsm.machines WHERE kind=$1",
-		} {
-			if _, err := conn.ExecContext(context.Background(), q, m.Kind()); err != nil {
-				t.Logf("cleanup: %v", err)
-			}
-		}
-	})
 	return m
 }
 
@@ -98,7 +92,8 @@ func stateOf(t *testing.T, conn *sql.DB, m *Machine, id string) string {
 	t.Helper()
 	var s string
 	err := conn.QueryRowContext(context.Background(),
-		"SELECT state FROM fsm.machines WHERE kind=$1 AND id=$2", m.Kind(), id).Scan(&s)
+		"SELECT state FROM "+m.table("machines")+" WHERE kind=$1 AND id=$2",
+		m.Kind(), id).Scan(&s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,8 +112,8 @@ func count(t *testing.T, conn *sql.DB, q string, args ...any) int {
 func TestTransitionWritesAll(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.cas-version", "adr.fsm.history-same-tx", "adr.fsm.outbox-same-tx")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	err := transition(conn, m, Request{
 		ID: "m1", Event: "start", Actor: "owner",
@@ -131,19 +126,21 @@ func TestTransitionWritesAll(t *testing.T) {
 		t.Fatalf("state=%s", got)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.history WHERE kind=$1 AND id='m1' AND to_state='active'", m.Kind()); n != 1 {
+		"SELECT count(*) FROM "+m.table("history")+
+			" WHERE kind=$1 AND id='m1' AND to_state='active'", m.Kind()); n != 1 {
 		t.Fatalf("history rows=%d", n)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.outbox WHERE kind=$1 AND machine_id='m1' AND topic='notify'", m.Kind()); n != 1 {
+		"SELECT count(*) FROM "+m.table("outbox")+
+			" WHERE kind=$1 AND machine_id='m1' AND topic='notify'", m.Kind()); n != 1 {
 		t.Fatalf("outbox rows=%d", n)
 	}
 }
 
 func TestForbiddenWritesNothing(t *testing.T) {
 	t.Parallel()
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	err := transition(conn, m, Request{ID: "m1", Event: "finish", Actor: "owner"})
 	if !stderrors.Is(err, ErrBadTransition) {
@@ -153,7 +150,8 @@ func TestForbiddenWritesNothing(t *testing.T) {
 		t.Fatalf("state moved to %s", got)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.history WHERE kind=$1 AND id='m1'", m.Kind()); n != 1 {
+		"SELECT count(*) FROM "+m.table("history")+
+			" WHERE kind=$1 AND id='m1'", m.Kind()); n != 1 {
 		t.Fatalf("history rows=%d want only create", n)
 	}
 }
@@ -161,8 +159,8 @@ func TestForbiddenWritesNothing(t *testing.T) {
 func TestRollbackLeavesNothing(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.outbox-same-tx", "sys.kill-uncertain")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	ctx := context.Background()
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -183,11 +181,13 @@ func TestRollbackLeavesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.machines WHERE kind=$1 AND id='m1'", m.Kind()); n != 0 {
+		"SELECT count(*) FROM "+m.table("machines")+
+			" WHERE kind=$1 AND id='m1'", m.Kind()); n != 0 {
 		t.Fatal("machine row survived rollback")
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.outbox WHERE kind=$1 AND machine_id='m1'", m.Kind()); n != 0 {
+		"SELECT count(*) FROM "+m.table("outbox")+
+			" WHERE kind=$1 AND machine_id='m1'", m.Kind()); n != 0 {
 		t.Fatal("outbox intent survived rollback")
 	}
 }
@@ -195,8 +195,8 @@ func TestRollbackLeavesNothing(t *testing.T) {
 func TestCASRace(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.cas-version")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	ctx := context.Background()
 	tx1, err := conn.BeginTx(ctx, nil)
@@ -232,7 +232,8 @@ func TestCASRace(t *testing.T) {
 		t.Fatalf("state=%s", got)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.history WHERE kind=$1 AND id='m1' AND event='start'", m.Kind()); n != 1 {
+		"SELECT count(*) FROM "+m.table("history")+
+			" WHERE kind=$1 AND id='m1' AND event='start'", m.Kind()); n != 1 {
 		t.Fatalf("exactly one start transition, got %d", n)
 	}
 }
@@ -240,8 +241,8 @@ func TestCASRace(t *testing.T) {
 func TestDeadlineSweep(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.deadline-nonfinal", "sys.sweep-lag")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	now := time.Now().UTC().Add(2 * time.Minute)
 	rows, err := m.DueRows(context.Background(), conn, now, 10)
@@ -266,8 +267,8 @@ func TestDeadlineSweep(t *testing.T) {
 func TestSweepSkipsMovedOn(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.sweep-reread")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	err := transition(conn, m, Request{ID: "m1", Event: "start", Actor: "owner"})
 	if err != nil {
@@ -289,8 +290,8 @@ func TestSweepSkipsMovedOn(t *testing.T) {
 func TestConcurrentTransitionsOneWins(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.fsm.cas-version")
-	conn := db(t)
-	m := machine(t, conn)
+	conn, schema := db(t)
+	m := machine(t, schema)
 	create(t, conn, m, "m1")
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -307,41 +308,42 @@ func TestConcurrentTransitionsOneWins(t *testing.T) {
 		t.Fatalf("state=%s", got)
 	}
 	if n := count(t, conn,
-		"SELECT count(*) FROM fsm.history WHERE kind=$1 AND id='m1' AND event='start'", m.Kind()); n != 1 {
+		"SELECT count(*) FROM "+m.table("history")+
+			" WHERE kind=$1 AND id='m1' AND event='start'", m.Kind()); n != 1 {
 		t.Fatalf("one winner expected, history=%d (errs=%v)", n, errs)
 	}
 }
 
 func TestLeaseContention(t *testing.T) {
 	t.Parallel()
-	testkit.Req(t, "adr.fsm.lease-atomic")
-	conn := db(t)
+	testkit.Req(t, "adr.fsm.lease-atomic", "adr.fsm.single-sweeper")
+	conn, schema := db(t)
 	ctx := context.Background()
 	name := "lease_" + strings.ReplaceAll(strings.ToLower(t.Name()), "/", "_")
 	now := time.Now().UTC()
 	req := func(owner string, at time.Time) LeaseReq {
 		return LeaseReq{Name: name, Owner: owner, TTL: time.Minute, Now: at}
 	}
-	ok, err := AcquireLease(ctx, conn, req("a", now))
+	ok, err := AcquireLease(ctx, conn, schema, req("a", now))
 	if err != nil || !ok {
 		t.Fatalf("first acquire ok=%v err=%v", ok, err)
 	}
-	ok, err = AcquireLease(ctx, conn, req("b", now))
+	ok, err = AcquireLease(ctx, conn, schema, req("b", now))
 	if err != nil || ok {
 		t.Fatalf("contended acquire ok=%v err=%v", ok, err)
 	}
-	ok, err = AcquireLease(ctx, conn, req("b", now.Add(2*time.Minute)))
+	ok, err = AcquireLease(ctx, conn, schema, req("b", now.Add(2*time.Minute)))
 	if err != nil || !ok {
 		t.Fatalf("expired acquire ok=%v err=%v", ok, err)
 	}
-	if err := ReleaseLease(ctx, conn, name, "a"); err != nil {
+	if err := ReleaseLease(ctx, conn, schema, name, "a"); err != nil {
 		t.Fatal(err)
 	}
-	ok, err = AcquireLease(ctx, conn, req("a", now))
+	ok, err = AcquireLease(ctx, conn, schema, req("a", now))
 	if err != nil || ok {
 		t.Fatal("lease must still belong to b")
 	}
-	if err := ReleaseLease(ctx, conn, name, "b"); err != nil {
+	if err := ReleaseLease(ctx, conn, schema, name, "b"); err != nil {
 		t.Fatal(err)
 	}
 }

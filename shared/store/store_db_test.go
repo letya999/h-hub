@@ -14,7 +14,7 @@ func TestMigrateApplyAndIdempotent(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.store.advisory-lock", "sys.schema-version")
 	ctx := context.Background()
-	db := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
+	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	fsys := fstest.MapFS{
 		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte(
 			"CREATE TABLE a (id int PRIMARY KEY)")},
@@ -41,7 +41,7 @@ func TestMigrateRejectsTamperedBody(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.store.numbered-sql")
 	ctx := context.Background()
-	db := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
+	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	orig := fstest.MapFS{
 		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte(
 			"CREATE TABLE a (id int PRIMARY KEY)")},
@@ -61,7 +61,7 @@ func TestMigrateRejectsTamperedBody(t *testing.T) {
 func TestMigrateRejectsNewerDatabase(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	db := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
+	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	two := fstest.MapFS{
 		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte("SELECT 1")},
 		"migrations/0002_b.sql": &fstest.MapFile{Data: []byte("SELECT 2")},

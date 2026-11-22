@@ -4,12 +4,15 @@
 package testkit
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,29 +43,90 @@ func DSN() string {
 
 // TempSchema creates a scratch schema, points a single-connection pool
 // at it via search_path, and drops it on test cleanup. This matches the
-// owner decision: temporary schemas in the same container.
-func TempSchema(t *testing.T, ctx context.Context, driver, dsn string) *sql.DB {
+// owner decision: temporary schemas in the same container. The schema
+// name is returned so tests can build qualified identifiers. Use
+// ScratchSchema instead when a test needs a multi-connection pool.
+func TempSchema(t *testing.T, ctx context.Context, driver, dsn string) (*sql.DB, string) {
 	t.Helper()
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		t.Fatalf("temp schema open: %v", err)
 	}
 	db.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		db.Close() //nolint:errcheck // best-effort close, runs after the drop
+	})
+	name := ScratchSchema(t, ctx, db)
+	if _, err := db.ExecContext(ctx, "SET search_path TO "+name); err != nil {
+		t.Fatalf("temp schema search_path: %v", err)
+	}
+	return db, name
+}
+
+// ScratchSchema creates a uniquely named schema on an open pool and
+// drops it on test cleanup. Unlike TempSchema it sets no search_path:
+// callers qualify table names explicitly, and the pool may serve
+// several connections (needed by concurrency tests).
+func ScratchSchema(t *testing.T, ctx context.Context, db *sql.DB) string {
+	t.Helper()
 	name := fmt.Sprintf("test_%d", time.Now().UnixNano())
 	if _, err := db.ExecContext(ctx, "CREATE SCHEMA "+name); err != nil {
-		db.Close() //nolint:errcheck // best-effort close
-		t.Fatalf("temp schema create: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, "SET search_path TO "+name); err != nil {
-		db.Close() //nolint:errcheck // best-effort close
-		t.Fatalf("temp schema search_path: %v", err)
+		t.Fatalf("scratch schema create: %v", err)
 	}
 	t.Cleanup(func() {
 		db.ExecContext(context.Background(), //nolint:errcheck // best-effort cleanup
 			"DROP SCHEMA "+name+" CASCADE")
-		db.Close() //nolint:errcheck // best-effort close
 	})
-	return db
+	return name
+}
+
+const (
+	victimMarker = "HHUB_TESTKIT_VICTIM"
+	victimPrefix = "HHUB_V_"
+)
+
+// Spawn re-runs this test binary executing only the named test, with
+// env entries passed to the victim as HHUB_V_<KEY>. The named test is
+// the crash-test victim; it detects its role through Victim. The
+// returned command is started and its stdout buffered for sync
+// markers; cleanup kills a survivor.
+func Spawn(t *testing.T, testName string, env map[string]string) (*exec.Cmd, *bufio.Reader) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^"+testName+"$")
+	cmd.Env = append(os.Environ(), victimMarker+"=1")
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, victimPrefix+k+"="+v)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("spawn stdout: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("spawn start: %v", err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill() //nolint:errcheck // best-effort kill of a survivor
+	})
+	return cmd, bufio.NewReader(out)
+}
+
+// Victim reports whether this process is a Spawn-launched victim and
+// returns the env map Spawn was given (keys without the HHUB_V_
+// prefix). A victim test starts with `env, ok := testkit.Victim(t)` and
+// returns early when ok is false — a plain return, never a skip.
+func Victim(t *testing.T) (map[string]string, bool) {
+	t.Helper()
+	if os.Getenv(victimMarker) != "1" {
+		return nil, false
+	}
+	env := map[string]string{}
+	for _, kv := range os.Environ() {
+		if rest, ok := strings.CutPrefix(kv, victimPrefix); ok {
+			k, v, _ := strings.Cut(rest, "=")
+			env[k] = v
+		}
+	}
+	return env, true
 }
 
 // Goroutines snapshots the live goroutine count.

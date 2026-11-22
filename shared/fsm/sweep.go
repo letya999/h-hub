@@ -22,7 +22,7 @@ type DueRow struct {
 // states never appear: they have no deadline armed.
 func (m *Machine) DueRows(ctx context.Context, db *sql.DB, now time.Time, limit int) ([]DueRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, state, deadline_at, deadline_event, deadline_actor
-		FROM fsm.machines
+		FROM `+m.table("machines")+`
 		WHERE kind=$1 AND deadline_at IS NOT NULL AND deadline_at <= $2
 		ORDER BY deadline_at LIMIT $3`, m.kind, now, limit)
 	if err != nil {
@@ -59,7 +59,7 @@ func (m *Machine) SweepRow(ctx context.Context, db *sql.DB, id string, now time.
 	var ev, ac sql.NullString
 	var version int64
 	err = tx.QueryRowContext(ctx, `SELECT state, deadline_at, deadline_event,
-		deadline_actor, version FROM fsm.machines
+		deadline_actor, version FROM `+m.table("machines")+`
 		WHERE kind=$1 AND id=$2`, m.kind, id).
 		Scan(&state, &at, &ev, &ac, &version)
 	if err != nil {
@@ -114,16 +114,22 @@ type LeaseReq struct {
 	Now   time.Time
 }
 
-// AcquireLease takes or renews a named sweeper lease. The write is one
-// atomic upsert so exactly one owner holds an unexpired lease.
-func AcquireLease(ctx context.Context, db *sql.DB, r LeaseReq) (bool, error) {
+// AcquireLease takes or renews a named sweeper lease in the given
+// schema. The write is one atomic upsert so exactly one owner holds an
+// unexpired lease — the single-sweeper model of v1.0 (one sweeper per
+// service, lease keyed by sweeper name, no sharding).
+func AcquireLease(ctx context.Context, db *sql.DB, schema string, r LeaseReq) (bool, error) {
+	if err := checkSchema(schema); err != nil {
+		return false, err
+	}
 	var got string
-	err := db.QueryRowContext(ctx, `INSERT INTO fsm.sweeper_leases (name, owner, expires_at)
+	tbl := schema + ".sweeper_leases"
+	err := db.QueryRowContext(ctx, `INSERT INTO `+tbl+` (name, owner, expires_at)
 		VALUES ($1,$2,$3)
 		ON CONFLICT (name) DO UPDATE
 		SET owner=excluded.owner, expires_at=excluded.expires_at
-		WHERE fsm.sweeper_leases.expires_at <= $4
-		   OR fsm.sweeper_leases.owner = excluded.owner
+		WHERE `+tbl+`.expires_at <= $4
+		   OR `+tbl+`.owner = excluded.owner
 		RETURNING owner`, r.Name, r.Owner, r.Now.Add(r.TTL), r.Now).Scan(&got)
 	if err == sql.ErrNoRows {
 		return false, nil
@@ -135,9 +141,12 @@ func AcquireLease(ctx context.Context, db *sql.DB, r LeaseReq) (bool, error) {
 }
 
 // ReleaseLease drops a lease only when the caller still owns it.
-func ReleaseLease(ctx context.Context, db *sql.DB, name, owner string) error {
+func ReleaseLease(ctx context.Context, db *sql.DB, schema, name, owner string) error {
+	if err := checkSchema(schema); err != nil {
+		return err
+	}
 	_, err := db.ExecContext(ctx,
-		"DELETE FROM fsm.sweeper_leases WHERE name=$1 AND owner=$2", name, owner)
+		"DELETE FROM "+schema+".sweeper_leases WHERE name=$1 AND owner=$2", name, owner)
 	if err != nil {
 		return fmt.Errorf("release lease %s: %w", name, err)
 	}

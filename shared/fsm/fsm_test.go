@@ -53,6 +53,7 @@ func TestSpecValidation(t *testing.T) {
 		{"bad ttl", func(s *Spec) {
 			s.Deadlines["queued"] = Deadline{Event: "timeout", Actor: "a", TTL: 0}
 		}},
+		{"unsafe schema", func(s *Spec) { s.Schema = "a;drop" }},
 		{"unknown deadline edge target", func(s *Spec) {
 			s.Edges = append(s.Edges, Edge{From: "active", Event: "ghost", To: "void"})
 		}},

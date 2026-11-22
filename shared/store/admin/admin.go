@@ -1,7 +1,8 @@
 // Package admin is the only database access of the install package
-// (rule 10): connect under the install role, create databases, roles
+// (rule 10): under the install-role DSN it creates databases, roles
 // and the fsm/hub schemas declared by the descriptor. It is idempotent:
 // Ensure* functions create only what is missing and never overwrite.
+// Connections open through shared/store — the single open path.
 package admin
 
 import (
@@ -11,23 +12,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	_ "github.com/jackc/pgx/v5/stdlib" // one shared Postgres driver
 )
 
 var identRe = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
-
-// Connect opens a verified install-role connection (pgx DSN).
-func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("admin: open: %w", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		return nil, errors.Join(fmt.Errorf("admin: ping: %w", err), db.Close())
-	}
-	return db, nil
-}
 
 func ident(name string) (string, error) {
 	if !identRe.MatchString(name) {

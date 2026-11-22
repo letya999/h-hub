@@ -1,6 +1,6 @@
-CREATE SCHEMA IF NOT EXISTS fsm;
+CREATE SCHEMA IF NOT EXISTS {{schema}};
 
-CREATE TABLE IF NOT EXISTS fsm.machines (
+CREATE TABLE IF NOT EXISTS {{schema}}.machines (
 	kind text NOT NULL,
 	id text NOT NULL,
 	state text NOT NULL,
@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS fsm.machines (
 	PRIMARY KEY (kind, id)
 );
 
-CREATE INDEX IF NOT EXISTS fsm_machines_due
-	ON fsm.machines (deadline_at) WHERE deadline_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS machines_due
+	ON {{schema}}.machines (deadline_at) WHERE deadline_at IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS fsm.history (
+CREATE TABLE IF NOT EXISTS {{schema}}.history (
 	seq bigserial PRIMARY KEY,
 	kind text NOT NULL,
 	id text NOT NULL,
@@ -27,9 +27,9 @@ CREATE TABLE IF NOT EXISTS fsm.history (
 	at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS fsm_history_machine ON fsm.history (kind, id, seq);
+CREATE INDEX IF NOT EXISTS history_machine ON {{schema}}.history (kind, id, seq);
 
-CREATE TABLE IF NOT EXISTS fsm.outbox (
+CREATE TABLE IF NOT EXISTS {{schema}}.outbox (
 	seq bigserial PRIMARY KEY,
 	kind text NOT NULL,
 	machine_id text NOT NULL,
@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS fsm.outbox (
 	created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS fsm_outbox_due ON fsm.outbox (due_at) WHERE done_at IS NULL;
+CREATE INDEX IF NOT EXISTS outbox_due ON {{schema}}.outbox (due_at) WHERE done_at IS NULL;
 
-CREATE TABLE IF NOT EXISTS fsm.sweeper_leases (
+CREATE TABLE IF NOT EXISTS {{schema}}.sweeper_leases (
 	name text PRIMARY KEY,
 	owner text NOT NULL,
 	expires_at timestamptz NOT NULL

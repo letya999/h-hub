@@ -245,6 +245,9 @@ linters:
       - path: 'shared/testkit'
         linters: [forbidigo]
         text: 'os\.(Getenv|LookupEnv)'
+      - path: 'shared/testkit'
+        linters: [forbidigo]
+        text: 'exec\.Command'
 formatters:
   enable:
     - gofmt
