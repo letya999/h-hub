@@ -3,6 +3,7 @@ name: hhub
 services:
   postgres:
     image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+    container_name: postgres
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1
@@ -16,11 +17,94 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    networks: [hhub]
+  keydist:
+    image: hhub-hubctl:local
+    container_name: keydist
+    entrypoint: ["keydist"]
+    command: ["--conf", "/conf", "--keys", "/keys", "--descriptor", "/descriptor.yaml"]
+    volumes:
+      - hhub-conf:/conf:ro
+      - ./descriptor.yaml:/descriptor.yaml:ro
+      - keys-identity-hub:/keys/keys-identity-hub
+      - keys-task-engine:/keys/keys-task-engine
+      - keys-spawn-controller:/keys/keys-spawn-controller
+    networks: [hhub]
+  spawn-controller:
+    image: hhub-spawn-controller:local
+    container_name: spawn-controller
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 256
+    environment:
+      HHUB_SUB: spawn-controller
+      HHUB_DSN: postgres://spawn_controller@postgres:5432/spawn_controller?sslmode=disable
+      HHUB_KEYS: /etc/hhub
+      HHUB_RUNTIME_IMAGE: hhub-harness-runtime:local
+      HHUB_DOCKER_SOCK: /var/run/docker.sock
+      HHUB_TASK_URL: http://task-engine:9000
+      HHUB_MODEL_URL: http://scripted-model:9000
+      HHUB_RENDER_VOL: hhub_hhub-render
+      HHUB_RENDER_DIR: /render
+      HHUB_NETWORK: hhub
+    volumes:
+      - keys-spawn-controller:/etc/hhub:ro
+      - hhub-render:/render
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres: {condition: service_healthy}
+      keydist: {condition: service_completed_successfully}
+    networks: [hhub]
+  identity-hub:
+    image: hhub-identity-hub:local
+    container_name: identity-hub
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 256
+    environment:
+      HHUB_SUB: identity-hub
+      HHUB_DSN: postgres://identity_hub@postgres:5432/identity_hub?sslmode=disable
+      HHUB_KEYS: /etc/hhub
+    volumes:
+      - keys-identity-hub:/etc/hhub:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      keydist: {condition: service_completed_successfully}
+    networks: [hhub]
+  task-engine:
+    image: hhub-task-engine:local
+    container_name: task-engine
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 256
+    environment:
+      HHUB_SUB: task-engine
+      HHUB_DSN: postgres://task_engine@postgres:5432/task_engine?sslmode=disable
+      HHUB_KEYS: /etc/hhub
+      HHUB_IDENTITY_URL: http://identity-hub:9000
+      HHUB_SPAWN_URL: http://spawn-controller:9000
+    volumes:
+      - keys-task-engine:/etc/hhub:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      keydist: {condition: service_completed_successfully}
+    networks: [hhub]
 volumes:
+  # hhub-conf is shared with install-time hubctl runs outside compose;
+  # pin the name so the project prefix does not split it in two.
+  hhub-conf:
+    name: hhub-conf
   postgres-data:
   broker-data:
   memory-vault:
+  hhub-render:
+  keys-identity-hub:
+  keys-task-engine:
+  keys-spawn-controller:
 networks:
-  default:
+  hhub:
     name: hhub
     internal: true

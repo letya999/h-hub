@@ -74,7 +74,7 @@ func (m *Machine) SweepRow(ctx context.Context, db *sql.DB, id string, now time.
 		return false, badEdge(state, event)
 	}
 	chg := Change{ID: id, From: state, Event: event, To: edge.To, Actor: actor}
-	err = m.commitTransition(ctx, tx, version, chg, hook)
+	err = m.commitTransition(ctx, tx, commit{version: version, chg: chg, hook: hook, at: now})
 	if stderrors.Is(err, ErrStale) {
 		return false, nil
 	}

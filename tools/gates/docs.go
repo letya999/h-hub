@@ -106,6 +106,9 @@ func templateHeadings(root string) ([]string, error) {
 func headingsOf(doc string) []string {
 	var out []string
 	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, "# ") {
+			continue
+		}
 		if headingRe.MatchString(line) {
 			out = append(out, line)
 		}

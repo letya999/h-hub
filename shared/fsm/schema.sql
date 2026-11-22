@@ -47,3 +47,8 @@ CREATE TABLE IF NOT EXISTS {{schema}}.sweeper_leases (
 	owner text NOT NULL,
 	expires_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS {{schema}}.watchdog_ticks (
+	name text PRIMARY KEY,
+	at timestamptz NOT NULL
+);
