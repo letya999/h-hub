@@ -87,16 +87,6 @@ far under the 5-minute signal threshold.
 
 ## Did not fit / findings
 
-- "Kill between transition and outbox" is covered at the mechanism
-  level: `TestRollbackLeavesNothing` forces a rollback mid-transition
-  and asserts no state/history/outbox survives — the same transaction
-  boundary a kill would hit. A real process kill needs a supervisor
-  harness and belongs to a later phase.
-- FSM tests share the dev database; each test owns a unique `kind`
-  derived from `t.Name()` and deletes its rows in cleanup. Leftover
-  rows from killed runs can collide on re-run — `fsm.machines` is
-  truncated manually when needed. Consider per-run schema isolation
-  via `testkit.TempSchema` if this recurs.
 - `ErrStale` races in `Sweep`/`SweepRow` are treated as "row moved on"
   skips, not errors — intentional, matches the re-verify-then-CAS
   design.
@@ -104,18 +94,6 @@ far under the 5-minute signal threshold.
   it. Running `go test -tags hhubdb` by hand without the stack fails
   fast on connect (testkit `DSN` requires `HHUB_TEST_DSN` or defaults
   to localhost).
-
-## Owner questions
-
-1. `just check` now depends on the compose postgres (adds ~10-15 s
-   cold start). Keep it in the default check, or split DB tests into a
-   separate recipe so the offline check stays phase-1-fast?
-2. `shared/store/admin` and `shared/fsm` both open admin-grade
-   connections; should `admin` eventually depend on `shared/store`
-   `Open` once it exists (currently duplicated stdlib open + ping)?
-3. FSM sweeper lease uses one row per sweeper name in
-   `fsm.sweeper_leases`; is per-shard leasing needed later, or is a
-   single sweeper the model (blueprint leaves this open)?
 
 ## Redesign-signal measurements
 
@@ -126,3 +104,47 @@ far under the 5-minute signal threshold.
 - Service at 70% line budget in introduction phase: 0 lines — n/a.
 - Contract scaffolding share of phase lines: contracts/ empty — n/a.
 - MCP reference set: phase 17 — n/a.
+
+## Closeout (phase-02-finish)
+
+Owner decisions on the phase-2 questions, applied:
+
+1. Postgres stays in `just check` — splitting checks is the
+   two-quality-toolchains antipattern. `check-fast` remains the
+   offline subset for pre-commit, unchanged.
+2. `shared/store/admin` no longer opens connections. Install commands
+   go through `store.Connect` with the install-role DSN as the
+   parameter; the duplicated open+ping is deleted (rule 3).
+3. Sweeper model v1.0: one sweeper per service, lease keyed by
+   sweeper name, sharded leasing not designed. Declared as invariant
+   `adr.fsm.single-sweeper` in `adr/2026-11-22-fsm.md`; check:
+   `TestLeaseContention` (one owner per name; PK is `name`, no shard
+   column).
+4. "Kill between transition and outbox" is now a real process test:
+   `TestKillBetweenCommitAndEffect` spawns a victim (`testkit.Spawn`,
+   re-exec of the test binary) that commits a transition with an
+   outbox intent, reports `COMMITTED`, and is SIGKILLed before the
+   effect runs. The parent verifies committed state + pending intent
+   survived, and the executor applies the effect exactly once via the
+   outbox `seq` idempotency key (replay is a no-op).
+5. fsm tests no longer share dev tables: `testkit.ScratchSchema` gives
+   each test its own schema with the fsm tables under `Spec.Schema`;
+   schema is dropped on cleanup — no `kind` collisions, no manual
+   cleanup, CAS tests run on a real multi-connection pool.
+
+Design notes:
+
+- `Spec.Schema` binds the machine's tables to a schema (empty means
+  `fsm`); validated as a safe identifier before SQL interpolation.
+  `EnsureSchema`/`AcquireLease`/`ReleaseLease` take the schema
+  explicitly.
+- `testkit.TempSchema` keeps its single-connection + search_path
+  semantics for migration tests and now returns the schema name;
+  `ScratchSchema` serves pooled, name-qualifying tests.
+- forbidigo gained one exception: `exec.Command` inside
+  `shared/testkit` — the crash-test harness, same class as the
+  tools/ exception.
+
+New `just check` timing (Windows -> pwsh -> container, incl.
+`compose up --wait postgres` and the subprocess kill test):
+**36.7 s** — green, well under 5 minutes.
