@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/letya999/h-hub/cmd/hubctl/install"
+	"github.com/letya999/h-hub/cmd/hubctl/job"
 )
 
 func main() {
@@ -19,24 +20,40 @@ func stderr(a ...any) {
 }
 
 func run(args []string) int {
-	if len(args) != 2 || (args[1] != "init" && args[1] != "doctor") {
-		stderr("usage: hubctl init|doctor")
-		return 2
-	}
-	cfg, err := install.Env()
-	if err != nil {
-		stderr(err)
+	if len(args) < 2 {
+		stderr("usage: hubctl init|doctor|job ...")
 		return 2
 	}
 	ctx := context.Background()
-	if args[1] == "init" {
-		err = install.Init(ctx, cfg, os.Stdout)
-	} else {
-		err = install.Doctor(ctx, cfg, os.Stdout)
+	switch args[1] {
+	case "init", "doctor":
+		if len(args) != 2 {
+			stderr("usage: hubctl " + args[1])
+			return 2
+		}
+		cfg, err := install.Env()
+		if err != nil {
+			stderr(err)
+			return 2
+		}
+		if args[1] == "init" {
+			err = install.Init(ctx, cfg, os.Stdout)
+		} else {
+			err = install.Doctor(ctx, cfg, os.Stdout)
+		}
+		if err != nil {
+			stderr(err)
+			return 1
+		}
+		return 0
+	case "job":
+		if err := job.Run(ctx, args[2:], os.Stdout); err != nil {
+			stderr(err)
+			return 1
+		}
+		return 0
+	default:
+		stderr("usage: hubctl init|doctor|job ...")
+		return 2
 	}
-	if err != nil {
-		stderr(err)
-		return 1
-	}
-	return 0
 }
