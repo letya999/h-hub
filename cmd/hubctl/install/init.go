@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/letya999/h-hub/internal/descriptor"
+	"github.com/letya999/h-hub/shared/store"
 	"github.com/letya999/h-hub/shared/store/admin"
 )
 
@@ -78,7 +79,7 @@ func dsnFor(base, db string) (string, error) {
 }
 
 func provisionDB(ctx context.Context, cfg Config, f *descriptor.File, id string) error {
-	db, err := admin.Connect(ctx, cfg.AdminDSN)
+	db, err := store.Connect(ctx, cfg.AdminDSN)
 	if err != nil {
 		return fmt.Errorf("init: connect: %w", err)
 	}
@@ -123,7 +124,7 @@ func provisionServiceDB(ctx context.Context, cfg Config, db *sql.DB, svc, id str
 	if err != nil {
 		return err
 	}
-	sdb, err := admin.Connect(ctx, dsn)
+	sdb, err := store.Connect(ctx, dsn)
 	if err != nil {
 		return fmt.Errorf("init: connect %s: %w", role, err)
 	}

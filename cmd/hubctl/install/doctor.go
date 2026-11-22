@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/letya999/h-hub/internal/descriptor"
+	"github.com/letya999/h-hub/shared/store"
 	"github.com/letya999/h-hub/shared/store/admin"
 )
 
@@ -36,7 +37,7 @@ func Doctor(ctx context.Context, cfg Config, out io.Writer) error {
 	if err != nil || f == nil {
 		return fmt.Errorf("doctor: %d check(s) failed", fails)
 	}
-	db, err := admin.Connect(ctx, cfg.AdminDSN)
+	db, err := store.Connect(ctx, cfg.AdminDSN)
 	ok("postgres reachable", err)
 	if err != nil {
 		return fmt.Errorf("doctor: %d check(s) failed", fails)
@@ -141,7 +142,7 @@ func checkServiceDB(ctx context.Context, sc scope, svc string) {
 		sc.ok(role+" database", err)
 		return
 	}
-	sdb, err := admin.Connect(ctx, dsn)
+	sdb, err := store.Connect(ctx, dsn)
 	if err != nil {
 		sc.ok(role+" database", err)
 		return
