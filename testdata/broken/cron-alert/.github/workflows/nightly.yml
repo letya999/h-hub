@@ -1,0 +1,9 @@
+name: nightly
+on:
+  schedule:
+    - cron: "0 3 * * *"
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./fault-matrix

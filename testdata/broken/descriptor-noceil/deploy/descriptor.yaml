@@ -1,0 +1,16 @@
+version: 1
+postgres:
+  image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+  mem: 512m
+  cpu: 1.0
+  pids: 200
+  volume: postgres-data
+volumes:
+  - name: postgres-data
+services:
+  - name: spawn-controller
+    zone: control
+    database: postgres
+    env: []
+    volumes: []
+    edges: []

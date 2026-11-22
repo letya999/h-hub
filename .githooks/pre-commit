@@ -1,0 +1,3 @@
+#!/bin/sh
+# Fast part of just check; the real gate is CI (enforcement.md 1).
+just check-fast
