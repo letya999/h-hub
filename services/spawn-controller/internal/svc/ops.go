@@ -43,13 +43,17 @@ type clock struct{ f func() time.Time }
 func (c clock) Now() time.Time { return c.f() }
 
 func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.CreateSpaceResp, error) {
-	owner, err := idv1.OwnerFrom(ctx)
+	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
-		return sv1.CreateSpaceResp{}, fmt.Errorf("owner: %w", err)
+		return sv1.CreateSpaceResp{}, fmt.Errorf("scope: %w", err)
 	}
-	if owner == "" || r.Name == "" || r.Template != "default" {
+	if scope.Space != "" {
+		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	if r.Name == "" || r.Template != "default" {
 		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
 	}
+	owner := scope.Owner
 	// The passport pins the image by digest: the configured tag
 	// resolves to the daemon's immutable id at compile time, so the
 	// spec digest binds image content, not a moving tag.
@@ -88,11 +92,14 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 }
 
 func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceResp, error) {
-	owner, err := idv1.OwnerFrom(ctx)
+	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
-		return sv1.GetSpaceResp{}, fmt.Errorf("owner: %w", err)
+		return sv1.GetSpaceResp{}, fmt.Errorf("scope: %w", err)
 	}
-	sp, err := getSpace(ctx, s.db, owner, r.ID)
+	if scope.Space == "" || scope.Space != r.ID {
+		return sv1.GetSpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	sp, err := getSpace(ctx, s.db, scope.Owner, scope.Space)
 	if err != nil {
 		return sv1.GetSpaceResp{}, err
 	}
@@ -115,11 +122,14 @@ func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceR
 // destroySpace drains the runtime and removes the domain rows; the
 // docker removal rides the outbox in the same transaction.
 func (s *Server) destroySpace(ctx context.Context, r sv1.DestroySpaceReq) (sv1.DestroySpaceResp, error) {
-	owner, err := idv1.OwnerFrom(ctx)
+	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
-		return sv1.DestroySpaceResp{}, fmt.Errorf("owner: %w", err)
+		return sv1.DestroySpaceResp{}, fmt.Errorf("scope: %w", err)
 	}
-	sp, err := getSpace(ctx, s.db, owner, r.ID)
+	if scope.Space == "" || scope.Space != r.ID {
+		return sv1.DestroySpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	sp, err := getSpace(ctx, s.db, scope.Owner, scope.Space)
 	if err != nil {
 		return sv1.DestroySpaceResp{}, err
 	}

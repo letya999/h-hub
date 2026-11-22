@@ -20,7 +20,9 @@ import (
 const defaultURL = "http://task-engine:9000"
 const defaultIdentityURL = "http://identity-hub:9000"
 
-type clientFor func(context.Context, string) (*tv1.Client, error)
+type clientFor func(context.Context, string, string) (*tv1.Client, error)
+
+type clientConfig struct{ taskURL, identityURL, keyPath string }
 
 // Run dispatches `hubctl job <op> [flags]`.
 func Run(ctx context.Context, args []string, out io.Writer) error {
@@ -35,8 +37,9 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: hubctl job " + usage)
 	}
-	c := func(ctx context.Context, owner string) (*tv1.Client, error) {
-		return ownerClient(ctx, owner, *url, *identityURL, *keyPath)
+	cfg := clientConfig{*url, *identityURL, *keyPath}
+	c := func(ctx context.Context, owner, space string) (*tv1.Client, error) {
+		return ownerClient(ctx, owner, space, cfg)
 	}
 	switch args[0] {
 	case "create":
@@ -55,31 +58,39 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 
 const usage = "[-url U] [-identity-url U] [-key FILE] create|get|list|cancel|retry|unquarantine|hold [flags]"
 
-func ownerClient(ctx context.Context, owner, taskURL, identityURL, keyPath string) (*tv1.Client, error) {
-	if owner == "" {
-		return nil, fmt.Errorf("owner is required")
+func ownerClient(ctx context.Context, owner, space string, cfg clientConfig) (*tv1.Client, error) {
+	if owner == "" || space == "" {
+		return nil, fmt.Errorf("owner and space are required")
 	}
-	key, err := auth.LoadPrivateKey(keyPath)
+	opToken, err := signedOperatorToken(owner, space, cfg.keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("operator key: %w", err)
+		return nil, err
 	}
-	claims, err := json.Marshal(idv1.OwnerClaims{
-		Sub: "operator", Owner: owner, Target: "task-engine",
-		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("operator claims: %w", err)
-	}
-	opToken, err := auth.Sign(key, "operator", claims)
-	if err != nil {
-		return nil, fmt.Errorf("operator sign: %w", err)
-	}
-	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(identityURL, opToken)}}
-	res, err := id.ActAs(ctx, idv1.ActAsReq{Owner: owner, Aud: "task-engine"})
+	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(cfg.identityURL, opToken)}}
+	res, err := id.ActAs(ctx, idv1.ActAsReq{Owner: owner, Space: space, Aud: "task-engine"})
 	if err != nil {
 		return nil, fmt.Errorf("act as %s: %w", owner, err)
 	}
-	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, res.Token)}}, nil
+	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(cfg.taskURL, res.Token)}}, nil
+}
+
+func signedOperatorToken(owner, space, keyPath string) (string, error) {
+	key, err := auth.LoadPrivateKey(keyPath)
+	if err != nil {
+		return "", fmt.Errorf("operator key: %w", err)
+	}
+	claims, err := json.Marshal(idv1.OwnerClaims{
+		Sub: "operator", Owner: owner, Space: space, Target: "task-engine",
+		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("operator claims: %w", err)
+	}
+	opToken, err := auth.Sign(key, "operator", claims)
+	if err != nil {
+		return "", fmt.Errorf("operator sign: %w", err)
+	}
+	return opToken, nil
 }
 
 func create(ctx context.Context, client clientFor, args []string, out io.Writer) error {
@@ -92,7 +103,7 @@ func create(ctx context.Context, client clientFor, args []string, out io.Writer)
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("create flags: %w", err)
 	}
-	c, err := client(ctx, *owner)
+	c, err := client(ctx, *owner, *space)
 	if err != nil {
 		return err
 	}
@@ -108,10 +119,11 @@ func create(ctx context.Context, client clientFor, args []string, out io.Writer)
 func list(ctx context.Context, client clientFor, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	owner := fs.String("owner", "", "owner")
+	space := fs.String("space", "", "space")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("list flags: %w", err)
 	}
-	c, err := client(ctx, *owner)
+	c, err := client(ctx, *owner, *space)
 	if err != nil {
 		return err
 	}
@@ -131,11 +143,12 @@ func list(ctx context.Context, client clientFor, args []string, out io.Writer) e
 func one(ctx context.Context, client clientFor, args []string, out io.Writer, op string) error {
 	fs := flag.NewFlagSet(op, flag.ContinueOnError)
 	owner := fs.String("owner", "", "owner")
+	space := fs.String("space", "", "space")
 	id := fs.String("id", "", "job id")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("%s flags: %w", op, err)
 	}
-	c, err := client(ctx, *owner)
+	c, err := client(ctx, *owner, *space)
 	if err != nil {
 		return err
 	}
@@ -176,7 +189,7 @@ func hold(ctx context.Context, client clientFor, args []string, out io.Writer) e
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("hold flags: %w", err)
 	}
-	c, err := client(ctx, *owner)
+	c, err := client(ctx, *owner, *space)
 	if err != nil {
 		return err
 	}

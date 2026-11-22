@@ -79,7 +79,7 @@ func New(sub string, db *sql.DB, deps Deps) *Server {
 		if err != nil {
 			return idv1.ActAsResp{}, fmt.Errorf("operator claims: %w", err)
 		}
-		if claims.Owner != r.Owner || claims.Target != r.Aud {
+		if claims.Owner != r.Owner || claims.Space != r.Space || claims.Target != r.Aud {
 			return idv1.ActAsResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
 		}
 		out, err := issueOwner(ctx, r)
@@ -87,7 +87,7 @@ func New(sub string, db *sql.DB, deps Deps) *Server {
 			return out, err
 		}
 		if _, err := db.ExecContext(ctx, `INSERT INTO operator_audit
-			(owner, audience, operation) VALUES ($1,$2,'ActAs')`, r.Owner, r.Aud); err != nil {
+			(owner, space, audience, operation) VALUES ($1,$2,$3,'ActAs')`, r.Owner, r.Space, r.Aud); err != nil {
 			return idv1.ActAsResp{}, fmt.Errorf("audit act-as: %w", err)
 		}
 		return out, nil

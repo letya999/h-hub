@@ -58,7 +58,7 @@ func (f *Fake) actAs(_ context.Context, r ActAsReq) (ActAsResp, error) {
 	}
 	exp := f.now() + ServiceTTL
 	claims, err := json.Marshal(OwnerClaims{
-		Sub: "operator", Owner: r.Owner, Aud: []string{r.Aud}, Exp: exp, Kid: f.kid,
+		Sub: "operator", Owner: r.Owner, Space: r.Space, Aud: []string{r.Aud}, Exp: exp, Kid: f.kid,
 	})
 	if err != nil {
 		return ActAsResp{}, fmt.Errorf("owner claims: %w", err)

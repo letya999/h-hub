@@ -60,11 +60,11 @@ type jobRow struct {
 	result string
 }
 
-func getJob(ctx context.Context, db *sql.DB, owner, id string) (jobRow, error) {
+func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 AND id=$2`,
-		owner, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
+		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 AND id=$3`,
+		owner, space, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, herrors.New(herrors.CodeNotFound, "err.not-found"). //nolint:wrapcheck // shared error form
 										With("job", id)
@@ -75,9 +75,9 @@ func getJob(ctx context.Context, db *sql.DB, owner, id string) (jobRow, error) {
 	return j, nil
 }
 
-func listJobs(ctx context.Context, db *sql.DB, owner string) ([]jobRow, error) {
+func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]jobRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 ORDER BY created`, owner)
+		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 ORDER BY created`, owner, space)
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}

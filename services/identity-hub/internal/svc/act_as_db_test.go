@@ -47,7 +47,7 @@ func TestActAsBindsAndAudits(t *testing.T) {
 	srv := httptest.NewServer(s.Mux())
 	t.Cleanup(srv.Close)
 	claims, err := json.Marshal(idv1.OwnerClaims{
-		Sub: "operator", Owner: "alice", Target: "task-engine",
+		Sub: "operator", Owner: "alice", Space: "space-alice", Target: "task-engine",
 		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
 	})
 	if err != nil {
@@ -58,13 +58,16 @@ func TestActAsBindsAndAudits(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(srv.URL, opToken)}}
-	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "boris", Aud: "task-engine"}); herrors.CodeOf(err) != herrors.CodeForbidden {
+	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "boris", Space: "space-alice", Aud: "task-engine"}); herrors.CodeOf(err) != herrors.CodeForbidden {
 		t.Fatalf("cross-owner delegation: %v", err)
 	}
-	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Aud: "spawn-controller"}); herrors.CodeOf(err) != herrors.CodeForbidden {
+	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Space: "space-alice", Aud: "spawn-controller"}); herrors.CodeOf(err) != herrors.CodeForbidden {
 		t.Fatalf("cross-audience delegation: %v", err)
 	}
-	res, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Aud: "task-engine"})
+	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Space: "space-boris", Aud: "task-engine"}); herrors.CodeOf(err) != herrors.CodeForbidden {
+		t.Fatalf("cross-space delegation: %v", err)
+	}
+	res, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Space: "space-alice", Aud: "task-engine"})
 	if err != nil {
 		t.Fatalf("act as: %v", err)
 	}
@@ -73,11 +76,11 @@ func TestActAsBindsAndAudits(t *testing.T) {
 		t.Fatalf("bad issued token: %v", err)
 	}
 	owner, err := idv1.ParseOwnerClaims(tok.Payload)
-	if err != nil || owner.Owner != "alice" || len(owner.Aud) != 1 || owner.Aud[0] != "task-engine" {
+	if err != nil || owner.Owner != "alice" || owner.Space != "space-alice" || len(owner.Aud) != 1 || owner.Aud[0] != "task-engine" {
 		t.Fatalf("bad issued scope: %+v, %v", owner, err)
 	}
 	var n int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM operator_audit WHERE owner='alice' AND audience='task-engine'").Scan(&n); err != nil || n != 1 {
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM operator_audit WHERE owner='alice' AND space='space-alice' AND audience='task-engine'").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("audit rows=%d: %v", n, err)
 	}
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM operator_audit WHERE owner='boris'").Scan(&n); err != nil || n != 0 {
