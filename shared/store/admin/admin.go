@@ -10,15 +10,16 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
-	"github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib" // one shared Postgres driver
 )
 
 var identRe = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 
-// Connect opens a verified install-role connection (lib/pq DSN).
+// Connect opens a verified install-role connection (pgx DSN).
 func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("admin: open: %w", err)
 	}
@@ -32,7 +33,11 @@ func ident(name string) (string, error) {
 	if !identRe.MatchString(name) {
 		return "", fmt.Errorf("admin: unsafe identifier %q", name)
 	}
-	return pq.QuoteIdentifier(name), nil
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`, nil
+}
+
+func literal(s string) string {
+	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
 }
 
 func exists(ctx context.Context, db *sql.DB, q, arg string) (bool, error) {
@@ -59,7 +64,7 @@ func EnsureRole(ctx context.Context, db *sql.DB, name, password string) error {
 	if err != nil || ok {
 		return err
 	}
-	stmt := fmt.Sprintf(`CREATE ROLE %s LOGIN PASSWORD %s`, qname, pq.QuoteLiteral(password))
+	stmt := fmt.Sprintf(`CREATE ROLE %s LOGIN PASSWORD %s`, qname, literal(password))
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
 		return fmt.Errorf("admin: create role %s: %w", name, err)
 	}

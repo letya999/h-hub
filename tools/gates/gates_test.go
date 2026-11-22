@@ -37,7 +37,7 @@ var broken = map[string][]string{
 	"msys-dirs":      {"msys-dirs"},
 	"env-declared":   {"env-declared"},
 	"docs":           {"docs-agents", "docs-testlink"},
-	"trace":          {"trace"},
+	"trace":          {"trace", "trace-invariant"},
 	"miglint":        {"miglint-drop", "miglint-state"},
 	"module-ban":     {"module-ban"},
 	"blob-size":      {"blob-size"},

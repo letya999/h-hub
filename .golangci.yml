@@ -95,15 +95,15 @@ linters:
             - pkg: github.com/letya999/hermes-hub
               desc: v0 code is never imported or copied (rule 32)
         shared:
-          files: ["shared/**", "!shared/store/admin/**"]
+          files: ["shared/**", "!shared/store/**"]
           allow:
             - $gostd
             - github.com/letya999/h-hub/shared
-        shared-store-admin:
-          files: ["shared/store/admin/**"]
+        shared-store:
+          files: ["shared/store/**"]
           allow:
             - $gostd
-            - github.com/lib/pq
+            - github.com/jackc/pgx/v5
             - github.com/letya999/h-hub/shared
         contracts:
           files: ["contracts/**"]
@@ -242,6 +242,9 @@ linters:
       - path: 'tools/'
         linters: [forbidigo]
         text: 'exec\.Command'
+      - path: 'shared/testkit'
+        linters: [forbidigo]
+        text: 'os\.(Getenv|LookupEnv)'
 formatters:
   enable:
     - gofmt
