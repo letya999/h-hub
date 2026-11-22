@@ -41,7 +41,7 @@ func Check(root string) error {
 			return nil
 		}
 		files = append(files, p)
-		return collect(fset, p, types)
+		return collect(fset, p, filepath.ToSlash(filepath.Dir(rel)), types)
 	})
 	if err != nil {
 		return fmt.Errorf("archtest walk: %w", err)
@@ -81,8 +81,10 @@ func (t *typeInfo) check() error {
 	return nil
 }
 
-// collect parses one file and accumulates method/field counts.
-func collect(fset *token.FileSet, path string, types map[string]*typeInfo) error {
+// collect parses one file and accumulates method/field counts. Types
+// are keyed by directory so same-named types in different packages are
+// counted separately — the rule is per-type, not per-identifier.
+func collect(fset *token.FileSet, path, dir string, types map[string]*typeInfo) error {
 	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return fmt.Errorf("archtest parse %s: %w", path, err)
@@ -90,15 +92,15 @@ func collect(fset *token.FileSet, path string, types map[string]*typeInfo) error
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			addMethod(types, d)
+			addMethod(types, dir, d)
 		case *ast.GenDecl:
-			addStruct(types, d)
+			addStruct(types, dir, d)
 		}
 	}
 	return nil
 }
 
-func addMethod(types map[string]*typeInfo, d *ast.FuncDecl) {
+func addMethod(types map[string]*typeInfo, dir string, d *ast.FuncDecl) {
 	if d.Recv == nil || len(d.Recv.List) == 0 {
 		return
 	}
@@ -110,10 +112,10 @@ func addMethod(types map[string]*typeInfo, d *ast.FuncDecl) {
 	if !ok {
 		return
 	}
-	info(types, id.Name).methods++
+	info(types, dir+"/"+id.Name).methods++
 }
 
-func addStruct(types map[string]*typeInfo, d *ast.GenDecl) {
+func addStruct(types map[string]*typeInfo, dir string, d *ast.GenDecl) {
 	for _, spec := range d.Specs {
 		ts, ok := spec.(*ast.TypeSpec)
 		if !ok {
@@ -123,7 +125,7 @@ func addStruct(types map[string]*typeInfo, d *ast.GenDecl) {
 		if !ok {
 			continue
 		}
-		t := info(types, ts.Name.Name)
+		t := info(types, dir+"/"+ts.Name.Name)
 		for _, f := range st.Fields.List {
 			if len(f.Names) == 0 {
 				t.fields++

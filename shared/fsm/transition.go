@@ -85,7 +85,11 @@ func (m *Machine) Transition(ctx context.Context, tx *sql.Tx, r Request, hook Ho
 		return badEdge(state, r.Event)
 	}
 	chg := Change{ID: r.ID, From: state, Event: r.Event, To: edge.To, Actor: r.Actor, Effects: r.Effects}
-	return m.commitTransition(ctx, tx, version, chg, hook)
+	now := r.At
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return m.commitTransition(ctx, tx, commit{version: version, chg: chg, hook: hook, at: now})
 }
 
 // readRow reads without a lock: the CAS update in commitTransition is
@@ -107,13 +111,22 @@ func (m *Machine) readRow(ctx context.Context, tx *sql.Tx, id string) (string, i
 	return state, version, nil
 }
 
-func (m *Machine) commitTransition(ctx context.Context, tx *sql.Tx, version int64, chg Change, hook Hook) error {
-	d := m.deadlineFor(chg.To, time.Now().UTC())
+// commit bundles what one CAS write needs: the pre-read version, the
+// change to commit, the optional same-tx hook and the deadline clock.
+type commit struct {
+	version int64
+	chg     Change
+	hook    Hook
+	at      time.Time
+}
+
+func (m *Machine) commitTransition(ctx context.Context, tx *sql.Tx, c commit) error {
+	d := m.deadlineFor(c.chg.To, c.at)
 	res, err := tx.ExecContext(ctx, `UPDATE `+m.table("machines")+` SET
 		state=$1, deadline_at=$2, deadline_event=$3, deadline_actor=$4,
 		actor=$5, version=version+1, updated_at=now()
 		WHERE kind=$6 AND id=$7 AND state=$8 AND version=$9`,
-		chg.To, d.at, d.event, d.actor, chg.Actor, m.kind, chg.ID, chg.From, version)
+		c.chg.To, d.at, d.event, d.actor, c.chg.Actor, m.kind, c.chg.ID, c.chg.From, c.version)
 	if err != nil {
 		return fmt.Errorf("cas update: %w", err)
 	}
@@ -122,16 +135,16 @@ func (m *Machine) commitTransition(ctx context.Context, tx *sql.Tx, version int6
 		return fmt.Errorf("cas rows: %w", err)
 	}
 	if n == 0 {
-		return ErrStale.With("kind", m.kind).With("id", chg.ID) //nolint:wrapcheck // shared error form
+		return ErrStale.With("kind", m.kind).With("id", c.chg.ID) //nolint:wrapcheck // shared error form
 	}
-	if err := m.writeHistory(ctx, tx, chg); err != nil {
+	if err := m.writeHistory(ctx, tx, c.chg); err != nil {
 		return err
 	}
-	if err := m.writeEffects(ctx, tx, chg.ID, chg.Effects); err != nil {
+	if err := m.writeEffects(ctx, tx, c.chg.ID, c.chg.Effects); err != nil {
 		return err
 	}
-	if hook != nil {
-		if err := hook(ctx, tx, chg); err != nil {
+	if c.hook != nil {
+		if err := c.hook(ctx, tx, c.chg); err != nil {
 			return fmt.Errorf("hook: %w", err)
 		}
 	}

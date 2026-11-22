@@ -180,11 +180,13 @@ func checkSchema(name string) error {
 }
 
 // Request is one transition attempt: the edge event, the acting
-// identity, and the outbox effects to commit with it.
+// identity, and the outbox effects to commit with it. At overrides the
+// clock used to arm the next deadline (zero means the wall clock).
 type Request struct {
 	ID      string
 	Event   string
 	Actor   string
+	At      time.Time
 	Effects []Effect
 }
 
