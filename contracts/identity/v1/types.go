@@ -44,6 +44,19 @@ func ParseOwnerClaims(payload []byte) (OwnerClaims, error) {
 	return c, nil
 }
 
+// OwnerFrom returns the owner from a verified request principal.
+func OwnerFrom(ctx context.Context) (string, error) {
+	p := httpapi.PrincipalFrom(ctx)
+	if p == nil {
+		return "", herrors.New(herrors.CodeUnauthorized, "err.unauthorized")
+	}
+	c, err := ParseOwnerClaims(p.Payload)
+	if err != nil {
+		return "", err
+	}
+	return c.Owner, nil
+}
+
 // ActAsReq asks identity to issue an owner-scoped token.
 type ActAsReq struct {
 	Owner string `json:"owner"`

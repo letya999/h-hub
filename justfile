@@ -63,7 +63,7 @@ stack: images
     docker compose -f deploy/compose.yaml up -d --wait postgres
     just init
     docker compose -f deploy/compose.yaml up -d --wait
-    docker rm -f scripted-model 2>/dev/null || true
+    -docker rm -f scripted-model
     docker run -d --name scripted-model --network hhub --restart unless-stopped hhub-scripted-model:local
 
 # run the acceptance suite against the live stack (needs just stack)
@@ -72,7 +72,9 @@ e2e:
       -v /var/run/docker.sock:/var/run/docker.sock \
       -e HHUB_TASK_URL=http://task-engine:9000 \
       -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+      -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
+      -v hhub-conf:/etc/hhub:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e
 

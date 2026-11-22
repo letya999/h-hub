@@ -37,12 +37,12 @@ var cases = []Case{
 
 func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
 	res, err := c.CreateJob(ctx, CreateJobReq{
-		Owner: "o1", Space: "sp1", Conversation: "c1", Input: "hi", Idem: "k1",
+		Space: "sp1", Conversation: "c1", Input: "hi", Idem: "k1",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	got, err := c.GetJob(ctx, GetJobReq{Owner: "o1", ID: res.ID})
+	got, err := c.GetJob(ctx, GetJobReq{ID: res.ID})
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -52,7 +52,7 @@ func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
 }
 
 func caseIdemReplay(t *testing.T, ctx context.Context, c *Client) {
-	req := CreateJobReq{Owner: "o1", Space: "sp1", Input: "hi", Idem: "k-idem"}
+	req := CreateJobReq{Space: "sp1", Input: "hi", Idem: "k-idem"}
 	a, err := c.CreateJob(ctx, req)
 	if err != nil {
 		t.Fatalf("create a: %v", err)
@@ -67,7 +67,7 @@ func caseIdemReplay(t *testing.T, ctx context.Context, c *Client) {
 }
 
 func caseUnknownJob(t *testing.T, ctx context.Context, c *Client) {
-	_, err := c.GetJob(ctx, GetJobReq{Owner: "o1", ID: "job_none"})
+	_, err := c.GetJob(ctx, GetJobReq{ID: "job_none"})
 	if herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("unknown job: got %v, want not-found", err)
 	}
@@ -75,12 +75,12 @@ func caseUnknownJob(t *testing.T, ctx context.Context, c *Client) {
 
 func caseCancel(t *testing.T, ctx context.Context, c *Client) {
 	res, err := c.CreateJob(ctx, CreateJobReq{
-		Owner: "o1", Space: "sp1", Input: "hi", Idem: "k-cancel",
+		Space: "sp1", Input: "hi", Idem: "k-cancel",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	j, err := c.CancelJob(ctx, JobReq{Owner: "o1", ID: res.ID})
+	j, err := c.CancelJob(ctx, JobReq{ID: res.ID})
 	if err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
@@ -104,7 +104,7 @@ func caseHoldEpoch(t *testing.T, ctx context.Context, c *Client) {
 }
 
 func caseInvalidInput(t *testing.T, ctx context.Context, c *Client) {
-	_, err := c.CreateJob(ctx, CreateJobReq{Owner: "o1"})
+	_, err := c.CreateJob(ctx, CreateJobReq{})
 	if herrors.CodeOf(err) != herrors.CodeInvalid {
 		t.Fatalf("missing input: got %v, want invalid", err)
 	}

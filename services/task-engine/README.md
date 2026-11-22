@@ -9,10 +9,12 @@ settled run.
 
 ## Zone and neighbors
 
-Core zone. Called by `hubctl job` (operator surface) and by
+Core zone. Called by `hubctl job` with owner-scoped operator tokens and by
 harness-runtime (`ReportRun`). Calls identity-hub (`MintRunToken`,
 `IssueServiceToken`), spawn-controller (`ResolveSpec`, `EnsureRuntime`,
 `ReleaseRuntime`) and harness-runtime (`SubmitRun`, `CancelRun`).
+Owner scope is verified before reads and writes; space ownership is
+checked through `ResolveSpec` ([TestJobToAnswer](../../test/e2e/e2e_test.go)).
 
 ## Owns
 
@@ -24,13 +26,13 @@ session" lives here.
 
 ## Contracts
 
-Implements `contracts/task/v1` (job ops + `ClaimNext`, `ReportRun`);
+Implements `contracts/task/v1` (job ops and `ReportRun`);
 consumes `identity/v1`, `spawn/v1`, `harness/v1`. Fake at
 `contracts/task/v1/fake.go`.
 
 ## Does not do
 
-No channel, no user auth of its own (token-only edges), no container
+No channel, no user credential store, no container
 management (spawn-controller's line), no model calls (harness
 runtime's line), no rights/grants.
 

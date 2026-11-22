@@ -75,16 +75,8 @@ func (f *Fake) issueService(_ context.Context, r IssueServiceTokenReq) (IssueSer
 	if err := herrors.Require(r.Sub != "" && r.Aud != "" && r.Nonce != "", "err.invalid-arg"); err != nil {
 		return out, err //nolint:wrapcheck // shared error form
 	}
-	pub, ok := f.pubs[r.Sub]
-	if !ok {
-		return out, herrors.New(herrors.CodeForbidden, "err.forbidden").With("sub", r.Sub) //nolint:wrapcheck // shared error form
-	}
-	proof, err := ProofBytes(r.Proof)
-	if err != nil {
+	if err := VerifyServiceProof(r, f.pubs); err != nil {
 		return out, err
-	}
-	if !ed25519.Verify(pub, CanonicalProof(r.Sub, r.Aud, r.Nonce), proof) {
-		return out, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	exp := f.now() + ServiceTTL
 	claims, err := json.Marshal(ServiceClaims{
@@ -98,6 +90,22 @@ func (f *Fake) issueService(_ context.Context, r IssueServiceTokenReq) (IssueSer
 		return out, fmt.Errorf("sign: %w", err)
 	}
 	return IssueServiceTokenResp{Token: tok, ExpiresAt: exp}, nil
+}
+
+// VerifyServiceProof authenticates the one signed issuance request.
+func VerifyServiceProof(r IssueServiceTokenReq, pubs map[string]ed25519.PublicKey) error {
+	pub, ok := pubs[r.Sub]
+	if !ok {
+		return herrors.New(herrors.CodeForbidden, "err.forbidden").With("sub", r.Sub) //nolint:wrapcheck // shared error form
+	}
+	proof, err := ProofBytes(r.Proof)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(pub, CanonicalProof(r.Sub, r.Aud, r.Nonce), proof) {
+		return herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	return nil
 }
 
 func (f *Fake) mintRun(_ context.Context, r MintRunTokenReq) (MintRunTokenResp, error) {

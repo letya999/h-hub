@@ -49,6 +49,13 @@ func TestIssueVerifies(t *testing.T) {
 	srv := httptest.NewServer(s.Mux())
 	t.Cleanup(srv.Close)
 	c := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(srv.URL, "")}}
+	_, otherKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.IssueServiceToken(context.Background(), "task-engine", "spawn-controller", "n1", otherKey); herrors.CodeOf(err) != herrors.CodeForbidden {
+		t.Fatalf("bad proof: %v", err)
+	}
 	res, err := c.IssueServiceToken(context.Background(), "task-engine", "spawn-controller", "n1", subKey)
 	if err != nil {
 		t.Fatalf("issue: %v", err)

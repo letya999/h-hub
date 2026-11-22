@@ -14,7 +14,7 @@ func TestConformance(t *testing.T) {
 	t.Parallel()
 	Conformance(t, func(t *testing.T) *Client {
 		t.Helper()
-		fake := NewFake()
+		fake := NewFake("o1")
 		mux := http.NewServeMux()
 		for op, h := range Ops(fake.Handlers()) {
 			mux.Handle("/v1/"+op, httpapi.Handle("tk", h))

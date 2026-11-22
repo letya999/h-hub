@@ -2,27 +2,26 @@
 
 ## Purpose
 
-Phase-3 fake identity issuer: it signs run and service tokens so the
-task->answer path can verify callers end to end, while the real
-identity-hub is deferred to phase 4.
+Phase-3 issuer: it signs run, service, and owner-scoped operator tokens
+for the task->answer path. Real user identity arrives in phase 4.
 
 ## Zone and neighbors
 
-Core zone. task-engine calls `MintRunToken` to bind a run to its owner,
-and `IssueServiceToken` (proof-signed by the caller's service key) to
-obtain tokens for spawn-controller and harness-runtime edges. Nothing
-calls back into task-engine.
+Core zone. task-engine calls `MintRunToken` and proof-signed
+`IssueServiceToken`. The operator calls `ActAs` with a token signed by
+its installed key; the issued owner token is bound to one owner and
+callee ([TestActAsBindsAndAudits](internal/svc/act_as_db_test.go)).
 
 ## Owns
 
-The Ed25519 issuer key pair (`keys-identity-hub` volume) and the
-in-memory key registry used to verify service-token requests. No
-database is attached in phase 3.
+The Ed25519 issuer key pair (`keys-identity-hub` volume), public-key
+registry, and its own database for issuance nonces and the `ActAs`
+audit ([TestActAsBindsAndAudits](internal/svc/act_as_db_test.go)).
 
 ## Contracts
 
 Implements `contracts/identity/v1` (`MintRunToken`,
-`IssueServiceToken`). The contract fake lives at
+`IssueServiceToken`, `ActAs`). The contract fake lives at
 `contracts/identity/v1/fake.go` and passes the conformance suite via
 real HTTP.
 
@@ -34,7 +33,7 @@ on other services' behalf; each callee verifies with the public key.
 
 ## Machines
 
-None — stateless issuer.
+None. Nonces and operator audit rows are durable domain records.
 
 ## Config
 

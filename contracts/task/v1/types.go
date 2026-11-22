@@ -14,7 +14,6 @@ import (
 // CreateJobReq submits a job. Idem is the caller's idempotency key:
 // replaying it returns the existing job instead of a duplicate.
 type CreateJobReq struct {
-	Owner        string `json:"owner"`
 	Space        string `json:"space"`
 	Conversation string `json:"conversation"`
 	Input        string `json:"input"`
@@ -38,8 +37,7 @@ type JobInfo struct {
 
 // GetJobReq reads one job scoped to its owner.
 type GetJobReq struct {
-	Owner string `json:"owner"`
-	ID    string `json:"id"`
+	ID string `json:"id"`
 }
 
 // GetJobResp is the job read result.
@@ -48,9 +46,7 @@ type GetJobResp struct {
 }
 
 // ListJobsReq lists an owner's jobs.
-type ListJobsReq struct {
-	Owner string `json:"owner"`
-}
+type ListJobsReq struct{}
 
 // ListJobsResp is the listing result.
 type ListJobsResp struct {
@@ -60,8 +56,7 @@ type ListJobsResp struct {
 // JobReq is the shared shape of single-job operator actions
 // (cancel, retry, unquarantine).
 type JobReq struct {
-	Owner string `json:"owner"`
-	ID    string `json:"id"`
+	ID string `json:"id"`
 }
 
 // SetHoldReq toggles an administrative hold on a space.
@@ -101,14 +96,6 @@ type GetRunResp struct {
 	Events []RunEvent `json:"events"`
 }
 
-// ClaimNextReq asks the dispatcher to claim one due job.
-type ClaimNextReq struct{}
-
-// ClaimNextResp names the claimed job (empty when none was due).
-type ClaimNextResp struct {
-	Job string `json:"job"`
-}
-
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateJob       func(context.Context, CreateJobReq) (CreateJobResp, error)
@@ -118,7 +105,6 @@ type Handlers struct {
 	RetryJob        func(context.Context, JobReq) (JobInfo, error)
 	UnquarantineJob func(context.Context, JobReq) (JobInfo, error)
 	SetHold         func(context.Context, SetHoldReq) (SetHoldResp, error)
-	ClaimNext       func(context.Context, ClaimNextReq) (ClaimNextResp, error)
 	ReportRun       func(context.Context, ReportRunReq) (struct{}, error)
 	GetRun          func(context.Context, GetRunReq) (GetRunResp, error)
 }
@@ -133,7 +119,6 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"RetryJob":        op(h.RetryJob),
 		"UnquarantineJob": op(h.UnquarantineJob),
 		"SetHold":         op(h.SetHold),
-		"ClaimNext":       op(h.ClaimNext),
 		"ReportRun":       op(h.ReportRun),
 		"GetRun":          op(h.GetRun),
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,17 @@ type Verifier func(r *http.Request) (Principal, error)
 // AuthHandler is a Handler that receives the verified principal.
 type AuthHandler func(w http.ResponseWriter, r *http.Request, p Principal) error
 
+type principalKey struct{}
+
+// PrincipalFrom returns the verified principal attached by HandleAuth.
+func PrincipalFrom(ctx context.Context) *Principal {
+	p, ok := ctx.Value(principalKey{}).(Principal)
+	if !ok {
+		return nil
+	}
+	return &p
+}
+
 // HandleAuth wraps an op handler: bounded body, bearer verification,
 // then the shared error form.
 func HandleAuth(v Verifier, next AuthHandler) http.HandlerFunc {
@@ -42,18 +54,8 @@ func HandleAuth(v Verifier, next AuthHandler) http.HandlerFunc {
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
+		r = r.WithContext(context.WithValue(r.Context(), principalKey{}, p))
 		if err := next(w, r, p); err != nil {
-			writeError(w, r, err)
-		}
-	}
-}
-
-// HandleOpen wraps an op that carries its own proof in the request
-// body or needs none at all (healthz, token issuance).
-func HandleOpen(next AuthHandler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
-		if err := next(w, r, Principal{}); err != nil {
 			writeError(w, r, err)
 		}
 	}
