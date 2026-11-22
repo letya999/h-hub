@@ -12,8 +12,7 @@ confvol  := "hhub-conf"
 dsn      := "postgres://postgres@postgres:5432/postgres?sslmode=disable"
 hubctl   := "docker run --rm --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_CONFIG_DIR=/etc/hhub -e HHUB_DESCRIPTOR=/src/deploy/descriptor.yaml" + \
-            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro -v hhub-gocache:/go " + \
-            img + " /go/bin/hubctl"
+            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro hhub-hubctl:local"
 
 check_line := if os() == "windows" { "docker compose -f deploy/compose.yaml up -d --wait postgres && " + runnet + img + " just check" } else { "just _check" }
 fast_line  := if os() == "windows" { run + img + " just check-fast" } else { "just _check-fast" }
@@ -48,6 +47,34 @@ _check-fast:
     gitleaks protect --staged
 
 # --- stack operations (host side, docker commands work in both shells) ---
+
+# build every service/runtime/test image the stack needs
+images:
+    docker build -f deploy/hubctl.Dockerfile -t hhub-hubctl:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=identity-hub -t hhub-identity-hub:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=task-engine -t hhub-task-engine:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
+    docker build -f test/scripted-model/Dockerfile -t hhub-scripted-model:local .
+
+# bring the whole phase-3 stack up: postgres -> init -> services ->
+# scripted model. Idempotent.
+stack: images
+    docker compose -f deploy/compose.yaml up -d --wait postgres
+    just init
+    docker compose -f deploy/compose.yaml up -d --wait
+    docker rm -f scripted-model 2>/dev/null || true
+    docker run -d --name scripted-model --network hhub --restart unless-stopped hhub-scripted-model:local
+
+# run the acceptance suite against the live stack (needs just stack)
+e2e:
+    docker run --rm --network hhub \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -e HHUB_TASK_URL=http://task-engine:9000 \
+      -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+      -e HHUB_ADMIN_DSN={{ dsn }} \
+      -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+      {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e
 
 # start postgres from the generated compose
 up:
