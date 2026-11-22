@@ -11,34 +11,88 @@ volumes:
   - name: postgres-data
   - name: broker-data
   - name: memory-vault
+  - name: hhub-render
+  - name: keys-identity-hub
+  - name: keys-task-engine
+  - name: keys-spawn-controller
 services:
   - name: spawn-controller
     zone: control
+    deploy: true
     database: postgres
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
-    volumes: []
+    env:
+      - HHUB_SUB
+      - HHUB_DSN
+      - HHUB_KEYS
+      - HHUB_RUNTIME_IMAGE
+      - HHUB_DOCKER_SOCK
+      - HHUB_TASK_URL
+      - HHUB_MODEL_URL
+      - HHUB_RENDER_VOL
+      - HHUB_RENDER_DIR
+      - HHUB_NETWORK
+    volumes:
+      - name: keys-spawn-controller
+        path: /etc/hhub
+      - name: hhub-render
+        path: /render
+        rw: true
     edges: []
   - name: identity-hub
     zone: control
+    deploy: true
     database: postgres
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
-    volumes: []
+    env:
+      - HHUB_SUB
+      - HHUB_DSN
+      - HHUB_KEYS
+    volumes:
+      - name: keys-identity-hub
+        path: /etc/hhub
     edges: []
   - name: task-engine
     zone: control
+    deploy: true
     database: postgres
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
+    env:
+      - HHUB_SUB
+      - HHUB_DSN
+      - HHUB_KEYS
+      - HHUB_IDENTITY_URL
+      - HHUB_SPAWN_URL
+    volumes:
+      - name: keys-task-engine
+        path: /etc/hhub
+    edges:
+      - to: identity-hub
+        ops: [MintRunToken]
+      - to: spawn-controller
+        ops: [EnsureRuntime, ReleaseRuntime, ResolveSpec]
+      - to: harness-runtime
+        ops: [SubmitRun, CancelRun]
+  - name: harness-runtime
+    zone: space
+    deploy: false
+    database: none
+    mem: 256m
+    cpu: 1.0
+    pids: 256
+    env:
+      - HHUB_SUB
+      - HHUB_CONFIG
     volumes: []
-    edges: []
+    edges:
+      - to: task-engine
+        ops: [ReportRun]
   - name: proactive-engine
     zone: control
     database: postgres
@@ -115,3 +169,11 @@ services:
     env: []
     volumes: []
     edges: []
+clients:
+  - name: hubctl
+    edges:
+      - to: task-engine
+        ops: [CreateJob, GetJob, ListJobs, CancelJob, RetryJob,
+              UnquarantineJob, SetHold, ClaimNext, GetRun]
+      - to: spawn-controller
+        ops: [CreateSpace, GetSpace, DestroySpace]

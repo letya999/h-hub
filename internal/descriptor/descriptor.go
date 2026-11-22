@@ -18,6 +18,7 @@ type File struct {
 	Postgres Postgres  `yaml:"postgres"`
 	Volumes  []Volume  `yaml:"volumes"`
 	Services []Service `yaml:"services"`
+	Clients  []Client  `yaml:"clients"`
 }
 
 type Postgres struct {
@@ -36,6 +37,7 @@ type Service struct {
 	Name     string   `yaml:"name"`
 	Zone     string   `yaml:"zone"`
 	Image    string   `yaml:"image"`
+	Deploy   bool     `yaml:"deploy"`
 	Database string   `yaml:"database"`
 	Mem      string   `yaml:"mem"`
 	CPU      float64  `yaml:"cpu"`
@@ -45,9 +47,17 @@ type Service struct {
 	Edges    []Edge   `yaml:"edges"`
 }
 
+// Client is a non-container principal (hubctl, tests) allowed to hold
+// service edges. It runs no image and owns no database.
+type Client struct {
+	Name  string `yaml:"name"`
+	Edges []Edge `yaml:"edges"`
+}
+
 type Mount struct {
 	Name string `yaml:"name"`
 	Path string `yaml:"path"`
+	RW   bool   `yaml:"rw"`
 }
 
 type Edge struct {
@@ -56,12 +66,13 @@ type Edge struct {
 }
 
 var (
-	nameRe  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	envRe   = regexp.MustCompile(`^HHUB_[A-Z0-9_]+$`)
-	memRe   = regexp.MustCompile(`^[0-9]+[bkmg]$`)
-	imageRe = regexp.MustCompile(`^[a-zA-Z0-9./_:-]+@sha256:[0-9a-f]{64}$`)
-	opRe    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
-	zones   = map[string]bool{
+	nameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	envRe    = regexp.MustCompile(`^HHUB_[A-Z0-9_]+$`)
+	memRe    = regexp.MustCompile(`^[0-9]+[bkmg]$`)
+	imageRe  = regexp.MustCompile(`^[a-zA-Z0-9./_:-]+@sha256:[0-9a-f]{64}$`)
+	opRe     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+	spaceEnv = regexp.MustCompile(`DSN|DB|POSTGRES|PG`)
+	zones    = map[string]bool{
 		"control": true, "agent": true, "edge": true,
 		"egress": true, "secret": true, "space": true,
 	}
@@ -112,7 +123,7 @@ func (f *File) Validate() error {
 			return err
 		}
 	}
-	return nil
+	return f.checkClients()
 }
 
 func (f *File) checkVolumes() (map[string]bool, error) {
@@ -140,6 +151,9 @@ func (s *Service) validate(seen map[string]bool, vol map[string]bool) error {
 	if !dbs[s.Database] {
 		return fmt.Errorf("descriptor: %s: database must be postgres|sqlcipher|none", s.Name)
 	}
+	if s.Zone == "space" && s.Database != "none" {
+		return fmt.Errorf("descriptor: %s: space zone never holds a database (sys.space-no-db)", s.Name)
+	}
 	if s.Image != "" && !imageRe.MatchString(s.Image) {
 		return fmt.Errorf("descriptor: %s: image must be digest-pinned", s.Name)
 	}
@@ -162,6 +176,9 @@ func (s *Service) checkEnv() error {
 	for _, e := range s.Env {
 		if !envRe.MatchString(e) {
 			return fmt.Errorf("descriptor: %s: env %q must match HHUB_*", s.Name, e)
+		}
+		if s.Zone == "space" && spaceEnv.MatchString(e) {
+			return fmt.Errorf("descriptor: %s: space zone may not carry database env %q", s.Name, e)
 		}
 	}
 	return nil
@@ -190,6 +207,40 @@ func (s *Service) checkEdges() error {
 	return nil
 }
 
+// checkClients validates non-container principals: unique names that
+// do not collide with services, with well-formed edges.
+func (f *File) checkClients() error {
+	svcNames := map[string]bool{}
+	for _, s := range f.Services {
+		svcNames[s.Name] = true
+	}
+	seen := map[string]bool{}
+	for _, c := range f.Clients {
+		if !nameRe.MatchString(c.Name) || seen[c.Name] || svcNames[c.Name] {
+			return fmt.Errorf("descriptor: bad or duplicate client %q", c.Name)
+		}
+		seen[c.Name] = true
+		if err := c.checkEdges(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Client) checkEdges() error {
+	for _, e := range c.Edges {
+		if len(e.Ops) == 0 {
+			return fmt.Errorf("descriptor: %s: bad edge to %q", c.Name, e.To)
+		}
+		for _, op := range e.Ops {
+			if !opRe.MatchString(op) {
+				return fmt.Errorf("descriptor: %s: bad op %q", c.Name, op)
+			}
+		}
+	}
+	return nil
+}
+
 // EdgeTargets validates that every edge points at a declared service.
 func (f *File) EdgeTargets() error {
 	names := make(map[string]bool, len(f.Services))
@@ -203,7 +254,42 @@ func (f *File) EdgeTargets() error {
 			}
 		}
 	}
+	for _, c := range f.Clients {
+		for _, e := range c.Edges {
+			if !names[e.To] {
+				return fmt.Errorf("descriptor: %s: edge to unknown service %q", c.Name, e.To)
+			}
+		}
+	}
 	return nil
+}
+
+// EdgePair is one declared (caller, callee, op) triple — the raw data
+// the edges table is built from.
+type EdgePair struct {
+	To   string
+	From string
+	Op   string
+}
+
+// EdgePairs flattens every service and client edge into caller,
+// callee, op triples.
+func (f *File) EdgePairs() []EdgePair {
+	var out []EdgePair
+	add := func(from string, edges []Edge) {
+		for _, e := range edges {
+			for _, op := range e.Ops {
+				out = append(out, EdgePair{To: e.To, From: from, Op: op})
+			}
+		}
+	}
+	for _, s := range f.Services {
+		add(s.Name, s.Edges)
+	}
+	for _, c := range f.Clients {
+		add(c.Name, c.Edges)
+	}
+	return out
 }
 
 func ceiling(name, mem string, cpu float64, pids int) error {
