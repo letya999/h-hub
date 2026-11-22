@@ -217,14 +217,14 @@ func TestCASRace(t *testing.T) {
 		t.Fatal(err)
 	}
 	chg1 := Change{ID: "m1", From: s1, Event: "start", To: "active", Actor: "a"}
-	if err := m.commitTransition(ctx, tx1, v1, chg1, nil); err != nil {
+	if err := m.commitTransition(ctx, tx1, commit{version: v1, chg: chg1, at: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx1.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	chg2 := Change{ID: "m1", From: s2, Event: "start", To: "active", Actor: "b"}
-	err = m.commitTransition(ctx, tx2, v2, chg2, nil)
+	err = m.commitTransition(ctx, tx2, commit{version: v2, chg: chg2, at: time.Now()})
 	if !stderrors.Is(err, ErrStale) {
 		t.Fatalf("CAS loser must get ErrStale, got %v", err)
 	}
