@@ -39,6 +39,7 @@ var broken = map[string][]string{
 	"docs":           {"docs-agents", "docs-testlink"},
 	"trace":          {"trace", "trace-invariant"},
 	"miglint":        {"miglint-drop", "miglint-state"},
+	"sql-eol":        {"sql-eol"},
 	"module-ban":     {"module-ban"},
 	"blob-size":      {"blob-size"},
 	"fix-needs-test": {"fix-needs-test"},
