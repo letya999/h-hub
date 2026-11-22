@@ -1,0 +1,13 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        noexec:
+          files: ["$all"]
+          deny:
+            - pkg: os/exec
+              desc: process spawning is banned

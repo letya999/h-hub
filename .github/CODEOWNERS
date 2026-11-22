@@ -1,0 +1,12 @@
+# Owner-only changes (enforcement.md 8): thresholds, baselines,
+# modules, acceptance scenarios, ADRs.
+/adr/                          @letya999
+/.golangci.yml                 @letya999
+/.gitleaks.toml                @letya999
+/justfile                      @letya999
+/deploy/descriptor.yaml        @letya999
+/deploy/compose.yaml           @letya999
+/deploy/dev.Dockerfile         @letya999
+/deploy/dev-image.ref          @letya999
+/tools/                        @letya999
+/.github/                      @letya999

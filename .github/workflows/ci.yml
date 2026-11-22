@@ -1,0 +1,26 @@
+name: check
+# One workflow, one required status (enforcement.md 7).
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/hhub
+          key: hhub-dev-${{ hashFiles('go.sum', 'deploy/dev.Dockerfile') }}
+      - name: Build hhub-dev
+        run: docker build -f deploy/dev.Dockerfile -t hhub-dev:ci .
+      - name: just check
+        run: |
+          mkdir -p ~/.cache/hhub/go ~/.cache/hhub/root
+          docker run --rm -v "$PWD:/src:ro" \
+            -v ~/.cache/hhub/go:/go -v ~/.cache/hhub/root:/root/.cache \
+            hhub-dev:ci just check

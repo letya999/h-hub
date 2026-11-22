@@ -1,0 +1,247 @@
+version: "2"
+# Lint gate (enforcement.md sections 2-3). Threshold changes are
+# owner-only (CODEOWNERS). Meta-test: tools/meta asserts every linter
+# and threshold from the spec is enabled.
+linters:
+  default: none
+  enable:
+    - funlen
+    - gocognit
+    - cyclop
+    - nestif
+    - maintidx
+    - dupl
+    - interfacebloat
+    - revive
+    - errcheck
+    - errorlint
+    - nilerr
+    - wrapcheck
+    - forbidigo
+    - depguard
+    - paralleltest
+    - tparallel
+    - nolintlint
+    - govet
+    - ineffassign
+    - staticcheck
+  settings:
+    funlen:
+      lines: 60
+      statements: 40
+      ignore-comments: true
+    gocognit:
+      min-complexity: 15
+    cyclop:
+      max-complexity: 12
+      package-average: 5
+    nestif:
+      min-complexity: 4
+    maintidx:
+      under: 20
+    dupl:
+      threshold: 100
+    interfacebloat:
+      max: 5
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [5]
+        - name: function-result-limit
+          arguments: [3]
+        - name: file-length-limit
+          arguments:
+            - max: 500
+              skip-comments: true
+              skip-blank-lines: true
+        - name: max-control-nesting
+          arguments: [4]
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+    wrapcheck:
+      ignoreSigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '\bos\.(Getenv|LookupEnv)\b'
+          msg: "read env only in service internal/config (rule 14)"
+        - pattern: '\bexec\.Command\b'
+          msg: "no shelling out; Docker via Engine API in backend (rule 11)"
+        - pattern: '\bhttp\.(DefaultClient|Get|Head|Post|PostForm)\b'
+          msg: "use the shared/httpapi client with token and timeout (rule 9)"
+        - pattern: '\btime\.Sleep\b'
+          msg: "no sleeps, use timers or lifecycle (rule 20)"
+        - pattern: '\bt\.Skip(f|Now)?\b'
+          msg: "no skips in tests (rule 20)"
+        - pattern: '\bpanic\s*\('
+          msg: "no panic outside main (rule 13)"
+        - pattern: '\bfmt\.Print(ln|f)?\s*\('
+          msg: "stdout writes live in main or via explicit writers (rule 18)"
+    depguard:
+      rules:
+        no-v0:
+          files: ["$all"]
+          deny:
+            - pkg: github.com/letya999/hermes-hub
+              desc: v0 code is never imported or copied (rule 32)
+        shared:
+          files: ["shared/**", "!shared/store/admin/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+        shared-store-admin:
+          files: ["shared/store/admin/**"]
+          allow:
+            - $gostd
+            - github.com/lib/pq
+            - github.com/letya999/h-hub/shared
+        contracts:
+          files: ["contracts/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared/httpapi
+            - github.com/letya999/h-hub/shared/errors
+        hubctl:
+          files: ["cmd/hubctl/**", "!cmd/hubctl/install/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/cmd/hubctl
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/shared
+          deny:
+            - pkg: github.com/letya999/h-hub/shared/store
+              desc: only cmd/hubctl/install opens Postgres (rule 10)
+        hubctl-install:
+          files: ["cmd/hubctl/install/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/internal
+        internal:
+          files: ["internal/**"]
+          allow:
+            - $gostd
+            - gopkg.in/yaml.v3
+            - github.com/letya999/h-hub/internal
+        services:
+          files: ["services/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services
+        tools:
+          files: ["tools/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub
+        docker-socket:
+          files: ["$all", "!services/spawn-controller/internal/backend/**"]
+          deny:
+            - pkg: github.com/docker/docker
+              desc: only spawn-controller internal/backend owns the Docker API (rule 11)
+        svc-spawn-controller:
+          files: ["services/spawn-controller/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/spawn-controller
+        svc-identity-hub:
+          files: ["services/identity-hub/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/identity-hub
+        svc-task-engine:
+          files: ["services/task-engine/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/task-engine
+        svc-proactive-engine:
+          files: ["services/proactive-engine/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/proactive-engine
+        svc-tool-hub:
+          files: ["services/tool-hub/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/tool-hub
+        svc-memory-hub:
+          files: ["services/memory-hub/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/memory-hub
+        svc-channel-hub:
+          files: ["services/channel-hub/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/channel-hub
+        svc-ingress-gateway:
+          files: ["services/ingress-gateway/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/ingress-gateway
+        svc-credential-broker:
+          files: ["services/credential-broker/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/credential-broker
+        svc-egress-gateway:
+          files: ["services/egress-gateway/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/egress-gateway
+        svc-model-gateway:
+          files: ["services/model-gateway/**"]
+          allow:
+            - $gostd
+            - github.com/letya999/h-hub/shared
+            - github.com/letya999/h-hub/contracts
+            - github.com/letya999/h-hub/services/model-gateway
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    errorlint:
+      asserts: true
+      comparison: true
+  exclusions:
+    rules:
+      - path: 'cmd/hubctl/install'
+        linters: [forbidigo]
+        text: 'os\.(Getenv|LookupEnv)'
+      - path: 'tools/'
+        linters: [forbidigo]
+        text: 'exec\.Command'
+formatters:
+  enable:
+    - gofmt
