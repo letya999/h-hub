@@ -1,0 +1,30 @@
+version: 1
+postgres:
+  image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+  mem: 512m
+  cpu: 1.0
+  pids: 200
+  volume: postgres-data
+volumes:
+  - name: postgres-data
+services:
+  - name: spawn-controller
+    zone: control
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env:
+      - HHUB_A
+      - HHUB_B
+      - HHUB_C
+      - HHUB_D
+      - HHUB_E
+      - HHUB_F
+      - HHUB_G
+      - HHUB_H
+      - HHUB_I
+      - HHUB_J
+      - HHUB_K
+    volumes: []
+    edges: []

@@ -1,0 +1,117 @@
+version: 1
+# Single source of truth for the service inventory (rules 3, 7-11).
+# Ceilings are initial values pending first measured builds (blueprint 7).
+postgres:
+  image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+  mem: 512m
+  cpu: 1.0
+  pids: 200
+  volume: postgres-data
+volumes:
+  - name: postgres-data
+  - name: broker-data
+  - name: memory-vault
+services:
+  - name: spawn-controller
+    zone: control
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: identity-hub
+    zone: control
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: task-engine
+    zone: control
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: proactive-engine
+    zone: control
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: tool-hub
+    zone: agent
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: memory-hub
+    zone: agent
+    database: postgres
+    mem: 192m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes:
+      - name: memory-vault
+        path: /vault
+    edges: []
+  - name: channel-hub
+    zone: edge
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
+  - name: ingress-gateway
+    zone: edge
+    database: none
+    mem: 64m
+    cpu: 0.25
+    pids: 128
+    env: []
+    volumes: []
+    edges: []
+  - name: credential-broker
+    zone: secret
+    database: sqlcipher
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes:
+      - name: broker-data
+        path: /data
+    edges: []
+  - name: egress-gateway
+    zone: egress
+    database: none
+    mem: 64m
+    cpu: 0.25
+    pids: 128
+    env: []
+    volumes: []
+    edges: []
+  - name: model-gateway
+    zone: egress
+    database: postgres
+    mem: 128m
+    cpu: 0.5
+    pids: 256
+    env: []
+    volumes: []
+    edges: []
