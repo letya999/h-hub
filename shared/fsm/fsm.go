@@ -7,10 +7,15 @@ package fsm
 import (
 	"context"
 	"database/sql"
+	"regexp"
 	"time"
 
 	herrors "github.com/letya999/h-hub/shared/errors"
 )
+
+// identRe bounds schema names to safe SQL identifiers: they interpolate
+// into qualified table names and DDL templates.
+var identRe = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 
 // Edge is one allowed transition.
 type Edge struct {
@@ -30,6 +35,7 @@ type Deadline struct {
 // Spec is the complete machine declaration.
 type Spec struct {
 	Kind      string
+	Schema    string // table schema; empty means "fsm"
 	Final     []string
 	LongLived []string
 	Edges     []Edge
@@ -44,6 +50,7 @@ type edgeKey struct {
 // Machine is a validated machine definition.
 type Machine struct {
 	kind      string
+	schema    string
 	final     map[string]bool
 	longLived map[string]bool
 	edges     map[edgeKey]Edge
@@ -57,6 +64,7 @@ type Machine struct {
 func New(s Spec) (*Machine, error) {
 	m := &Machine{
 		kind:      s.Kind,
+		schema:    s.Schema,
 		final:     set(s.Final),
 		longLived: set(s.LongLived),
 		edges:     map[edgeKey]Edge{},
@@ -65,6 +73,12 @@ func New(s Spec) (*Machine, error) {
 	}
 	if m.kind == "" {
 		return nil, specErr("field", "kind", "empty")
+	}
+	if m.schema == "" {
+		m.schema = "fsm"
+	}
+	if err := checkSchema(m.schema); err != nil {
+		return nil, err
 	}
 	collectStates(m, s)
 	for _, e := range s.Edges {
@@ -150,6 +164,20 @@ func specErr(key, val, reason string) error {
 
 // Kind returns the machine kind.
 func (m *Machine) Kind() string { return m.kind }
+
+// Schema returns the schema holding this machine's tables.
+func (m *Machine) Schema() string { return m.schema }
+
+// table qualifies a table name with the machine's schema.
+func (m *Machine) table(name string) string { return m.schema + "." + name }
+
+// checkSchema validates a schema name for SQL interpolation.
+func checkSchema(name string) error {
+	if !identRe.MatchString(name) {
+		return specErr("field", "schema", "unsafe identifier")
+	}
+	return nil
+}
 
 // Request is one transition attempt: the edge event, the acting
 // identity, and the outbox effects to commit with it.
