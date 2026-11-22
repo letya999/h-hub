@@ -1,0 +1,57 @@
+// harness-runtime: the space-zone runtime. Strict admission, no
+// database, host-rendered read-only config, exact env allowlist.
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/letya999/h-hub/services/harness-runtime/internal/config"
+	"github.com/letya999/h-hub/services/harness-runtime/internal/svc"
+	"github.com/letya999/h-hub/shared/lifecycle"
+	"github.com/letya999/h-hub/shared/log"
+)
+
+const listenAddr = ":9000"
+
+func main() {
+	l := log.New("harness-runtime", os.Stderr)
+	if err := run(context.Background(), l); err != nil {
+		l.Error(context.Background(), "fatal", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, l *log.L) error {
+	cfg, err := config.Env()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	rendered, err := cfg.Load()
+	if err != nil {
+		return fmt.Errorf("rendered config: %w", err)
+	}
+	issuer, err := cfg.IssuerKey()
+	if err != nil {
+		return fmt.Errorf("issuer key: %w", err)
+	}
+	s := svc.New(cfg.Sub, svc.Deps{
+		Issuer:   issuer,
+		Now:      time.Now,
+		Runner:   svc.NewRunner(rendered, l),
+		Rendered: rendered,
+	})
+	sctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	srv := &http.Server{Addr: listenAddr, Handler: s.Mux(), ReadHeaderTimeout: 5 * time.Second}
+	l.Info(sctx, "listening", "addr", listenAddr)
+	if err := lifecycle.Serve(sctx, srv, 5*time.Second); err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	return nil
+}
