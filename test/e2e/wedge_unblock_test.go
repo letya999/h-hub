@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letya999/h-hub/cmd/hubctl/operator"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/auth"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/testkit"
 )
@@ -51,6 +53,18 @@ func TestHubctlUnblocksJobAndRuntime(t *testing.T) {
 		runtime = res.Runtime
 		return err == nil && res.Ready && runtime != ""
 	})
+	foreign, err := operator.Token("foreign-owner", space, "spawn-controller", "identity-hub", "/etc/hhub/keys/operator.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(identityURL, foreign)}}
+	delegated, err := identity.ActAs(ctx, idv1.ActAsReq{Owner: "foreign-owner", Space: space, Aud: "spawn-controller"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = (&sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, delegated.Token)}}).DrainRuntime(ctx,
+		sv1.DrainRuntimeReq{Space: space})
+	testkit.Deny(t, "sys.wedge-unblock", herrors.CodeOf(err) == herrors.CodeNotFound)
 	if out := hubctlExit(t, "user", "runtime-drain", owner, space); !strings.Contains(out, "draining") {
 		t.Fatalf("drain output: %s", out)
 	}

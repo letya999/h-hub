@@ -5,6 +5,7 @@ package svc
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -57,6 +58,13 @@ func TestLateReceiptRecordedWithoutReopening(t *testing.T) {
 	if n != 4 {
 		t.Fatalf("late receipt missing: %d events", n)
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck // test rollback
+	err = s.jobM.Transition(ctx, tx, fsm.Request{ID: jobID, Event: "admit", Actor: "task-engine"}, nil)
+	testkit.Deny(t, "sys.late-receipt", errors.Is(err, fsm.ErrBadTransition))
 }
 
 func seedSettlingRun(t *testing.T, ctx context.Context, db *sql.DB, s *Server, jobID, runID string) {

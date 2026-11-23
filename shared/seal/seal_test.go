@@ -60,9 +60,8 @@ func TestWrongPurposeOrKidFails(t *testing.T) {
 	s := mustSeal(t)
 	blob := sealed(t, s, "p", "k1", "x")
 	for _, tc := range [][2]string{{"other", "k1"}, {"p", "k2"}} {
-		if _, err := s.Open(tc[0], tc[1], blob); err == nil {
-			t.Errorf("open with %s/%s must fail", tc[0], tc[1])
-		}
+		_, err := s.Open(tc[0], tc[1], blob)
+		testkit.Deny(t, "adr.secrets-at-rest.gcm-aad", err != nil)
 	}
 }
 
@@ -88,9 +87,8 @@ func TestLoadRejectsBadLen(t *testing.T) {
 	if err := os.WriteFile(p, []byte("short"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(p); err == nil {
-		t.Fatal("short kek must fail")
-	}
+	_, err := Load(p)
+	testkit.Deny(t, "adr.secrets-at-rest.kek-file", err != nil)
 	if _, err := Load(filepath.Join(dir, "missing")); err == nil {
 		t.Fatal("missing kek must fail")
 	}
@@ -106,6 +104,7 @@ func TestNoPlaintextLeak(t *testing.T) {
 	}
 	var herr *herrors.Error
 	_, err := s.Open("q", "k", blob)
+	testkit.Deny(t, "adr.secrets-at-rest.no-plaintext", err != nil)
 	if errors.As(err, &herr) && strings.Contains(herr.Error(), "a-very-secret") {
 		t.Fatal("error leaks plaintext")
 	}

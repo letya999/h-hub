@@ -27,8 +27,6 @@ func TestStoreMissingDatabaseRefusesStartup(t *testing.T) {
 		"-e", "HHUB_CHANNEL_URL=http://channel-hub:9000",
 		"hhub-task-engine:local")
 	out, err := cmd.CombinedOutput()
-	if ctx.Err() != nil || err == nil || !strings.Contains(string(out), db) ||
-		!strings.Contains(string(out), "store:") {
-		t.Fatalf("missing database did not refuse startup: err=%v output=%s", err, out)
-	}
+	testkit.Deny(t, "sys.store-missing", ctx.Err() == nil && err != nil &&
+		strings.Contains(string(out), db) && strings.Contains(string(out), "store:"))
 }

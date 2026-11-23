@@ -59,9 +59,8 @@ func TestActAsBindsAndAudits(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(srv.URL, opToken)}}
-	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "boris", Space: "space-alice", Aud: "task-engine"}); herrors.CodeOf(err) != herrors.CodeForbidden {
-		t.Fatalf("cross-owner delegation: %v", err)
-	}
+	_, err = c.ActAs(ctx, idv1.ActAsReq{Owner: "boris", Space: "space-alice", Aud: "task-engine"})
+	testkit.Deny(t, "adr.service-edges.operator-audited", herrors.CodeOf(err) == herrors.CodeForbidden)
 	if _, err := c.ActAs(ctx, idv1.ActAsReq{Owner: "alice", Space: "space-alice", Aud: "spawn-controller"}); herrors.CodeOf(err) != herrors.CodeForbidden {
 		t.Fatalf("cross-audience delegation: %v", err)
 	}
