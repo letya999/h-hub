@@ -109,11 +109,13 @@ docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hu
   -e HHUB_TASK_URL=http://task-engine:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -e HHUB_MODEL_URL=http://model-gateway:9000 \
+  -e HHUB_BROKER_URL=http://credential-broker:9000 \
   -v "hhub-restore-keys-channel-hub-$id:/etc/hhub:ro" hhub-channel-hub:local >/dev/null
 docker run -d --rm --name "$gateway" --network "$net" --network-alias model-gateway \
   -e HHUB_SUB=model-gateway -e 'HHUB_DSN=postgres://model_gateway@postgres:5432/model_gateway?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -e HHUB_BROKER_URL=http://credential-broker:9000 \
   -v "hhub-restore-keys-model-gateway-$id:/etc/hhub:ro" hhub-model-gateway:local >/dev/null
 # The backend confines Docker inspect, remove and orphan scans to this network.
 docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-controller \

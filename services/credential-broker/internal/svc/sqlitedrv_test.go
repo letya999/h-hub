@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	credv1 "github.com/letya999/h-hub/contracts/cred/v1"
 )
 
 // The driver exists because mattn/go-sqlite3 cannot reopen an
@@ -81,6 +83,27 @@ func TestCipherReopenReadWrite(t *testing.T) {
 	}
 	if len(raw) < 16 || string(raw[:15]) == "SQLite format 3" {
 		t.Fatal("database file is not encrypted at rest")
+	}
+}
+
+// Backup runs snapshot repeatedly; VACUUM INTO refuses an existing
+// target, so the handler must clear the previous sealed copy. This
+// failed before the stale file was removed.
+func TestSnapshotOverwritesExisting(t *testing.T) {
+	ctx := context.Background()
+	key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	path := filepath.Join(t.TempDir(), "probe.db")
+	db, err := Open(ctx, path, key)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	defer db.Close() //nolint:errcheck // best-effort close
+	s := &Server{db: db, deps: Deps{DBPath: path}}
+	if _, err := s.snapshot(ctx, credv1.SnapshotReq{}); err != nil {
+		t.Fatalf("first snapshot: %v", err)
+	}
+	if _, err := s.snapshot(ctx, credv1.SnapshotReq{}); err != nil {
+		t.Fatalf("snapshot over existing file: %v", err)
 	}
 }
 
