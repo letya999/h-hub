@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -81,6 +82,18 @@ type mount struct {
 // CreateAndStart creates the container with the hardened spec and
 // starts it. The caller must have written the intent row first.
 func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
+	id, running, err := d.existingLaunch(ctx, l)
+	if err != nil {
+		return "", err
+	}
+	if id != "" {
+		if !running {
+			if err := d.req(ctx, http.MethodPost, "/containers/"+id+"/start", nil, nil); err != nil {
+				return "", err
+			}
+		}
+		return id, nil
+	}
 	spec := createReq{
 		Image: l.Image,
 		User:  l.UID,
@@ -116,6 +129,34 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 		return "", err
 	}
 	return out.ID, nil
+}
+
+// existingLaunch recovers a container created before the intent was acknowledged.
+func (d *Docker) existingLaunch(ctx context.Context, l Launch) (string, bool, error) {
+	var out struct {
+		ID     string `json:"Id"`
+		Config struct {
+			Image  string
+			User   string
+			Env    []string
+			Labels map[string]string
+		}
+		State struct{ Running bool }
+	}
+	err := d.req(ctx, http.MethodGet, "/containers/"+l.Name+"/json", nil, &out)
+	if isNotFound(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if out.ID == "" || out.Config.Image != l.Image || out.Config.User != l.UID ||
+		len(out.Config.Env) < len(l.Env) || !slices.Equal(out.Config.Env[:len(l.Env)], l.Env) ||
+		out.Config.Labels["hhub.managed"] != "true" ||
+		out.Config.Labels["hhub.runtime"] != l.Name {
+		return "", false, fmt.Errorf("docker container %s does not match runtime intent", l.Name)
+	}
+	return out.ID, out.State.Running, nil
 }
 
 // ImageID resolves an image reference to its immutable id, used to
