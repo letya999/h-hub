@@ -289,16 +289,14 @@ func TestKillUncertain(t *testing.T) {
 	}
 	waitJob(t, ownerSpace{owner, space}, res.ID, "running", 2*time.Minute)
 	d := testkit.NewDocker(t)
-	var rt testkit.ContainerSummary
+	spawnDB := adminDB(t, "spawn_controller")
+	var container string
 	testkit.Poll(t, 30*time.Second, 200*time.Millisecond, func() bool {
-		if cs := runtimes(t); len(cs) > 0 {
-			rt = cs[0]
-			return true
-		}
-		return false
+		return spawnDB.QueryRowContext(context.Background(), `SELECT container FROM runtimes
+			WHERE space=$1 AND container<>'' ORDER BY created DESC LIMIT 1`, space).Scan(&container) == nil
 	})
-	if err := d.Kill(context.Background(), rt.ID); err != nil {
-		t.Fatalf("kill %s: %v", rt.ID, err)
+	if err := d.Kill(context.Background(), container); err != nil {
+		t.Fatalf("kill %s: %v", container, err)
 	}
 	j := waitJob(t, ownerSpace{owner, space}, res.ID, "uncertain", 90*time.Second)
 	// Observation: uncertain does not move to queued/running and the
