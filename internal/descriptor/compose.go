@@ -15,12 +15,13 @@ type composeView struct {
 }
 
 type svcView struct {
-	Name   string
-	Mem    string
-	CPU    float64
-	Pids   int
-	Env    []envKV
-	Mounts []string
+	Name    string
+	Mem     string
+	CPU     float64
+	Pids    int
+	Env     []envKV
+	Mounts  []string
+	NetList string
 }
 
 type envKV struct{ K, V string }
@@ -83,7 +84,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
-    networks: [hhub]
+    networks: [{{ .NetList }}]
 {{- end }}
 volumes:
   # hhub-conf is shared with install-time hubctl runs outside compose;
@@ -97,6 +98,15 @@ networks:
   hhub:
     name: hhub
     internal: true
+  # hhub-space is the space zone: runtimes join only this net and can
+  # reach just the services their descriptor edges name.
+  hhub-space:
+    name: hhub-space
+    internal: true
+  # hhub-egress is the only net with outbound; egress-zone services
+  # and the cliproxy upstream live here.
+  hhub-egress:
+    name: hhub-egress
 `))
 
 // Compose renders deploy/compose.yaml: postgres, the key materializer
@@ -117,11 +127,12 @@ func (f *File) Compose() ([]byte, error) {
 func (f *File) composeView() (composeView, error) {
 	v := composeView{Postgres: f.Postgres}
 	v.Volumes = append(v.Volumes, f.Volumes...)
+	targets := f.spaceTargets()
 	for _, s := range f.Services {
 		if !s.Deploy {
 			continue
 		}
-		sv, err := s.view()
+		sv, err := s.view(targets[s.Name])
 		if err != nil {
 			return v, err
 		}
@@ -135,7 +146,7 @@ func (f *File) composeView() (composeView, error) {
 	return v, nil
 }
 
-func (s Service) view() (svcView, error) {
+func (s Service) view(spaceTarget bool) (svcView, error) {
 	v := svcView{Name: s.Name, Mem: s.Mem, CPU: s.CPU, Pids: s.Pids}
 	for _, e := range s.Env {
 		val, err := s.envValue(e)
@@ -145,7 +156,37 @@ func (s Service) view() (svcView, error) {
 		v.Env = append(v.Env, envKV{K: e, V: val})
 	}
 	v.Mounts = s.mounts()
+	v.NetList = s.netList(spaceTarget)
 	return v, nil
+}
+
+// spaceTargets names the services a space-zone edge may reach: they
+// join the space network so a runtime can call them.
+func (f *File) spaceTargets() map[string]bool {
+	out := map[string]bool{}
+	for _, s := range f.Services {
+		if s.Zone != "space" {
+			continue
+		}
+		for _, e := range s.Edges {
+			out[e.To] = true
+		}
+	}
+	return out
+}
+
+// netList is the service's compose networks: the control net always,
+// the space net when a runtime edge names the service, and the egress
+// net for the egress zone.
+func (s Service) netList(spaceTarget bool) string {
+	list := "hhub"
+	if spaceTarget {
+		list += ", hhub-space"
+	}
+	if s.Zone == "egress" {
+		list += ", hhub-egress"
+	}
+	return list
 }
 
 func (s Service) mounts() []string {
@@ -179,11 +220,11 @@ var envFixed = map[string]string{
 	"HHUB_SPAWN_URL":     "http://spawn-controller:9000",
 	"HHUB_CHANNEL_URL":   "http://channel-hub:9000",
 	"HHUB_TASK_URL":      "http://task-engine:9000",
-	"HHUB_MODEL_URL":     "http://scripted-model:9000",
+	"HHUB_MODEL_URL":     "http://model-gateway:9000",
 	// Compose prefixes volume names with the project name "hhub".
 	"HHUB_RENDER_VOL": "hhub_hhub-render",
 	"HHUB_RENDER_DIR": "/render",
-	"HHUB_NETWORK":    "hhub",
+	"HHUB_NETWORK":    "hhub-space",
 }
 
 // envValue resolves each declared variable to its compose value.
