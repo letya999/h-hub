@@ -45,7 +45,7 @@ func TestOperatorAlertDelivery(t *testing.T) {
 		cv1.AlertReq{Key: "no-token", Code: "sweep-lag"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
 		t.Fatalf("unauthenticated alert accepted: %v", err)
 	}
-	if err := s.sendMock(ctx, "alert-"+key); err != nil {
+	if err := sendMockDelivery(ctx, s, "alert-"+key); err != nil {
 		t.Fatal(err)
 	}
 	res, err := mockClient(t, url, opKey, "operator", "ReadOutbox").ReadOutbox(ctx,
