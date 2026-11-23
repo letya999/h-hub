@@ -1,0 +1,56 @@
+# Invariant proof register
+
+`proved` names one scenario that must run and reject the forbidden path.
+`deferred:N` means the full claim waits for phase N. A partial test does not
+make a deferred claim proved. Scenario links point to tests; the trace gate
+checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
+
+| ID | Status | Owner | Scenario | Forbidden path that must be rejected |
+| --- | --- | --- | --- | --- |
+| `sys.tenant-isolation` | proved | channel-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | Owner A reads owner B's outbox. |
+| `sys.forged-token` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | A token signed by a foreign key reads an outbox. |
+| `sys.secret-leak` | proved | identity-hub | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A sealed key opened for the wrong purpose must fail. |
+| `sys.kill-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/e2e_test.go#TestKillUncertain) | Killed work must refuse blind retry. |
+| `sys.store-missing` | proved | task-engine | [TestStoreMissingDatabaseRefusesStartup](../test/e2e/store_missing_test.go#TestStoreMissingDatabaseRefusesStartup) | A service with a missing database must refuse startup. |
+| `sys.stack-restart` | proved | channel-hub | [TestStackRestart](../test/e2e/e2e_test.go#TestStackRestart) | A settled job must refuse cancellation after restart. |
+| `sys.late-receipt` | proved | task-engine | [TestLateReceiptRecordedWithoutReopening](../services/task-engine/internal/svc/late_receipt_db_test.go#TestLateReceiptRecordedWithoutReopening) | A late receipt must not reopen settled work. |
+| `sys.seam-onesided` | deferred:10,18 | channel adapter and tool seam absent | — | An adapter must not implement both sides of a seam. |
+| `sys.sweep-lag` | proved | task-engine | [TestSweepLagOperatorAlert](../test/e2e/sweep_lag_test.go#TestSweepLagOperatorAlert) | An operator token must be refused when forging a service alert. |
+| `sys.wedge-unblock` | proved | task-engine and spawn-controller | [TestHubctlUnblocksJobAndRuntime](../test/e2e/wedge_unblock_test.go#TestHubctlUnblocksJobAndRuntime) | A foreign owner must be refused when draining another runtime. |
+| `sys.schema-version` | proved | spawn-controller | [TestSpecSchemaVersion](../services/spawn-controller/internal/svc/spec_test.go#TestSpecSchemaVersion) | A future runtime spec version must be refused. |
+| `sys.worker-intent` | deferred:13 | worker absent | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
+| `sys.space-no-db` | deferred:13 | worker absent | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
+| `sys.seal-at-rest` | deferred:7 | credential-broker absent | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A stored secret value must not appear in a database dump. |
+| `sys.watchdog-stale` | proved | spawn-controller and channel-hub | [TestStaleSpawnTickRefusesHealth](../test/e2e/watchdog_stale_test.go#TestStaleSpawnTickRefusesHealth) | A frozen tick must refuse health; an unauthenticated status read must fail. |
+| `sys.service-edge` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | A token for Inject must be refused at ReadOutbox. |
+| `sys.worker-tenant` | deferred:13 | worker absent | — | A worker must refuse another tenant's context. |
+| `sys.worker-stop-confirmed` | deferred:13 | worker absent | — | A stop request must not report success before worker exit. |
+| `sys.package-build` | deferred:17 | package builder absent | — | An unapproved package must not build. |
+| `sys.recipe-hosts` | deferred:17 | recipe host owner absent | — | A recipe must not access an undeclared host. |
+| `adr.fsm.cas-version` | proved | shared/fsm | [TestCASRace](../shared/fsm/fsm_db_test.go#TestCASRace) | A transition with a stale version must be refused. |
+| `adr.fsm.history-same-tx` | deferred:6 | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no history. |
+| `adr.fsm.outbox-same-tx` | deferred:6 | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no outbox effect. |
+| `adr.fsm.deadline-nonfinal` | deferred:6 | shared/fsm | [TestDeadlineSweep](../shared/fsm/fsm_db_test.go#TestDeadlineSweep) | A final state must refuse a deadline transition. |
+| `adr.fsm.sweep-reread` | deferred:6 | shared/fsm | [TestSweepSkipsMovedOn](../shared/fsm/fsm_db_test.go#TestSweepSkipsMovedOn) | A stale sweep candidate must be refused after state change. |
+| `adr.fsm.lease-atomic` | proved | shared/fsm | [TestLeaseContention](../shared/fsm/fsm_db_test.go#TestLeaseContention) | A competing lease holder must be refused. |
+| `adr.fsm.single-sweeper` | proved | shared/fsm | [TestLeaseContention](../shared/fsm/fsm_db_test.go#TestLeaseContention) | A second sweeper must not claim the same lease. |
+| `adr.secrets-at-rest.gcm-aad` | proved | shared/seal | [TestWrongPurposeOrKidFails](../shared/seal/seal_test.go#TestWrongPurposeOrKidFails) | A ciphertext opened with wrong purpose or key ID must fail. |
+| `adr.secrets-at-rest.no-plaintext` | proved | shared/seal | [TestNoPlaintextLeak](../shared/seal/seal_test.go#TestNoPlaintextLeak) | A sealed value must not reveal plaintext bytes. |
+| `adr.secrets-at-rest.kek-file` | proved | shared/seal | [TestLoadRejectsBadLen](../shared/seal/seal_test.go#TestLoadRejectsBadLen) | A malformed KEK file must be refused. |
+| `adr.store.single-driver` | deferred:6 | shared/store | — | A second SQL driver import must fail the dependency gate. |
+| `adr.store.numbered-sql` | proved | shared/store | [TestReadMigrationsRejects](../shared/store/migrate_test.go#TestReadMigrationsRejects) | Duplicate or malformed migration numbers must be refused. |
+| `adr.store.advisory-lock` | deferred:6 | shared/store | [TestMigrateApplyAndIdempotent](../shared/store/store_db_test.go#TestMigrateApplyAndIdempotent) | Competing migration writers must not both apply. |
+| `adr.store.n-minus-one` | deferred:5 | shared/store | [TestMigrateReadsNewerDatabase](../shared/store/store_db_test.go#TestMigrateReadsNewerDatabase) | The published previous binary must not reject an additive next schema. |
+| `adr.harness-admit.unknown-run-refused` | proved | harness-runtime | [TestCancelUnknownRun](../services/harness-runtime/internal/svc/svc_test.go#TestCancelUnknownRun) | Cancellation of an unknown run must be refused. |
+| `adr.harness-admit.config-readonly` | deferred:6 | harness-runtime | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A runtime must not write the mounted config. |
+| `adr.service-edges.forged-rejected` | proved | identity-hub | [TestForgedToken](../test/e2e/e2e_test.go#TestForgedToken) | A forged token must be refused. |
+| `adr.service-edges.edge-required` | proved | identity-hub | [TestServiceEdge](../test/e2e/e2e_test.go#TestServiceEdge) | An undeclared service operation must be refused. |
+| `adr.service-edges.rendered-table` | deferred:6 | keydist | [TestRenderEdges](../cmd/keydist/main_test.go#TestRenderEdges) | An absent descriptor edge must not render a grant. |
+| `adr.service-edges.operator-audited` | proved | identity-hub | [TestActAsBindsAndAudits](../services/identity-hub/internal/svc/act_as_db_test.go#TestActAsBindsAndAudits) | An operator acting as a foreign owner must be refused. |
+| `adr.spawn-runtime.intent-first` | deferred:6 | spawn-controller | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
+| `adr.spawn-runtime.space-no-db` | deferred:6 | spawn-controller | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
+| `adr.spawn-runtime.digest-pins-image` | deferred:6 | spawn-controller | [TestSpecDigestBindsImage](../services/spawn-controller/internal/svc/spec_test.go#TestSpecDigestBindsImage) | Runtime creation with a changed image must be refused. |
+| `adr.task-jobs.kill-to-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/e2e_test.go#TestKillUncertain) | Killed work must refuse automatic retry. |
+| `adr.task-jobs.tenant-isolation` | proved | task-engine | [TestJobToAnswer](../test/e2e/e2e_test.go#TestJobToAnswer) | Owner A must be refused when reading owner B's job. |
+| `adr.task-jobs.restart-durable` | proved | task-engine | [TestStackRestart](../test/e2e/e2e_test.go#TestStackRestart) | A settled job must refuse a second cancellation after restart. |
+| `adr.task-jobs.run-unique` | proved | task-engine | [TestRunClaimUnique](../services/task-engine/internal/svc/run_claim_db_test.go#TestRunClaimUnique) | A second claim of the same run must be refused. |
