@@ -18,6 +18,7 @@ volumes:
   - name: keys-channel-hub
   - name: keys-spawn-controller
   - name: keys-model-gateway
+  - name: keys-credential-broker
 services:
   - name: spawn-controller
     zone: control
@@ -146,6 +147,7 @@ services:
       - HHUB_TASK_URL
       - HHUB_SPAWN_URL
       - HHUB_MODEL_URL
+      - HHUB_BROKER_URL
     volumes:
       - name: keys-channel-hub
         path: /etc/hhub
@@ -158,6 +160,8 @@ services:
         ops: [WatchdogStatus, SetModel]
       - to: model-gateway
         ops: [Usage, Routes]
+      - to: credential-broker
+        ops: [Acquire, Revoke]
   - name: ingress-gateway
     zone: edge
     database: none
@@ -169,14 +173,23 @@ services:
     edges: []
   - name: credential-broker
     zone: secret
+    deploy: true
     database: sqlcipher
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
+    env:
+      - HHUB_SUB
+      - HHUB_KEYS
+      - HHUB_DB_PATH
+      - HHUB_DB_KEY
+      - HHUB_KEK_PATH
     volumes:
+      - name: keys-credential-broker
+        path: /etc/hhub
       - name: broker-data
         path: /data
+        rw: true
     edges: []
   - name: egress-gateway
     zone: egress
@@ -200,12 +213,15 @@ services:
       - HHUB_KEYS
       - HHUB_IDENTITY_URL
       - HHUB_SPAWN_URL
+      - HHUB_BROKER_URL
     volumes:
       - name: keys-model-gateway
         path: /etc/hhub
     edges:
       - to: spawn-controller
         ops: [ResolveSpec]
+      - to: credential-broker
+        ops: [Acquire, Revoke]
 clients:
   - name: operator
     edges:
@@ -220,3 +236,5 @@ clients:
         ops: [Inject, ReadOutbox]
       - to: model-gateway
         ops: [Usage, Routes]
+      - to: credential-broker
+        ops: [SetSecret, ListConnections, Snapshot]
