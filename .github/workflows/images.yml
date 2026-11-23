@@ -1,0 +1,50 @@
+name: publish images
+
+on:
+  push:
+    tags: ['v0.0.*']
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Published source tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [identity-hub, channel-hub, task-engine, spawn-controller, harness-runtime, hubctl]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - name: Build and publish
+        env:
+          SOURCE_REF: ${{ inputs.source_ref || github.ref_name }}
+          SERVICE: ${{ matrix.service }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$SOURCE_REF" =~ ^v0\.0\.[0-9]+$ ]] || exit 1
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/$SERVICE"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if [[ "$SERVICE" == hubctl ]]; then
+            docker build -f deploy/hubctl.Dockerfile -t "$image:$SOURCE_REF" .
+          else
+            docker build -f deploy/svc.Dockerfile --build-arg "SVC=$SERVICE" -t "$image:$SOURCE_REF" .
+          fi
+          docker push "$image:$SOURCE_REF"
+          docker image inspect "$image:$SOURCE_REF" --format '{{index .RepoDigests 0}}'
+
+  alert:
+    needs: publish
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark image publication failure
+        run: echo "::error::Image publication failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
