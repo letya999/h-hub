@@ -24,8 +24,9 @@
   provisioned spaces. A fresh post-load inspection found zero runtimes.
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
-  all four services and Postgres restart. The full e2e passed in
-  **64.751 s**; local `just check` passed. The three-user load passed
+  all four services and Postgres restart; cancelling the settled job
+  is refused. The full e2e passed in **56.889 s** with this negative
+  check; local `just check` passed. The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
   **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
   not proof that orphan containers alone caused the outlier.
@@ -53,16 +54,16 @@ it does **not** count as a passing status.
 | `secret-leak` | Proved | Dump, log, inspect and answer checks refuse plaintext exposure. |
 | `kill-uncertain` | Proved | SIGKILL/outbox scenarios keep uncertain work from blind retry. |
 | `store-missing` | Proved | Missing database refuses service startup. |
-| `stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer. |
+| `stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer and settled job rejects cancellation. |
 | `late-receipt` | Proved | Settled job remains settled after a late receipt. |
 | `seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
 | `sweep-lag` | Blocked | Task-engine: no operator alert on excessive lag yet. |
 | `wedge-unblock` | Blocked | Job/runtime owners: no hubctl exit for every nonfinal state. |
 | `schema-version` | Proved | Future spec version is refused; additive migration is checked. |
 | `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
-| `space-no-db` | Proved for runtime | Runtime inspect has no DB credential/socket; worker part awaits phase 13. |
+| `space-no-db` | Deferred to phase 13 | Runtime inspect has no DB credential/socket; worker owner is absent. |
 | `seal-at-rest` | Deferred to phase 7 | Issuer seed is sealed; credential-broker secret-value owner is absent. |
-| `watchdog-stale` | Blocked | Spawn-controller healthz detects stale ticks; channel alert bypass is missing. |
+| `watchdog-stale` | Blocked | Stale-tick e2e gets unhealthy from spawn-controller; channel alert bypass is missing. |
 | `service-edge` | Proved | Wrong operation or absent token is refused. |
 | `worker-tenant` | Deferred to phase 13 | Worker owner is absent. |
 | `worker-stop-confirmed` | Deferred to phase 13 | Worker owner is absent. |
@@ -87,16 +88,22 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   described in the matrix. The trace gate still checks links, not
   execution plus negative assertions; the invariant registry and new
   gate are not complete.
-- Phase 5 is **not ready for merge or `v0.0.5`**. A green phase-5 CI,
-  manual nightly run, and synthetic failure-to-issue check therefore
-  have no valid result yet. No skipped check is counted as passing.
+- The first [phase-5 PR CI](https://github.com/letya999/h-hub/actions/runs/45130542931)
+  passed `just check` but stopped before the image smoke because the
+  runner could not find nested `just init`. A regression test failed
+  before the workflow PATH fix and passed afterward. The updated PR
+  still needs a remote run to reach the published-image incompatibility.
+- Phase 5 is **not ready for merge or `v0.0.5`**. Manual dispatch of
+  `nightly.yml` returned HTTP 404 because the workflow is not on the
+  default branch. The synthetic failure-to-issue check cannot run yet.
+  No skipped check is counted as passing.
 
 ## Redesign signals
 
 - Current production Go size stays below the blueprint budgets;
   no measured service-count trigger fired. Keep the four deployed
   product services plus the per-space harness runtime.
-- Mandatory e2e: **64.751 s** against 10 minutes. Local `just check`
+- Mandatory e2e: **56.889 s** against 10 minutes. Local `just check`
   passed against the 5-minute criterion. Three-user load is now
   **7.6–8.5 s** for 36 messages; the earlier **26.9 s** remains an
   unexplained outlier, though runtime leakage was present then.
