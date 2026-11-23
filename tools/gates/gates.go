@@ -25,6 +25,7 @@ var All = []Gate{
 	{"windows-paths", NoWindowsPaths},
 	{"msys-dirs", NoMSYSDirs},
 	{"env-declared", EnvDeclared},
+	{"env-no-secrets", NoEnvSecrets},
 	{"docs", Docs},
 	{"trace", Trace},
 	{"miglint", MigLint},

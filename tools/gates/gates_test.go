@@ -36,6 +36,7 @@ var broken = map[string][]string{
 	"windows-paths":  {"windows-paths"},
 	"msys-dirs":      {"msys-dirs"},
 	"env-declared":   {"env-declared", "env-environ"},
+	"env-no-secrets": {"env-secrets-compose", "env-secrets-file"},
 	"docs":           {"docs-agents", "docs-testlink"},
 	"trace":          {"trace", "trace-invariant"},
 	"miglint":        {"miglint-drop", "miglint-state"},

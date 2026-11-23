@@ -1,0 +1,6 @@
+name: broken
+services:
+  channel-hub:
+    image: hhub-channel-hub:local
+    environment:
+      TELEGRAM_BOT_TOKEN: 123456789:AAdefGhIjkLmnoPqrsTuvWxYz1234567890
