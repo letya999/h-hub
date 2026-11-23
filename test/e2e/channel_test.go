@@ -45,6 +45,7 @@ func addUser(t *testing.T, id string) (string, string) {
 	if len(fields) != 3 || fields[0] != id {
 		t.Fatalf("hubctl user output: %q", out)
 	}
+	cleanupSpace(t, id, fields[1])
 	return fields[1], fields[2]
 }
 
