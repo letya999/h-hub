@@ -38,6 +38,7 @@ jobs:
             -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
             -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
             -e HHUB_MODEL_URL=http://model-gateway:9000 \
+            -e HHUB_BROKER_URL=http://credential-broker:9000 \
             -v hhub-conf:/etc/hhub:ro \
             -v "$PWD/../h-hub-data/secrets:/run/hhub-secrets:ro" \
             -v "$PWD:/src:ro" -v hhub-gocache:/go -v hhub-cache:/root/.cache \
