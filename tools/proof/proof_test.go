@@ -61,7 +61,7 @@ func TestDepguardBroken(t *testing.T) {
 func TestGitleaksBroken(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	key := make([]byte, 16)
+	key := make([]byte, 56)
 	if _, err := rand.Read(key); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,8 @@ func TestGitleaksBroken(t *testing.T) {
 		key[i] = alphabet[int(key[i])%len(alphabet)]
 	}
 	if err := os.WriteFile(filepath.Join(dir, "secret.txt"),
-		[]byte("AWS_ACCESS_KEY_ID=AKIA"+string(key)+"\n"), 0600); err != nil {
+		[]byte("aws_access_key_id = AKIA"+string(key[:16])+"\n"+
+			"aws_secret_access_key = "+string(key[16:])+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, failed := run(t, dir, "gitleaks", "dir", "--redact", ".")
@@ -85,5 +86,16 @@ func TestGitleaksRepo(t *testing.T) {
 	out, failed := run(t, root(t), "gitleaks", "git", ".")
 	if failed {
 		t.Fatalf("gitleaks found secrets in repo history:\n%s", out)
+	}
+}
+
+// TestGoModulesOffline proves the dev image can build without runtime DNS.
+func TestGoModulesOffline(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command("go", "list", "-deps", "./...")
+	cmd.Dir = root(t)
+	cmd.Env = append(cmd.Environ(), "GOPROXY=off", "GOSUMDB=off")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Go modules unavailable offline: %v\n%s", err, out)
 	}
 }

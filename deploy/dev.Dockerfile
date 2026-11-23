@@ -25,3 +25,6 @@ RUN set -eu; \
     git config --global --add safe.directory /src
 
 WORKDIR /src
+
+COPY go.mod go.sum /tmp/hhub-mod/
+RUN cd /tmp/hhub-mod && go mod download
