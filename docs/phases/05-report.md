@@ -20,9 +20,11 @@
   ([test](../../test/e2e/seal_test.go)).
 - `just backup` captured the host KEK, installation config, globals and all
   **9** non-template databases with checksums outside git. `just
-  restore-drill` restored them into an isolated Postgres and started
-  identity-hub with the backed-up KEK. `just nminus1-smoke` built the local
-  `v0.0.4` identity source and started it against that restored backup.
+  restore-drill` restored them into an isolated Postgres and started all
+  four deployed services, including identity-hub with the backed-up KEK.
+  `just nminus1-smoke` built the local `v0.0.4` identity source and started
+  those services against that restored backup. Both drills passed on the
+  latest backup.
 - The latest `just load` passed: **36 messages**, **3 users**, **0 observed
   failures**, **26.9 s** from send to all answers (30.5 s test runtime).
   A prior run took 8.2 s for the same 36 messages
@@ -80,9 +82,10 @@ owner decision because several future owners have no runnable scenario yet.
   digest. Phase 5 adds no database migration, so this run does not prove
   that the frozen v0.0.4 binary reads a genuinely expanded v0.0.5 schema.
   The local tag is not on the remote while pushes are prohibited.
-- Restore checks identity-hub startup and issuer decryption, not the full
-  restored service stack or an answered message. The backup and restore
-  scripts are locally green, but this is short of the phase criterion.
+- Restore checks four service health endpoints and issuer decryption.
+  Spawn's Docker socket is disabled in the isolated drill to prevent it
+  from modifying containers of the live installation. A restored
+  message-to-answer path remains untested.
 - Remote CI and the nightly failure alert have not been observed. The owner
   will judge a week of live nightlies separately.
 
@@ -111,7 +114,7 @@ owner decision because several future owners have no runnable scenario yet.
   variation; causality was not measured. Preserve these containers until
   their owning space lifecycle is reviewed.
 - Existing spaces still pin runtime image IDs that may disappear after a
-  rebuild. The restore drill also needs a full-stack continuation test.
+  rebuild. The restore drill needs a message-to-answer continuation test.
 
 ## Release decision
 
