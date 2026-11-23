@@ -218,3 +218,5 @@ clients:
         ops: [CreateSpace, GetSpace, DestroySpace, DrainRuntime]
       - to: channel-hub
         ops: [Inject, ReadOutbox]
+      - to: model-gateway
+        ops: [Usage, Routes]
