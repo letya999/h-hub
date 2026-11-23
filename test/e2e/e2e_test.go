@@ -95,7 +95,21 @@ func ensureSpace(t *testing.T, owner, name string) string {
 	if err != nil {
 		t.Fatalf("create space %s: %v", name, err)
 	}
+	cleanupSpace(t, owner, res.ID)
 	return res.ID
+}
+
+func cleanupSpace(t *testing.T, owner, space string) {
+	t.Helper()
+	t.Cleanup(func() {
+		ownerTokens.Delete(owner + "/" + space + "/spawn-controller")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := spawnClient(t, ownerSpace{owner, space}).DestroySpace(ctx,
+			sv1.DestroySpaceReq{ID: space}); err != nil {
+			t.Errorf("destroy space %s: %v", space, err)
+		}
+	})
 }
 
 // waitJob polls a job into the wanted state.
@@ -428,7 +442,6 @@ func TestSpaceNoDB(t *testing.T) {
 
 // TestRuntimeIntent proves the intent registry has rows for launched
 // runtimes: intent precedes docker create.
-//
 func TestRuntimeIntent(t *testing.T) {
 	testkit.Req(t, "adr.spawn-runtime.intent-first")
 	db := adminDB(t, "spawn_controller")
