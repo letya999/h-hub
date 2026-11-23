@@ -11,14 +11,21 @@ issuer="hhub-restore-issuer-$id"
 task="hhub-restore-task-$id"
 channel="hhub-restore-channel-$id"
 spawn="hhub-restore-spawn-$id"
+model="hhub-restore-model-$id"
 render="hhub-restore-render-$id"
+operator_conf="hhub-restore-conf-$id"
 cleanup() {
-  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$pg" >/dev/null 2>&1 || true
+  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$pg" >/dev/null 2>&1 || true
+  for runtime in $(docker ps -aq --filter "network=$net" --filter label=hhub.managed=true); do
+    docker rm -f "$runtime" >/dev/null 2>&1 || true
+  done
   for service in identity-hub task-engine channel-hub spawn-controller; do
     docker rm -f "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
     docker volume rm "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
   done
   docker volume rm "$render" >/dev/null 2>&1 || true
+  docker rm -f "$operator_conf" >/dev/null 2>&1 || true
+  docker volume rm "$operator_conf" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -68,6 +75,13 @@ for service in identity-hub task-engine channel-hub spawn-controller; do
   docker rm "$holder" >/dev/null
 done
 docker volume create "$render" >/dev/null
+docker volume create "$operator_conf" >/dev/null
+docker create --name "$operator_conf" -v "$operator_conf:/etc/hhub" \
+  --entrypoint /bin/true hhub-hubctl:local >/dev/null
+docker cp "$dir/conf/." "$operator_conf:/etc/hhub/"
+docker rm "$operator_conf" >/dev/null
+docker run -d --rm --name "$model" --network "$net" --network-alias scripted-model \
+  hhub-scripted-model:local >/dev/null
 docker create --name "$issuer" --network "$net" --network-alias identity-hub \
   -e HHUB_SUB=identity-hub -e 'HHUB_DSN=postgres://identity_hub@postgres:5432/identity_hub?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_KEK_PATH=/tmp/seal-kek \
@@ -86,14 +100,15 @@ docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hu
   -e HHUB_TASK_URL=http://task-engine:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -v "hhub-restore-keys-channel-hub-$id:/etc/hhub:ro" hhub-channel-hub:local >/dev/null
-# The drill must not control live host containers before cutover.
+# The backend confines Docker inspect, remove and orphan scans to this network.
 docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-controller \
   -e HHUB_SUB=spawn-controller -e 'HHUB_DSN=postgres://spawn_controller@postgres:5432/spawn_controller?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_RUNTIME_IMAGE=hhub-harness-runtime:local \
-  -e HHUB_DOCKER_SOCK=/tmp/disabled.sock -e HHUB_TASK_URL=http://task-engine:9000 \
+  -e HHUB_DOCKER_SOCK=/var/run/docker.sock -e HHUB_TASK_URL=http://task-engine:9000 \
   -e HHUB_MODEL_URL=http://scripted-model:9000 -e "HHUB_RENDER_VOL=$render" \
   -e HHUB_RENDER_DIR=/render -e "HHUB_NETWORK=$net" \
   -v "hhub-restore-keys-spawn-controller-$id:/etc/hhub:ro" -v "$render:/render" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   hhub-spawn-controller:local >/dev/null
 for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn"; do
   host=${pair%%:*}
@@ -109,4 +124,15 @@ for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "s
   done
   if test "$ready" -ne 1; then docker logs "$container" >&2; exit 1; fi
 done
-printf 'restore drill: %s databases restored; four services healthy with backed-up KEK\n' "$(wc -l < "$dir/databases")"
+probe="restoreprobe-$id"
+registration=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
+  hhub-hubctl:local user add "$probe")
+set -- $registration
+test "$#" -eq 3 && test "$1" = "$probe"
+linked=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
+  hhub-hubctl:local chat "$probe" "/start $3")
+case "$linked" in *"Account linked"*) ;; *) echo 'restore link produced no answer' >&2; exit 1 ;; esac
+answer=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
+  hhub-hubctl:local chat "$probe" 'restore probe')
+case "$answer" in *"answer: restore probe"*) ;; *) echo 'restore message produced no answer' >&2; exit 1 ;; esac
+printf 'restore drill: %s databases restored; backed-up KEK decrypted; message answered\n' "$(wc -l < "$dir/databases")"
