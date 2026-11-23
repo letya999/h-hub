@@ -11,8 +11,8 @@ runnet   := "docker run --rm --network hhub -e HHUB_TEST_DSN=" + dsn + \
 confvol  := "hhub-conf"
 dsn      := "postgres://postgres@postgres:5432/postgres?sslmode=disable"
 hubctl   := "docker run --rm --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
-            " -e HHUB_CONFIG_DIR=/etc/hhub -e HHUB_DESCRIPTOR=/src/deploy/descriptor.yaml" + \
-            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro hhub-hubctl:local"
+            " -e HHUB_CONFIG_DIR=/etc/hhub -e HHUB_DESCRIPTOR=/src/deploy/descriptor.yaml -e HHUB_KEK_DIR=/run/hhub-secrets" + \
+            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro -v " + src + "/.local/secrets:/run/hhub-secrets hhub-hubctl:local"
 
 check_line := if os() == "windows" { "docker compose -f deploy/compose.yaml up -d --wait postgres && " + runnet + img + " just check" } else { "just _check" }
 fast_line  := if os() == "windows" { run + img + " just check-fast" } else { "just _check-fast" }
@@ -52,6 +52,7 @@ _check-fast:
 images:
     docker build -f deploy/hubctl.Dockerfile -t hhub-hubctl:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=identity-hub -t hhub-identity-hub:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=channel-hub -t hhub-channel-hub:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=task-engine -t hhub-task-engine:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .

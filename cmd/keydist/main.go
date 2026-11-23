@@ -1,5 +1,5 @@
-// keydist distributes the install-time key material into per-service
-// volumes: each service gets its service.key, every service's public
+// keydist distributes install-time public keys and service keys into
+// per-service volumes: every service gets public keys, most get service.key,
 // key under pubs/, and the descriptor edge table rendered once for
 // all. Run once after `hubctl init` and before services start.
 package main
@@ -62,15 +62,43 @@ func keyVolume(root string, s descriptor.Service) string {
 
 // distribute writes one service's material: service.key, pubs/*, edges.
 func distribute(conf, dst, name string, f *descriptor.File, rendered string) error {
-	src := filepath.Join(conf, "services", name)
-	if err := copyFile(filepath.Join(src, "service.key"),
-		filepath.Join(dst, "service.key"), 0o600); err != nil {
+	if err := distributePrivateKey(conf, dst, name); err != nil {
 		return err
 	}
 	pubs := filepath.Join(dst, "pubs")
 	if err := os.MkdirAll(pubs, 0o755); err != nil {
 		return fmt.Errorf("keydist: pubs: %w", err)
 	}
+	if err := distributePublicKeys(conf, pubs, f); err != nil {
+		return err
+	}
+	if operatorPubRecipients[name] {
+		if err := copyFile(filepath.Join(conf, "keys", "operator.pub"),
+			filepath.Join(pubs, "operator.pub"), 0o644); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dst, "edges"), []byte(rendered), 0o644); err != nil {
+		return fmt.Errorf("keydist: edges: %w", err)
+	}
+	return nil
+}
+
+func distributePrivateKey(conf, dst, name string) error {
+	if name == "identity-hub" {
+		err := os.Remove(filepath.Join(dst, "service.key"))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("keydist: remove issuer key: %w", err)
+		}
+		return nil
+	}
+	return copyFile(filepath.Join(conf, "services", name, "service.key"), filepath.Join(dst, "service.key"), 0o600)
+}
+
+func distributePublicKeys(conf, pubs string, f *descriptor.File) error {
 	for _, s := range f.Services {
 		pub := filepath.Join(conf, "services", s.Name, "service.pub")
 		if _, err := os.Stat(pub); errors.Is(err, fs.ErrNotExist) {
@@ -80,18 +108,10 @@ func distribute(conf, dst, name string, f *descriptor.File, rendered string) err
 			return err
 		}
 	}
-	if name == "identity-hub" {
-		if err := copyFile(filepath.Join(conf, "keys", "operator.pub"),
-			filepath.Join(pubs, "operator.pub"), 0o644); err != nil {
-			return err
-		}
-	}
-	if err := os.WriteFile(filepath.Join(dst, "edges"),
-		[]byte(rendered), 0o644); err != nil {
-		return fmt.Errorf("keydist: edges: %w", err)
-	}
 	return nil
 }
+
+var operatorPubRecipients = map[string]bool{"identity-hub": true, "channel-hub": true}
 
 // renderEdges flattens all declared pairs to the canonical env form.
 func renderEdges(f *descriptor.File) string {

@@ -175,7 +175,7 @@ func (o *jobOps) listJobs(ctx context.Context, r tv1.ListJobsReq) (tv1.ListJobsR
 }
 
 func info(j jobRow, state string) tv1.JobInfo {
-	return tv1.JobInfo{ID: j.id, Space: j.space, State: state, Result: j.result}
+	return tv1.JobInfo{ID: j.id, Space: j.space, State: state, Result: j.result, Done: JobMachine().Terminal(state)}
 }
 
 // jobEvent applies an operator event to a job in one tx; the state

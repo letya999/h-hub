@@ -2,47 +2,47 @@
 
 ## Purpose
 
-Phase-3 issuer: it signs run, service, and owner-scoped operator tokens
-for the task->answer path. Real user identity arrives in phase 4.
+Owns human principals, mock-channel links and token issuance.
 
 ## Zone and neighbors
 
-Core zone. task-engine calls `MintRunToken` and proof-signed
-`IssueServiceToken`. The operator calls `ActAs` with a token signed by
-its installed key; the issued owner token is bound to one owner and
-callee ([TestActAsBindsAndAudits](internal/svc/act_as_db_test.go)).
+Core zone. The operator provisions principals; channel-hub confirms links and
+requests owner tokens; task-engine requests run tokens. All calls use declared
+edges ([TestPrincipalLinkLifecycle](internal/svc/people_db_test.go),
+[TestMintNeedsEdge](internal/svc/svc_test.go)).
 
 ## Owns
 
-The Ed25519 issuer key pair (`keys-identity-hub` volume), public-key
-registry, and its own database for issuance nonces and the `ActAs`
-audit ([TestActAsBindsAndAudits](internal/svc/act_as_db_test.go)).
+Its database holds principals, channel links, one-time code hashes and sealed
+values, issuance nonces, audit rows and the sealed Ed25519 signing key. The KEK
+is a host file outside Docker volumes; the signing seed is imported from a
+sealed bootstrap on first boot ([TestIssuerSealedImport](internal/svc/issuer_db_test.go)).
 
 ## Contracts
 
-Implements `contracts/identity/v1` (`MintRunToken`,
-`IssueServiceToken`, `ActAs`). The contract fake lives at
-`contracts/identity/v1/fake.go` and passes the conformance suite via
-real HTTP.
+Implements `contracts/identity/v1`. The contract fake and conformance suite
+exercise the same issuer code; production keeps identity state in Postgres
+([TestPrincipalLinkLifecycle](internal/svc/people_db_test.go)).
 
 ## Does not do
 
-Does not authenticate users, store subjects, or issue grants — real
-identity and rights arrive in phase 4. Does not verify service tokens
-on other services' behalf; each callee verifies with the public key.
+Does not own spaces, jobs or channel delivery. Rights and grants are a later
+phase.
 
 ## Machines
 
-None. Nonces and operator audit rows are durable domain records.
+`principal`: active → disabled, operator transition. `link_code`: pending →
+used or expired, with a 24-hour deadline swept by identity-hub
+([TestPrincipalLinkLifecycle](internal/svc/people_db_test.go)).
 
 ## Config
 
-`HHUB_SUB` (service identity), `HHUB_DSN`, `HHUB_KEYS` (key directory);
-loaded once in `internal/config`.
+`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_KEK_PATH`; loaded once in
+`internal/config`.
 
 ## Runbook
 
-Starts with the stack (`just stack`). Healthy = `/healthz` answers and
-`IssueServiceToken` accepts a proof-signed request. If token
-verification fails elsewhere, first check the `issuer.pub` distributed
-by `keydist` matches `service.pub`.
+Run `just stack`, then `just doctor`. `/healthz` checks the database. If the
+service cannot start, check the sealed issuer import, host KEK and public key;
+`doctor` reports missing import and any remaining plaintext key
+([TestIssuerSealedImport](internal/svc/issuer_db_test.go)).

@@ -1,4 +1,4 @@
-// identity-hub: phase-3 token issuer (fake contract implementation).
+// identity-hub owns principals, links and sealed token issuance.
 package main
 
 import (
@@ -20,6 +20,7 @@ import (
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/lifecycle"
 	"github.com/letya999/h-hub/shared/log"
+	"github.com/letya999/h-hub/shared/seal"
 	"github.com/letya999/h-hub/shared/store"
 )
 
@@ -49,13 +50,21 @@ func run(ctx context.Context, l *log.L) error {
 	if err := store.Migrate(ctx, db, svc.Migrations(), "migrations"); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
-	key, err := auth.LoadPrivateKey(filepath.Join(cfg.Keys, "service.key"))
+	sealer, err := seal.Load(cfg.KEK)
 	if err != nil {
-		return fmt.Errorf("service key: %w", err)
+		return fmt.Errorf("seal: %w", err)
 	}
 	pubs, err := loadPubs(filepath.Join(cfg.Keys, "pubs"))
 	if err != nil {
 		return fmt.Errorf("pubs: %w", err)
+	}
+	issuerPub, ok := pubs[cfg.Sub]
+	if !ok {
+		return fmt.Errorf("issuer public key missing")
+	}
+	key, err := svc.LoadIssuer(ctx, db, sealer, filepath.Join(filepath.Dir(cfg.KEK), "issuer.bootstrap"), issuerPub)
+	if err != nil {
+		return fmt.Errorf("service key: %w", err)
 	}
 	opPub, err := operatorPub(pubs)
 	if err != nil {
@@ -69,10 +78,7 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("edges: %w", err)
 	}
-	pub, ok := key.Public().(ed25519.PublicKey)
-	if !ok {
-		return fmt.Errorf("issuer key is not Ed25519")
-	}
+	pub := issuerPub
 	signer := func(purpose string, payload []byte) (string, error) {
 		return auth.Sign(key, purpose, payload)
 	}
@@ -85,7 +91,15 @@ func run(ctx context.Context, l *log.L) error {
 		Tab:         tab.For(cfg.Sub),
 		Nonce:       svc.SQLNoncer{DB: db},
 		Now:         func() int64 { return time.Now().Unix() },
+		Seal:        sealer,
 	})
+	return serveIdentity(ctx, l, s)
+}
+
+func serveIdentity(ctx context.Context, l *log.L, s *svc.Server) error {
+	g := lifecycle.NewGroup(ctx)
+	defer g.Stop()
+	g.Go(func(ctx context.Context) { s.SweepLinks(ctx, l) })
 	return serve(ctx, l, s.Mux())
 }
 

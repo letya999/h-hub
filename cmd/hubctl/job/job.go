@@ -5,15 +5,13 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"time"
 
+	"github.com/letya999/h-hub/cmd/hubctl/operator"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
-	"github.com/letya999/h-hub/shared/auth"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
@@ -62,9 +60,9 @@ func ownerClient(ctx context.Context, owner, space string, cfg clientConfig) (*t
 	if owner == "" || space == "" {
 		return nil, fmt.Errorf("owner and space are required")
 	}
-	opToken, err := signedOperatorToken(owner, space, cfg.keyPath)
+	opToken, err := operator.Token(owner, space, "task-engine", "identity-hub", cfg.keyPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("operator token: %w", err)
 	}
 	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(cfg.identityURL, opToken)}}
 	res, err := id.ActAs(ctx, idv1.ActAsReq{Owner: owner, Space: space, Aud: "task-engine"})
@@ -72,25 +70,6 @@ func ownerClient(ctx context.Context, owner, space string, cfg clientConfig) (*t
 		return nil, fmt.Errorf("act as %s: %w", owner, err)
 	}
 	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(cfg.taskURL, res.Token)}}, nil
-}
-
-func signedOperatorToken(owner, space, keyPath string) (string, error) {
-	key, err := auth.LoadPrivateKey(keyPath)
-	if err != nil {
-		return "", fmt.Errorf("operator key: %w", err)
-	}
-	claims, err := json.Marshal(idv1.OwnerClaims{
-		Sub: "operator", Owner: owner, Space: space, Target: "task-engine",
-		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("operator claims: %w", err)
-	}
-	opToken, err := auth.Sign(key, "operator", claims)
-	if err != nil {
-		return "", fmt.Errorf("operator sign: %w", err)
-	}
-	return opToken, nil
 }
 
 func create(ctx context.Context, client clientFor, args []string, out io.Writer) error {

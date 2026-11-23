@@ -165,6 +165,9 @@ func specErr(key, val, reason string) error {
 // Kind returns the machine kind.
 func (m *Machine) Kind() string { return m.kind }
 
+// Terminal reports states that need no automatic work, including long-lived operator states.
+func (m *Machine) Terminal(state string) bool { return m.final[state] || m.longLived[state] }
+
 // Schema returns the schema holding this machine's tables.
 func (m *Machine) Schema() string { return m.schema }
 

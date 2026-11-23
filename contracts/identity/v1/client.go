@@ -61,6 +61,42 @@ func (c *Client) ActAs(ctx context.Context, r ActAsReq) (ActAsResp, error) {
 	return out, err
 }
 
+func (c *Client) CreatePrincipal(ctx context.Context, r CreatePrincipalReq) (CreatePrincipalResp, error) {
+	var out CreatePrincipalResp
+	err := c.call(ctx, "CreatePrincipal", r, &out)
+	return out, err
+}
+
+func (c *Client) DeactivateHuman(ctx context.Context, r DeactivateHumanReq) (DeactivateHumanResp, error) {
+	var out DeactivateHumanResp
+	err := c.call(ctx, "DeactivateHuman", r, &out)
+	return out, err
+}
+
+func (c *Client) LinkBegin(ctx context.Context, r LinkBeginReq) (LinkBeginResp, error) {
+	var out LinkBeginResp
+	err := c.call(ctx, "LinkBegin", r, &out)
+	return out, err
+}
+
+func (c *Client) LinkConfirm(ctx context.Context, r LinkConfirmReq) (LinkConfirmResp, error) {
+	var out LinkConfirmResp
+	err := c.call(ctx, "LinkConfirm", r, &out)
+	return out, err
+}
+
+func (c *Client) Resolve(ctx context.Context, r ResolveReq) (ResolveResp, error) {
+	var out ResolveResp
+	err := c.call(ctx, "Resolve", r, &out)
+	return out, err
+}
+
+func (c *Client) MintLinkToken(ctx context.Context, r MintLinkTokenReq) (MintLinkTokenResp, error) {
+	var out MintLinkTokenResp
+	err := c.call(ctx, "MintLinkToken", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

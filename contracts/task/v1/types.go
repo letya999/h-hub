@@ -32,6 +32,7 @@ type JobInfo struct {
 	Space   string `json:"space"`
 	State   string `json:"state"`
 	Result  string `json:"result"`
+	Done    bool   `json:"done"`
 	Created string `json:"created"`
 }
 

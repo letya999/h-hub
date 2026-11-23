@@ -29,10 +29,13 @@ func Init(ctx context.Context, cfg Config, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureKEK(cfg.ConfigDir); err != nil {
+	if err := mkdir(cfg.KEKDir); err != nil {
 		return err
 	}
-	if err := provisionFiles(cfg.ConfigDir, f); err != nil {
+	if err := ensureHostKEK(cfg.ConfigDir, cfg.KEKDir); err != nil {
+		return err
+	}
+	if err := provisionFiles(cfg.ConfigDir, cfg.KEKDir, f); err != nil {
 		return err
 	}
 	if err := provisionDB(ctx, cfg, f, id); err != nil {
@@ -42,7 +45,7 @@ func Init(ctx context.Context, cfg Config, out io.Writer) error {
 	return nil
 }
 
-func provisionFiles(dir string, f *descriptor.File) error {
+func provisionFiles(dir, kekDir string, f *descriptor.File) error {
 	if err := mkdir(filepath.Join(dir, dirKeys)); err != nil {
 		return err
 	}
@@ -53,17 +56,28 @@ func provisionFiles(dir string, f *descriptor.File) error {
 		return err
 	}
 	for _, s := range f.Services {
-		sd := filepath.Join(dir, dirSvc, s.Name)
-		if err := mkdir(sd); err != nil {
+		if err := provisionServiceFiles(dir, kekDir, s); err != nil {
 			return err
 		}
-		if err := ensureKey(sd, svcKey); err != nil {
+	}
+	return nil
+}
+
+func provisionServiceFiles(dir, kekDir string, s descriptor.Service) error {
+	sd := filepath.Join(dir, dirSvc, s.Name)
+	if err := mkdir(sd); err != nil {
+		return err
+	}
+	if s.Name == "identity-hub" {
+		if err := ensureIssuerKey(sd, kekDir); err != nil {
 			return err
 		}
-		if s.Database == "postgres" {
-			if _, err := ensurePassword(filepath.Join(dir, dirDB), dbName(s.Name)); err != nil {
-				return err
-			}
+	} else if err := ensureKey(sd, svcKey); err != nil {
+		return err
+	}
+	if s.Database == "postgres" {
+		if _, err := ensurePassword(filepath.Join(dir, dirDB), dbName(s.Name)); err != nil {
+			return err
 		}
 	}
 	return nil
