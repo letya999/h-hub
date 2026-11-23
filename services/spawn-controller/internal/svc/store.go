@@ -82,6 +82,9 @@ func specPassports(s spaceRow) (Passports, error) {
 	if err := json.Unmarshal(s.spec, &p); err != nil {
 		return p, fmt.Errorf("spec decode: %w", err)
 	}
+	if p.SchemaVersion > 1 || p.SchemaVersion < 0 {
+		return p, fmt.Errorf("spec schema version %d is unsupported", p.SchemaVersion)
+	}
 	return p, nil
 }
 

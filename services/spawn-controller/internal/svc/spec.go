@@ -11,9 +11,10 @@ import (
 // effective spec compiles them once into one document with one
 // digest (rule 4) — services hold no independent policy copies.
 type Passports struct {
-	Stack  StackPassport  `json:"stack"`
-	Config ConfigPassport `json:"config"`
-	Models ModelsPassport `json:"models"`
+	SchemaVersion int            `json:"schema_version"`
+	Stack         StackPassport  `json:"stack"`
+	Config        ConfigPassport `json:"config"`
+	Models        ModelsPassport `json:"models"`
 }
 
 // StackPassport pins the harness image and container limits.
@@ -51,6 +52,7 @@ type Limits struct {
 // declared env, limits from the descriptor space zone.
 func defaultPassports(image, modelURL, taskURL string, lim Limits) Passports {
 	return Passports{
+		SchemaVersion: 1,
 		Stack: StackPassport{
 			Image: image, UID: "65534:65534",
 			Mem: lim.Mem, CPU: lim.CPU, Pids: lim.Pids,
