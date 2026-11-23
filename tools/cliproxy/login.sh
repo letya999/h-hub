@@ -5,7 +5,7 @@
 set -eu
 export MSYS_NO_PATHCONV=1
 
-img=${CLIPROXY_IMAGE:-docker.io/eceasy/cli-proxy-api:v8.1.1@sha256:e2f9c436ff992ef5830227ccc9fb67d40246bb1420708fbcd18e1de675e88c98}
+img=$(cat deploy/cliproxy-image.ref) || { echo "image pin unreadable" >&2; exit 1; }
 
 exec docker run --rm -it --name cliproxy-login \
   --network hhub-egress \
