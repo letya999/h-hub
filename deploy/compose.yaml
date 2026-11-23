@@ -71,7 +71,7 @@ services:
       HHUB_KEK_PATH: /run/hhub-secrets/seal-kek
     volumes:
       - keys-identity-hub:/etc/hhub:ro
-      - ./../.local/secrets:/run/hhub-secrets
+      - ./../../h-hub-data/secrets:/run/hhub-secrets
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}

@@ -161,7 +161,7 @@ func (s Service) mounts() []string {
 		mounts = append(mounts, "/var/run/docker.sock:/var/run/docker.sock")
 	}
 	if s.Name == "identity-hub" {
-		mounts = append(mounts, "./../.local/secrets:/run/hhub-secrets")
+		mounts = append(mounts, "./../../h-hub-data/secrets:/run/hhub-secrets")
 	}
 	return mounts
 }

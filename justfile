@@ -5,6 +5,7 @@ set windows-shell := ["pwsh.exe", "-NoProfile", "-Command"]
 
 img      := "hhub-dev@" + `cat deploy/dev-image.ref`
 src      := justfile_directory()
+data     := src + "/../h-hub-data"
 run      := "docker run --rm -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 runnet   := "docker run --rm --network hhub -e HHUB_TEST_DSN=" + dsn + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
@@ -12,7 +13,7 @@ confvol  := "hhub-conf"
 dsn      := "postgres://postgres@postgres:5432/postgres?sslmode=disable"
 hubctl   := "docker run --rm --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_CONFIG_DIR=/etc/hhub -e HHUB_DESCRIPTOR=/src/deploy/descriptor.yaml -e HHUB_KEK_DIR=/run/hhub-secrets" + \
-            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro -v " + src + "/.local/secrets:/run/hhub-secrets hhub-hubctl:local"
+            " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro -v " + data + "/secrets:/run/hhub-secrets hhub-hubctl:local"
 
 check_line := if os() == "windows" { "docker compose -f deploy/compose.yaml up -d --wait postgres && " + runnet + img + " just check" } else { "just _check" }
 fast_line  := if os() == "windows" { run + img + " just check-fast" } else { "just _check-fast" }
