@@ -60,11 +60,11 @@ type jobRow struct {
 	result string
 }
 
-func getJob(ctx context.Context, db *sql.DB, owner, id string) (jobRow, error) {
+func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 AND id=$2`,
-		owner, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
+		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 AND id=$3`,
+		owner, space, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, herrors.New(herrors.CodeNotFound, "err.not-found"). //nolint:wrapcheck // shared error form
 										With("job", id)
@@ -75,9 +75,9 @@ func getJob(ctx context.Context, db *sql.DB, owner, id string) (jobRow, error) {
 	return j, nil
 }
 
-func listJobs(ctx context.Context, db *sql.DB, owner string) ([]jobRow, error) {
+func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]jobRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 ORDER BY created`, owner)
+		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 ORDER BY created`, owner, space)
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
@@ -122,8 +122,8 @@ func globalRunning(ctx context.Context, db *sql.DB) (int, error) {
 	return n, nil
 }
 
-// claimable finds one conversation whose oldest queued job may
-// dispatch: no active run, no active hold on its space.
+// claimable finds one conversation whose queued job may dispatch:
+// no active run, admitted job or active hold on its space.
 func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 	var j jobRow
 	err := tx.QueryRowContext(ctx, `SELECT j.id, j.owner, j.space,
@@ -131,9 +131,17 @@ func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 		FROM jobs j
 		JOIN fsm.machines m ON m.kind='job' AND m.id=j.id AND m.state='queued'
 		JOIN conversations c ON c.owner=j.owner AND c.space=j.space
-			AND c.conversation=j.conversation AND c.active_run=''
+			AND c.conversation=j.conversation
 		LEFT JOIN holds h ON h.space=j.space AND h.active
 		WHERE h.space IS NULL
+			AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.owner=j.owner
+				AND r.space=j.space AND r.conversation=j.conversation
+				AND r.claim_released_at IS NULL)
+			AND NOT EXISTS (SELECT 1 FROM jobs prior
+				JOIN fsm.machines pm ON pm.kind='job' AND pm.id=prior.id
+				WHERE prior.owner=j.owner AND prior.space=j.space
+					AND prior.conversation=j.conversation
+					AND pm.state IN ('admitted','running'))
 		ORDER BY j.created LIMIT 1
 		FOR UPDATE OF c SKIP LOCKED`).Scan(
 		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
@@ -146,25 +154,9 @@ func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 	return j, nil
 }
 
-// insertRun writes the run domain row and binds it as the
-// conversation's active run in the caller's transaction.
+// insertRun claims the conversation through the partial unique index.
 func insertRun(ctx context.Context, tx *sql.Tx, r runRow) error {
-	res, err := tx.ExecContext(ctx, `UPDATE conversations SET active_run=$1
-		WHERE owner=$2 AND space=$3 AND conversation=$4 AND active_run=''`,
-		r.id, r.owner, r.space, r.conv)
-	if err != nil {
-		return fmt.Errorf("bind active run: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("bind count: %w", err)
-	}
-	if n != 1 {
-		conflict := herrors.New(herrors.CodeConflict, "err.machine-state").
-			With("conversation", r.conv)
-		return conflict //nolint:wrapcheck // shared error form
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO runs
+	_, err := tx.ExecContext(ctx, `INSERT INTO runs
 		(id, job, owner, space, conversation, runtime, endpoint, digest)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		r.id, r.job, r.owner, r.space, r.conv, r.runtime, r.endpoint, r.digest)
@@ -201,26 +193,26 @@ func getRun(ctx context.Context, db *sql.DB, id string) (runRow, error) {
 	return r, nil
 }
 
-// activeRunForJob returns the conversation's bound run id for a job.
+// activeRunForJob returns the job's still claimed run id.
 func activeRunForJob(ctx context.Context, tx *sql.Tx, job string) (string, error) {
 	var run string
-	err := tx.QueryRowContext(ctx, `SELECT c.active_run FROM conversations c
-		JOIN jobs j ON j.owner=c.owner AND j.space=c.space
-			AND j.conversation=c.conversation
-		WHERE j.id=$1`, job).Scan(&run)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM runs
+		WHERE job=$1 AND claim_released_at IS NULL`, job).Scan(&run)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
 	if err != nil {
 		return "", fmt.Errorf("active run: %w", err)
 	}
 	return run, nil
 }
 
-// clearActiveRun drops the conversation's pointer when its run
-// settles; called inside the settle transition's transaction.
-func clearActiveRun(ctx context.Context, tx *sql.Tx, run string) error {
+// releaseRun frees the indexed claim inside the final FSM transition.
+func releaseRun(ctx context.Context, tx *sql.Tx, run string) error {
 	_, err := tx.ExecContext(ctx,
-		"UPDATE conversations SET active_run='' WHERE active_run=$1", run)
+		"UPDATE runs SET claim_released_at=now() WHERE id=$1 AND claim_released_at IS NULL", run)
 	if err != nil {
-		return fmt.Errorf("clear active run: %w", err)
+		return fmt.Errorf("release run: %w", err)
 	}
 	return nil
 }

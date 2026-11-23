@@ -27,7 +27,6 @@ func Conformance(t *testing.T, mk func(t *testing.T) *Client) {
 
 var cases = []Case{
 	{"create_get", caseCreateGet},
-	{"tenant_scoping", caseTenantScoping},
 	{"destroy", caseDestroy},
 	{"unknown_space", caseUnknownSpace},
 	{"invalid_input", caseInvalidInput},
@@ -35,7 +34,7 @@ var cases = []Case{
 
 func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
 	res, err := c.CreateSpace(ctx, CreateSpaceReq{
-		Owner: "o1", Name: "alpha", Template: "default",
+		Name: "alpha", Template: "default",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -43,7 +42,7 @@ func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
 	if res.ID == "" || res.Digest == "" {
 		t.Fatal("empty id or digest")
 	}
-	got, err := c.GetSpace(ctx, GetSpaceReq{Owner: "o1", ID: res.ID})
+	got, err := c.GetSpace(ctx, GetSpaceReq{ID: res.ID})
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -52,40 +51,29 @@ func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
 	}
 }
 
-func caseTenantScoping(t *testing.T, ctx context.Context, c *Client) {
-	res, err := c.CreateSpace(ctx, CreateSpaceReq{Owner: "o1", Name: "a"})
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	_, err = c.GetSpace(ctx, GetSpaceReq{Owner: "o2", ID: res.ID})
-	if herrors.CodeOf(err) != herrors.CodeNotFound {
-		t.Fatalf("cross-owner read: got %v, want not-found", err)
-	}
-}
-
 func caseDestroy(t *testing.T, ctx context.Context, c *Client) {
-	res, err := c.CreateSpace(ctx, CreateSpaceReq{Owner: "o1", Name: "a"})
+	res, err := c.CreateSpace(ctx, CreateSpaceReq{Name: "a"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := c.DestroySpace(ctx, DestroySpaceReq{Owner: "o1", ID: res.ID}); err != nil {
+	if _, err := c.DestroySpace(ctx, DestroySpaceReq{ID: res.ID}); err != nil {
 		t.Fatalf("destroy: %v", err)
 	}
-	_, err = c.GetSpace(ctx, GetSpaceReq{Owner: "o1", ID: res.ID})
+	_, err = c.GetSpace(ctx, GetSpaceReq{ID: res.ID})
 	if herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("post-destroy read: got %v, want not-found", err)
 	}
 }
 
 func caseUnknownSpace(t *testing.T, ctx context.Context, c *Client) {
-	_, err := c.GetSpace(ctx, GetSpaceReq{Owner: "o1", ID: "sp_none"})
+	_, err := c.GetSpace(ctx, GetSpaceReq{ID: "sp_none"})
 	if herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("unknown space: got %v, want not-found", err)
 	}
 }
 
 func caseInvalidInput(t *testing.T, ctx context.Context, c *Client) {
-	_, err := c.CreateSpace(ctx, CreateSpaceReq{Owner: "o1"})
+	_, err := c.CreateSpace(ctx, CreateSpaceReq{})
 	if herrors.CodeOf(err) != herrors.CodeInvalid {
 		t.Fatalf("missing name: got %v, want invalid", err)
 	}

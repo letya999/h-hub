@@ -113,6 +113,7 @@ type Inspect struct {
 	Mounts []struct {
 		Type        string `json:"Type"`
 		Destination string `json:"Destination"`
+		RW          bool   `json:"RW"`
 	} `json:"Mounts"`
 	NetworkSettings struct {
 		Networks map[string]json.RawMessage `json:"Networks"`

@@ -173,3 +173,47 @@ Windows workstation, full check incl. postgres and `hhubdb` tests:
    starting 90 s / draining 60 s.
 5. Keep byte-pinned migration checksums as-is (EOL rewrites invalidate
    existing dev DBs), or normalize migrations at apply time?
+
+## Closeout (2026-11-23)
+
+The owner's answers above are applied. The four service ADRs are
+accepted; the gate fixes and byte-pinned migration checksums remain.
+The ratified admission and runtime timing values are recorded as
+tunable policy values in the task and spawn ADRs.
+
+- A1: `hubctl job` signs with the operator key. Identity-hub checks
+  owner, space and target on `ActAs`, records an audit row, and issues
+  a scoped token. Task and space operator operations require verified
+  tokens; no public operation remains except `/healthz`.
+  `ClaimNext` was removed from the external contract because the
+  dispatcher already owns queue claiming. `TestJobToAnswer` now proves
+  cross-owner reads and writes fail, including a token for Alice
+  naming Boris's space, cross-space idempotency replay and listing.
+  `TestForgedToken` covers the same authenticated surface.
+- A2: `runs_one_claim_per_conversation` is a partial unique index on
+  `(owner, space, conversation)` for unreleased claims. All run-final
+  paths release the claim inside the FSM transaction; dispatch refusal
+  waits for the run deadline instead of freeing it early.
+  `TestRunClaimUnique` makes two parallel inserts and requires the
+  index's `23505` error; `TestJobToAnswer` completes a second turn in
+  the same conversation. Migration `0002_run_claim.sql` transferred
+  existing claims in the live dev DB. `conversations.active_run` has
+  no readers or writers and remains in the schema until the next
+  release, per expand/contract rule 30.
+- A3: the duplicate job-finality map was removed; the Job machine's
+  `Final` and `LongLived` sets own that definition.
+- A4: the env gate rejects `os.Environ()` outside declared config
+  readers and install code; a broken fixture proves the rejection.
+  SQL files are pinned to LF by `.gitattributes` and a broken fixture.
+
+Final local checks: `just check` **green** (timed value below),
+`just e2e` **89.8 s** after the ADR mount assertion, including three
+users, kill and stack restart. A manual
+`hubctl job list -owner alice -space ...`
+returned Alice's job only. The dev DB had no non-final run carrying
+a released claim after migration.
+
+New timed `just check`: **96.6 s** (under 5 minutes). The only deferred
+schema work is dropping the unused `conversations.active_run` column
+in phase 4.
+No owner question remains from this phase.

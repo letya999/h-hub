@@ -80,6 +80,12 @@ func distribute(conf, dst, name string, f *descriptor.File, rendered string) err
 			return err
 		}
 	}
+	if name == "identity-hub" {
+		if err := copyFile(filepath.Join(conf, "keys", "operator.pub"),
+			filepath.Join(pubs, "operator.pub"), 0o644); err != nil {
+			return err
+		}
+	}
 	if err := os.WriteFile(filepath.Join(dst, "edges"),
 		[]byte(rendered), 0o644); err != nil {
 		return fmt.Errorf("keydist: edges: %w", err)

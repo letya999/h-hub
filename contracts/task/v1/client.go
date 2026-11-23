@@ -77,13 +77,6 @@ func (c *Client) SetHold(ctx context.Context, r SetHoldReq) (SetHoldResp, error)
 	return out, err
 }
 
-// ClaimNext asks the dispatcher to claim one due job.
-func (c *Client) ClaimNext(ctx context.Context) (ClaimNextResp, error) {
-	var out ClaimNextResp
-	err := c.call(ctx, "ClaimNext", ClaimNextReq{}, &out)
-	return out, err
-}
-
 // ReportRun appends run events (run-token authenticated).
 func (c *Client) ReportRun(ctx context.Context, r ReportRunReq) error {
 	return c.call(ctx, "ReportRun", r, nil)

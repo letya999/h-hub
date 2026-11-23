@@ -5,34 +5,42 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
+	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
+	"github.com/letya999/h-hub/shared/auth"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
 const defaultURL = "http://task-engine:9000"
+const defaultIdentityURL = "http://identity-hub:9000"
+
+type clientFor func(context.Context, string, string) (*tv1.Client, error)
+
+type clientConfig struct{ taskURL, identityURL, keyPath string }
 
 // Run dispatches `hubctl job <op> [flags]`.
 func Run(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: hubctl job " + usage)
-	}
 	fs := flag.NewFlagSet("job", flag.ContinueOnError)
 	url := fs.String("url", defaultURL, "task-engine base URL")
-	// -url goes before the op: hubctl job [-url U] <op> [op flags].
-	if len(args) >= 2 && args[0] == "-url" {
-		if err := fs.Parse(args[:2]); err != nil {
-			return fmt.Errorf("job flags: %w", err)
-		}
-		args = args[2:]
+	identityURL := fs.String("identity-url", defaultIdentityURL, "identity-hub base URL")
+	keyPath := fs.String("key", "/etc/hhub/keys/operator.key", "operator private key")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("job flags: %w", err)
 	}
+	args = fs.Args()
 	if len(args) == 0 {
 		return fmt.Errorf("usage: hubctl job " + usage)
 	}
-	c := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(*url, "")}}
+	cfg := clientConfig{*url, *identityURL, *keyPath}
+	c := func(ctx context.Context, owner, space string) (*tv1.Client, error) {
+		return ownerClient(ctx, owner, space, cfg)
+	}
 	switch args[0] {
 	case "create":
 		return create(ctx, c, args[1:], out)
@@ -48,9 +56,44 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	return fmt.Errorf("usage: hubctl job " + usage)
 }
 
-const usage = "[-url U] create|get|list|cancel|retry|unquarantine|hold [flags]"
+const usage = "[-url U] [-identity-url U] [-key FILE] create|get|list|cancel|retry|unquarantine|hold [flags]"
 
-func create(ctx context.Context, c *tv1.Client, args []string, out io.Writer) error {
+func ownerClient(ctx context.Context, owner, space string, cfg clientConfig) (*tv1.Client, error) {
+	if owner == "" || space == "" {
+		return nil, fmt.Errorf("owner and space are required")
+	}
+	opToken, err := signedOperatorToken(owner, space, cfg.keyPath)
+	if err != nil {
+		return nil, err
+	}
+	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(cfg.identityURL, opToken)}}
+	res, err := id.ActAs(ctx, idv1.ActAsReq{Owner: owner, Space: space, Aud: "task-engine"})
+	if err != nil {
+		return nil, fmt.Errorf("act as %s: %w", owner, err)
+	}
+	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(cfg.taskURL, res.Token)}}, nil
+}
+
+func signedOperatorToken(owner, space, keyPath string) (string, error) {
+	key, err := auth.LoadPrivateKey(keyPath)
+	if err != nil {
+		return "", fmt.Errorf("operator key: %w", err)
+	}
+	claims, err := json.Marshal(idv1.OwnerClaims{
+		Sub: "operator", Owner: owner, Space: space, Target: "task-engine",
+		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("operator claims: %w", err)
+	}
+	opToken, err := auth.Sign(key, "operator", claims)
+	if err != nil {
+		return "", fmt.Errorf("operator sign: %w", err)
+	}
+	return opToken, nil
+}
+
+func create(ctx context.Context, client clientFor, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	owner := fs.String("owner", "", "owner")
 	space := fs.String("space", "", "space")
@@ -60,8 +103,12 @@ func create(ctx context.Context, c *tv1.Client, args []string, out io.Writer) er
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("create flags: %w", err)
 	}
+	c, err := client(ctx, *owner, *space)
+	if err != nil {
+		return err
+	}
 	res, err := c.CreateJob(ctx, tv1.CreateJobReq{
-		Owner: *owner, Space: *space, Conversation: *conv,
+		Space: *space, Conversation: *conv,
 		Input: *input, Idem: *idem})
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -69,13 +116,18 @@ func create(ctx context.Context, c *tv1.Client, args []string, out io.Writer) er
 	return emit(out, "%s %s\n", res.ID, res.State)
 }
 
-func list(ctx context.Context, c *tv1.Client, args []string, out io.Writer) error {
+func list(ctx context.Context, client clientFor, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	owner := fs.String("owner", "", "owner")
+	space := fs.String("space", "", "space")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("list flags: %w", err)
 	}
-	res, err := c.ListJobs(ctx, tv1.ListJobsReq{Owner: *owner})
+	c, err := client(ctx, *owner, *space)
+	if err != nil {
+		return err
+	}
+	res, err := c.ListJobs(ctx, tv1.ListJobsReq{})
 	if err != nil {
 		return fmt.Errorf("list jobs: %w", err)
 	}
@@ -88,14 +140,19 @@ func list(ctx context.Context, c *tv1.Client, args []string, out io.Writer) erro
 }
 
 // one handles the single-job ops: get, cancel, retry, unquarantine.
-func one(ctx context.Context, c *tv1.Client, args []string, out io.Writer, op string) error {
+func one(ctx context.Context, client clientFor, args []string, out io.Writer, op string) error {
 	fs := flag.NewFlagSet(op, flag.ContinueOnError)
 	owner := fs.String("owner", "", "owner")
+	space := fs.String("space", "", "space")
 	id := fs.String("id", "", "job id")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("%s flags: %w", op, err)
 	}
-	j, err := callOne(ctx, c, op, tv1.JobReq{Owner: *owner, ID: *id})
+	c, err := client(ctx, *owner, *space)
+	if err != nil {
+		return err
+	}
+	j, err := callOne(ctx, c, op, tv1.JobReq{ID: *id})
 	if err != nil {
 		return err
 	}
@@ -123,13 +180,18 @@ func callOne(ctx context.Context, c *tv1.Client, op string, r tv1.JobReq) (tv1.J
 	return j, nil
 }
 
-func hold(ctx context.Context, c *tv1.Client, args []string, out io.Writer) error {
+func hold(ctx context.Context, client clientFor, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("hold", flag.ContinueOnError)
+	owner := fs.String("owner", "", "owner")
 	space := fs.String("space", "", "space")
 	active := fs.Bool("active", true, "hold active")
 	note := fs.String("note", "", "note")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("hold flags: %w", err)
+	}
+	c, err := client(ctx, *owner, *space)
+	if err != nil {
+		return err
 	}
 	res, err := c.SetHold(ctx, tv1.SetHoldReq{
 		Space: *space, Active: *active, Note: *note})

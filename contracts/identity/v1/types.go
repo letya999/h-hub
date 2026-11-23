@@ -22,6 +22,57 @@ type ServiceClaims struct {
 	Kid string   `json:"kid"`
 }
 
+// OwnerClaims binds an operator delegation to one owner and callee.
+type OwnerClaims struct {
+	Sub    string   `json:"sub"`
+	Owner  string   `json:"owner"`
+	Space  string   `json:"space,omitempty"`
+	Target string   `json:"target,omitempty"`
+	Aud    []string `json:"aud"`
+	Exp    int64    `json:"exp"`
+	Kid    string   `json:"kid"`
+}
+
+// ParseOwnerClaims extracts owner scope from a verified token.
+func ParseOwnerClaims(payload []byte) (OwnerClaims, error) {
+	var c OwnerClaims
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return c, herrors.Wrap(herrors.CodeUnauthorized, "err.token", err)
+	}
+	if c.Sub != "operator" || c.Owner == "" {
+		return c, herrors.New(herrors.CodeUnauthorized, "err.token")
+	}
+	return c, nil
+}
+
+// ScopeFrom returns the owner and space from a verified request principal.
+func ScopeFrom(ctx context.Context) (OwnerClaims, error) {
+	p := httpapi.PrincipalFrom(ctx)
+	if p == nil {
+		return OwnerClaims{}, herrors.New(herrors.CodeUnauthorized, "err.unauthorized")
+	}
+	return ParseOwnerClaims(p.Payload)
+}
+
+// OwnerFrom returns the owner from a verified request principal.
+func OwnerFrom(ctx context.Context) (string, error) {
+	c, err := ScopeFrom(ctx)
+	return c.Owner, err
+}
+
+// ActAsReq asks identity to issue an owner-scoped token.
+type ActAsReq struct {
+	Owner string `json:"owner"`
+	Space string `json:"space,omitempty"`
+	Aud   string `json:"aud"`
+}
+
+// ActAsResp carries the owner token.
+type ActAsResp struct {
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
 // RunClaims is the run-token payload (purpose "run"): the launch is
 // bound to the space, job, run and spec digest it was admitted under.
 type RunClaims struct {
@@ -100,6 +151,7 @@ func ProofBytes(proof string) ([]byte, error) {
 type Handlers struct {
 	IssueServiceToken func(context.Context, IssueServiceTokenReq) (IssueServiceTokenResp, error)
 	MintRunToken      func(context.Context, MintRunTokenReq) (MintRunTokenResp, error)
+	ActAs             func(context.Context, ActAsReq) (ActAsResp, error)
 }
 
 // Ops maps operation names to request handlers (unauthenticated: auth
@@ -108,6 +160,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 	return map[string]httpapi.Handler{
 		"IssueServiceToken": op(h.IssueServiceToken),
 		"MintRunToken":      op(h.MintRunToken),
+		"ActAs":             op(h.ActAs),
 	}
 }
 

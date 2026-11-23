@@ -15,7 +15,6 @@ import (
 // CreateSpaceReq provisions a space from a layer template. Phase 3 has
 // one built-in template; Name selects it.
 type CreateSpaceReq struct {
-	Owner    string `json:"owner"`
 	Name     string `json:"name"`
 	Template string `json:"template"`
 }
@@ -38,8 +37,7 @@ type SpaceInfo struct {
 
 // GetSpaceReq reads one space scoped to its owner.
 type GetSpaceReq struct {
-	Owner string `json:"owner"`
-	ID    string `json:"id"`
+	ID string `json:"id"`
 }
 
 // GetSpaceResp is the space read result.
@@ -49,8 +47,7 @@ type GetSpaceResp struct {
 
 // DestroySpaceReq removes a space and drains its runtime.
 type DestroySpaceReq struct {
-	Owner string `json:"owner"`
-	ID    string `json:"id"`
+	ID string `json:"id"`
 }
 
 // DestroySpaceResp acknowledges destruction.
@@ -82,6 +79,7 @@ type ResolveSpecReq struct {
 type ResolveSpecResp struct {
 	Spec   string `json:"spec"`
 	Digest string `json:"digest"`
+	Owner  string `json:"owner"`
 }
 
 // ReleaseRuntimeReq marks a runtime free after a run settles.

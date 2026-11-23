@@ -90,7 +90,3 @@ func RunMachine() *fsm.Machine {
 	}
 	return m
 }
-
-var jobFinals = map[string]bool{
-	"succeeded": true, "failed": true, "cancelled": true, "quarantined": true,
-}

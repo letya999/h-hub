@@ -107,16 +107,17 @@ func (s *Server) harnessClient(endpoint, runToken string) *hv1.Client {
 		C: httpapi.NewClient(endpoint, runToken)}}
 }
 
-// Mux mounts /v1 ops and /healthz. Operator ops are unauthenticated
-// in phase 3 (no rights yet); ReportRun is run-token verified.
+// Mux mounts /v1 ops and /healthz. Every operation verifies a token.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := tv1.Ops(s.handlers())
+	ownerVer := httpapi.EdgeVerifier(s.deps.Issuer, "owner", s.sub,
+		s.deps.EdgeTab, s.deps.Now)
 	for _, name := range []string{"CreateJob", "GetJob", "ListJobs",
 		"CancelJob", "RetryJob", "UnquarantineJob", "SetHold",
-		"ClaimNext", "GetRun"} {
+		"GetRun"} {
 		op := ops[name]
-		mux.Handle("/v1/"+name, httpapi.HandleOpen(
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(ownerVer,
 			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
 				return op(w, r)
 			}))
@@ -124,9 +125,8 @@ func (s *Server) Mux() *http.ServeMux {
 	runVer := httpapi.RunVerifier(s.deps.Issuer,
 		func() time.Time { return s.deps.Now() })
 	mux.Handle("/v1/ReportRun", httpapi.HandleAuth(runVer,
-		func(w http.ResponseWriter, r *http.Request, p httpapi.Principal) error {
-			return ops["ReportRun"](w, r.WithContext(
-				context.WithValue(r.Context(), principalKey{}, p)))
+		func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+			return ops["ReportRun"](w, r)
 		}))
 	mux.HandleFunc("/healthz", s.healthz)
 	return mux
@@ -137,15 +137,9 @@ func (s *Server) Loops(ctx context.Context, l *log.L) {
 	s.run.Loops(ctx, l)
 }
 
-type principalKey struct{}
-
 // RunPrincipal returns the authenticated run claims, nil for open ops.
 func RunPrincipal(ctx context.Context) *httpapi.Principal {
-	p, ok := ctx.Value(principalKey{}).(httpapi.Principal)
-	if !ok {
-		return nil
-	}
-	return &p
+	return httpapi.PrincipalFrom(ctx)
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

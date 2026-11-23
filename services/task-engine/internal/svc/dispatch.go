@@ -79,7 +79,6 @@ func (d *dispatcher) dispatchInner(ctx context.Context, l *log.L, jobID string) 
 	ack, err := hc.SubmitRun(ctx, hv1.SubmitRunReq{
 		Run: runID, Job: j.id, Space: j.space, Input: j.input})
 	if err != nil || !ack.Accepted {
-		d.unbindRun(ctx, l, runID)
 		return fmt.Errorf("submit refused")
 	}
 	return d.withJobTx(ctx, jobID, "dispatch", "dispatcher", nil)
@@ -148,24 +147,6 @@ func (d *dispatcher) bindRun(ctx context.Context, j jobRow, runID, digest string
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
-}
-
-// unbindRun clears the conversation pointer when submit is refused:
-// the run never existed as far as ordering is concerned.
-func (d *dispatcher) unbindRun(ctx context.Context, l *log.L, runID string) {
-	tx, err := d.s.db.BeginTx(ctx, nil)
-	if err != nil {
-		l.Error(ctx, "unbind "+runID, err)
-		return
-	}
-	defer tx.Rollback() //nolint:errcheck // best-effort close
-	if err := clearActiveRun(ctx, tx, runID); err != nil {
-		l.Error(ctx, "unbind "+runID, err)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		l.Error(ctx, "unbind "+runID, err)
-	}
 }
 
 // lost moves a job to uncertain without retrying.

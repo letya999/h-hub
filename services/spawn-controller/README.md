@@ -9,10 +9,12 @@ Runtime machine over the Docker Engine API.
 ## Zone and neighbors
 
 Core zone, plus it launches space-zone containers. Called by `hubctl`
-(space ops) and task-engine (`ResolveSpec`, `EnsureRuntime`,
+(owner-scoped space ops) and task-engine (`ResolveSpec`, `EnsureRuntime`,
 `ReleaseRuntime`). Calls task-engine back only via edges declared in
 the descriptor; no service calls out to the model — the space-zone
 network edge reaches `scripted-model` per the models passport.
+Cross-owner space reads and destroys are refused
+([TestJobToAnswer](../../test/e2e/e2e_test.go)).
 
 ## Owns
 

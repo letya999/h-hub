@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"strings"
 	"testing"
 
 	herrors "github.com/letya999/h-hub/shared/errors"
@@ -35,6 +37,34 @@ var cases = []Case{
 	{"issue_bad_proof", caseBadProof},
 	{"mint_run_token", caseMintRun},
 	{"mint_invalid", caseMintInvalid},
+	{"act_as_owner", caseActAs},
+	{"act_as_missing", caseActAsMissing},
+}
+
+func caseActAs(t *testing.T, ctx context.Context, c *Client, _ ed25519.PrivateKey) {
+	res, err := c.ActAs(ctx, ActAsReq{Owner: "alice", Aud: "task-engine"})
+	if err != nil {
+		t.Fatalf("act as: %v", err)
+	}
+	parts := strings.Split(res.Token, ".")
+	if len(parts) != 3 || parts[0] != "hhub_owner" || res.ExpiresAt == 0 {
+		t.Fatalf("invalid owner token response: %+v", res)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := ParseOwnerClaims(payload)
+	if err != nil || claims.Owner != "alice" || len(claims.Aud) != 1 || claims.Aud[0] != "task-engine" {
+		t.Fatalf("wrong owner claims: %+v, %v", claims, err)
+	}
+}
+
+func caseActAsMissing(t *testing.T, ctx context.Context, c *Client, _ ed25519.PrivateKey) {
+	_, err := c.ActAs(ctx, ActAsReq{Aud: "task-engine"})
+	if herrors.CodeOf(err) != herrors.CodeInvalid {
+		t.Fatalf("missing owner: got %v, want invalid", err)
+	}
 }
 
 func caseIssue(t *testing.T, ctx context.Context, c *Client, key ed25519.PrivateKey) {

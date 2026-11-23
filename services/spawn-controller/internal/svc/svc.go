@@ -54,16 +54,16 @@ func New(sub string, db *sql.DB, deps Deps) *Server {
 	return &Server{sub: sub, db: db, deps: deps, runM: RuntimeMachine()}
 }
 
-// Mux mounts /v1 ops and /healthz. Space ops are the operator
-// surface (no rights in phase 3); runtime lifecycle ops require a
-// service token on a declared edge (rule 31).
+// Mux mounts /v1 ops and /healthz. Space ops require owner tokens;
+// runtime lifecycle ops require service tokens on declared edges.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := sv1.Ops(s.handlers())
-	open := map[string]bool{
+	ownerOps := map[string]bool{
 		"CreateSpace": true, "GetSpace": true, "DestroySpace": true,
 	}
-	verifier := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.EdgeTab, s.deps.Now)
+	serviceVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.EdgeTab, s.deps.Now)
+	ownerVer := httpapi.EdgeVerifier(s.deps.Issuer, "owner", s.sub, s.deps.EdgeTab, s.deps.Now)
 	for name, op := range ops {
 		op := op
 		run := func(w http.ResponseWriter, r *http.Request) error {
@@ -73,14 +73,14 @@ func (s *Server) Mux() *http.ServeMux {
 			}
 			return err
 		}
-		if open[name] {
-			mux.Handle("/v1/"+name, httpapi.HandleOpen(
+		if ownerOps[name] {
+			mux.Handle("/v1/"+name, httpapi.HandleAuth(ownerVer,
 				func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
 					return run(w, r)
 				}))
 			continue
 		}
-		mux.Handle("/v1/"+name, httpapi.HandleAuth(verifier,
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(serviceVer,
 			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
 				return run(w, r)
 			}))

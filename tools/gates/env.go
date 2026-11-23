@@ -16,6 +16,7 @@ import (
 // Names a service writes for its children (spawn-controller's runtime
 // env allowlist) are not reads and need no declaration of their own.
 var envRe = regexp.MustCompile(`(?:Getenv|LookupEnv)\(\s*"(HHUB_[A-Z0-9_]+)"`)
+var environRe = regexp.MustCompile(`\bos\.Environ\s*\(`)
 
 // EnvDeclared checks that every HHUB_* variable read in a service's
 // code is declared in its descriptor env list (enforcement.md 3).
@@ -44,12 +45,18 @@ func usedEnv(root string) (map[string]map[string]bool, error) {
 	used := map[string]map[string]bool{}
 	err := walk(root, func(rel string, d fs.DirEntry) error {
 		parts := strings.SplitN(rel, "/", 3)
-		if d.IsDir() || !hasExt(rel, ".go") || len(parts) != 3 || parts[0] != "services" {
+		if d.IsDir() || !hasExt(rel, ".go") {
 			return nil
 		}
 		data, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			return fmt.Errorf("env-declared: read %s: %w", rel, err)
+		}
+		if err := checkEnviron(rel, data); err != nil {
+			return err
+		}
+		if len(parts) != 3 || parts[0] != "services" {
+			return nil
 		}
 		if used[parts[1]] == nil {
 			used[parts[1]] = map[string]bool{}
@@ -60,4 +67,15 @@ func usedEnv(root string) (map[string]map[string]bool, error) {
 		return nil
 	})
 	return used, err
+}
+
+func checkEnviron(rel string, data []byte) error {
+	parts := strings.SplitN(rel, "/", 3)
+	allowed := len(parts) == 3 && parts[0] == "services" &&
+		strings.HasPrefix(parts[2], "internal/config/") ||
+		strings.HasPrefix(rel, "cmd/hubctl/install/")
+	if environRe.Match(data) && !allowed {
+		return fmt.Errorf("env-declared: %s calls os.Environ outside config", rel)
+	}
+	return nil
 }

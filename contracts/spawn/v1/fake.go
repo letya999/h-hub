@@ -13,14 +13,15 @@ import (
 // digests and a pretend warm runtime, with no Docker. The conformance
 // suite pins the shared behavior.
 type Fake struct {
+	owner  string
 	mu     sync.Mutex
 	spaces map[string]*SpaceInfo
 	next   int
 }
 
 // NewFake builds an empty in-memory controller.
-func NewFake() *Fake {
-	return &Fake{spaces: map[string]*SpaceInfo{}}
+func NewFake(owner string) *Fake {
+	return &Fake{owner: owner, spaces: map[string]*SpaceInfo{}}
 }
 
 // Handlers exposes the fake as the contract operation table.
@@ -46,14 +47,14 @@ func digestOf(parts ...string) string {
 
 func (f *Fake) create(_ context.Context, r CreateSpaceReq) (CreateSpaceResp, error) {
 	var out CreateSpaceResp
-	if err := herrors.Require(r.Owner != "" && r.Name != "", "err.invalid-arg"); err != nil {
+	if err := herrors.Require(r.Name != "", "err.invalid-arg"); err != nil {
 		return out, err //nolint:wrapcheck // shared error form
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.next++
 	id := spaceID(f.next)
-	f.spaces[id] = &SpaceInfo{ID: id, Owner: r.Owner, Name: r.Name,
+	f.spaces[id] = &SpaceInfo{ID: id, Owner: f.owner, Name: r.Name,
 		Digest: digestOf(id, r.Template)}
 	return CreateSpaceResp{ID: id, Digest: f.spaces[id].Digest}, nil
 }
@@ -62,7 +63,7 @@ func (f *Fake) get(_ context.Context, r GetSpaceReq) (GetSpaceResp, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.spaces[r.ID]
-	if !ok || s.Owner != r.Owner {
+	if !ok || s.Owner != f.owner {
 		return GetSpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found").With("id", r.ID) //nolint:wrapcheck // shared error form
 	}
 	return GetSpaceResp{Space: *s}, nil
@@ -72,7 +73,7 @@ func (f *Fake) destroy(_ context.Context, r DestroySpaceReq) (DestroySpaceResp, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.spaces[r.ID]
-	if !ok || s.Owner != r.Owner {
+	if !ok || s.Owner != f.owner {
 		return DestroySpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found").With("id", r.ID) //nolint:wrapcheck // shared error form
 	}
 	delete(f.spaces, r.ID)
@@ -99,7 +100,7 @@ func (f *Fake) resolve(_ context.Context, r ResolveSpecReq) (ResolveSpecResp, er
 	if !ok {
 		return ResolveSpecResp{}, herrors.New(herrors.CodeNotFound, "err.not-found").With("id", r.Space) //nolint:wrapcheck // shared error form
 	}
-	return ResolveSpecResp{Spec: "spec:" + s.Name, Digest: s.Digest}, nil
+	return ResolveSpecResp{Spec: "spec:" + s.Name, Digest: s.Digest, Owner: s.Owner}, nil
 }
 
 func (f *Fake) release(_ context.Context, _ ReleaseRuntimeReq) (ReleaseRuntimeResp, error) {

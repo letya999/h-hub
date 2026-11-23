@@ -12,6 +12,7 @@ import (
 // surface (create/get/list/cancel/hold) without Postgres or machines.
 // The conformance suite pins the shared behavior.
 type Fake struct {
+	owner string
 	mu    sync.Mutex
 	jobs  map[string]*JobInfo
 	byIdm map[string]string
@@ -21,8 +22,9 @@ type Fake struct {
 }
 
 // NewFake builds an empty in-memory engine.
-func NewFake() *Fake {
+func NewFake(owner string) *Fake {
 	return &Fake{
+		owner: owner,
 		jobs:  map[string]*JobInfo{},
 		byIdm: map[string]string{},
 		runs:  map[string][]RunEvent{},
@@ -39,7 +41,6 @@ func (f *Fake) Handlers() Handlers {
 		RetryJob:        f.retry,
 		UnquarantineJob: f.unquarantine,
 		SetHold:         f.hold,
-		ClaimNext:       f.claim,
 		ReportRun:       f.report,
 		GetRun:          f.runEvents,
 	}
@@ -47,18 +48,18 @@ func (f *Fake) Handlers() Handlers {
 
 func (f *Fake) create(_ context.Context, r CreateJobReq) (CreateJobResp, error) {
 	var out CreateJobResp
-	if err := herrors.Require(r.Owner != "" && r.Space != "" && r.Input != "", "err.invalid-arg"); err != nil {
+	if err := herrors.Require(r.Space != "" && r.Input != "", "err.invalid-arg"); err != nil {
 		return out, err //nolint:wrapcheck // shared error form
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if id, ok := f.byIdm[r.Owner+"/"+r.Idem]; ok && r.Idem != "" {
+	if id, ok := f.byIdm[f.owner+"/"+r.Idem]; ok && r.Idem != "" {
 		return CreateJobResp{ID: id, State: f.jobs[id].State}, nil
 	}
 	f.next++
 	id := jobID(f.next)
 	f.jobs[id] = &JobInfo{ID: id, Space: r.Space, State: "queued", Created: "now"}
-	f.byIdm[r.Owner+"/"+r.Idem] = id
+	f.byIdm[f.owner+"/"+r.Idem] = id
 	return CreateJobResp{ID: id, State: "queued"}, nil
 }
 
@@ -118,10 +119,6 @@ func (f *Fake) hold(_ context.Context, r SetHoldReq) (SetHoldResp, error) {
 	defer f.mu.Unlock()
 	f.epoch++
 	return SetHoldResp{Epoch: f.epoch}, nil
-}
-
-func (f *Fake) claim(_ context.Context, _ ClaimNextReq) (ClaimNextResp, error) {
-	return ClaimNextResp{}, nil
 }
 
 func (f *Fake) report(_ context.Context, r ReportRunReq) (struct{}, error) {

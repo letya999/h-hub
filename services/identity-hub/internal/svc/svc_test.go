@@ -14,6 +14,7 @@ import (
 	"github.com/letya999/h-hub/shared/edges"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/testkit"
 )
 
 type memNoncer struct{ seen map[string]bool }
@@ -49,6 +50,13 @@ func TestIssueVerifies(t *testing.T) {
 	srv := httptest.NewServer(s.Mux())
 	t.Cleanup(srv.Close)
 	c := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(srv.URL, "")}}
+	_, otherKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.IssueServiceToken(context.Background(), "task-engine", "spawn-controller", "n1", otherKey); herrors.CodeOf(err) != herrors.CodeForbidden {
+		t.Fatalf("bad proof: %v", err)
+	}
 	res, err := c.IssueServiceToken(context.Background(), "task-engine", "spawn-controller", "n1", subKey)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
@@ -68,6 +76,7 @@ func TestIssueVerifies(t *testing.T) {
 
 func TestMintNeedsEdge(t *testing.T) {
 	t.Parallel()
+	testkit.Req(t, "adr.service-edges.edge-required")
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

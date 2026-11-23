@@ -57,6 +57,10 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("pubs: %w", err)
 	}
+	opPub, err := operatorPub(pubs)
+	if err != nil {
+		return err
+	}
 	edgeData, err := os.ReadFile(filepath.Join(cfg.Keys, "edges"))
 	if err != nil {
 		return fmt.Errorf("edges: %w", err)
@@ -73,15 +77,24 @@ func run(ctx context.Context, l *log.L) error {
 		return auth.Sign(key, purpose, payload)
 	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
-		Sign:  idv1.Signer(signer),
-		Pub:   pub,
-		Kid:   idv1.Kid(pub),
-		Pubs:  pubs,
-		Tab:   tab.For(cfg.Sub),
-		Nonce: svc.SQLNoncer{DB: db},
-		Now:   func() int64 { return time.Now().Unix() },
+		Sign:        idv1.Signer(signer),
+		Pub:         pub,
+		OperatorPub: opPub,
+		Kid:         idv1.Kid(pub),
+		Pubs:        pubs,
+		Tab:         tab.For(cfg.Sub),
+		Nonce:       svc.SQLNoncer{DB: db},
+		Now:         func() int64 { return time.Now().Unix() },
 	})
 	return serve(ctx, l, s.Mux())
+}
+
+func operatorPub(pubs map[string]ed25519.PublicKey) (ed25519.PublicKey, error) {
+	pub, ok := pubs["operator"]
+	if !ok {
+		return nil, fmt.Errorf("operator public key missing")
+	}
+	return pub, nil
 }
 
 func serve(ctx context.Context, l *log.L, h http.Handler) error {

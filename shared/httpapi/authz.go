@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,17 @@ type Verifier func(r *http.Request) (Principal, error)
 // AuthHandler is a Handler that receives the verified principal.
 type AuthHandler func(w http.ResponseWriter, r *http.Request, p Principal) error
 
+type principalKey struct{}
+
+// PrincipalFrom returns the verified principal attached by HandleAuth.
+func PrincipalFrom(ctx context.Context) *Principal {
+	p, ok := ctx.Value(principalKey{}).(Principal)
+	if !ok {
+		return nil
+	}
+	return &p
+}
+
 // HandleAuth wraps an op handler: bounded body, bearer verification,
 // then the shared error form.
 func HandleAuth(v Verifier, next AuthHandler) http.HandlerFunc {
@@ -42,18 +54,8 @@ func HandleAuth(v Verifier, next AuthHandler) http.HandlerFunc {
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
+		r = r.WithContext(context.WithValue(r.Context(), principalKey{}, p))
 		if err := next(w, r, p); err != nil {
-			writeError(w, r, err)
-		}
-	}
-}
-
-// HandleOpen wraps an op that carries its own proof in the request
-// body or needs none at all (healthz, token issuance).
-func HandleOpen(next AuthHandler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
-		if err := next(w, r, Principal{}); err != nil {
 			writeError(w, r, err)
 		}
 	}
@@ -73,8 +75,15 @@ type envelope struct {
 // (sub, op) — the single implementation of rule 31.
 func ServiceVerifier(pub ed25519.PublicKey, self string, tab edges.Table,
 	now func() time.Time) Verifier {
+	return EdgeVerifier(pub, "service", self, tab, now)
+}
+
+// EdgeVerifier checks a signed token of the requested purpose and the
+// descriptor edge for its subject and HTTP operation.
+func EdgeVerifier(pub ed25519.PublicKey, purpose, self string, tab edges.Table,
+	now func() time.Time) Verifier {
 	return func(r *http.Request) (Principal, error) {
-		p, err := verify(bearer(r), pub, "service", now)
+		p, err := verify(bearer(r), pub, purpose, now)
 		if err != nil {
 			return p, err
 		}

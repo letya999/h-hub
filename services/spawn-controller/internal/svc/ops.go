@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
@@ -42,9 +43,17 @@ type clock struct{ f func() time.Time }
 func (c clock) Now() time.Time { return c.f() }
 
 func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.CreateSpaceResp, error) {
-	if r.Owner == "" || r.Name == "" || r.Template != "default" {
+	scope, err := idv1.ScopeFrom(ctx)
+	if err != nil {
+		return sv1.CreateSpaceResp{}, fmt.Errorf("scope: %w", err)
+	}
+	if scope.Space != "" {
+		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	if r.Name == "" || r.Template != "default" {
 		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
 	}
+	owner := scope.Owner
 	// The passport pins the image by digest: the configured tag
 	// resolves to the daemon's immutable id at compile time, so the
 	// spec digest binds image content, not a moving tag.
@@ -54,7 +63,7 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 	}
 	// Idempotent on the natural key (owner,name): a repeat returns the
 	// existing space — its spec stays pinned at creation time.
-	if sp, err := spaceByName(ctx, s.db, r.Owner, r.Name); err != nil {
+	if sp, err := spaceByName(ctx, s.db, owner, r.Name); err != nil {
 		return sv1.CreateSpaceResp{}, err
 	} else if sp.id != "" {
 		return sv1.CreateSpaceResp{ID: sp.id, Digest: sp.digest}, nil
@@ -72,7 +81,7 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
 	if err := insertSpace(ctx, tx, spaceRow{
-		id: id, owner: r.Owner, name: r.Name,
+		id: id, owner: owner, name: r.Name,
 		template: r.Template, spec: spec, digest: digest}); err != nil {
 		return sv1.CreateSpaceResp{}, err
 	}
@@ -83,7 +92,14 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 }
 
 func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceResp, error) {
-	sp, err := getSpace(ctx, s.db, r.Owner, r.ID)
+	scope, err := idv1.ScopeFrom(ctx)
+	if err != nil {
+		return sv1.GetSpaceResp{}, fmt.Errorf("scope: %w", err)
+	}
+	if scope.Space == "" || scope.Space != r.ID {
+		return sv1.GetSpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	sp, err := getSpace(ctx, s.db, scope.Owner, scope.Space)
 	if err != nil {
 		return sv1.GetSpaceResp{}, err
 	}
@@ -106,7 +122,14 @@ func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceR
 // destroySpace drains the runtime and removes the domain rows; the
 // docker removal rides the outbox in the same transaction.
 func (s *Server) destroySpace(ctx context.Context, r sv1.DestroySpaceReq) (sv1.DestroySpaceResp, error) {
-	sp, err := getSpace(ctx, s.db, r.Owner, r.ID)
+	scope, err := idv1.ScopeFrom(ctx)
+	if err != nil {
+		return sv1.DestroySpaceResp{}, fmt.Errorf("scope: %w", err)
+	}
+	if scope.Space == "" || scope.Space != r.ID {
+		return sv1.DestroySpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	sp, err := getSpace(ctx, s.db, scope.Owner, scope.Space)
 	if err != nil {
 		return sv1.DestroySpaceResp{}, err
 	}
@@ -152,7 +175,7 @@ func (s *Server) resolveSpec(ctx context.Context, r sv1.ResolveSpecReq) (sv1.Res
 	if err != nil {
 		return sv1.ResolveSpecResp{}, err
 	}
-	return sv1.ResolveSpecResp{Spec: string(sp.spec), Digest: sp.digest}, nil
+	return sv1.ResolveSpecResp{Spec: string(sp.spec), Digest: sp.digest, Owner: sp.owner}, nil
 }
 
 func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {

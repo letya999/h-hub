@@ -170,10 +170,12 @@ services:
     volumes: []
     edges: []
 clients:
-  - name: hubctl
+  - name: operator
     edges:
+      - to: identity-hub
+        ops: [ActAs]
       - to: task-engine
         ops: [CreateJob, GetJob, ListJobs, CancelJob, RetryJob,
-              UnquarantineJob, SetHold, ClaimNext, GetRun]
+              UnquarantineJob, SetHold, GetRun]
       - to: spawn-controller
         ops: [CreateSpace, GetSpace, DestroySpace]

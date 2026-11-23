@@ -28,6 +28,7 @@ var All = []Gate{
 	{"docs", Docs},
 	{"trace", Trace},
 	{"miglint", MigLint},
+	{"sql-eol", SQLLineEndings},
 	{"module-ban", ModuleBan},
 	{"blob-size", BlobSize},
 	{"fix-needs-test", FixNeedsTest},

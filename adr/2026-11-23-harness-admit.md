@@ -1,5 +1,7 @@
 # harness-admit: memory-only admission, host-rendered config
 
+Status: accepted (owner decision, 2026-11-23).
+
 ## Context
 
 The runtime container sits in the space zone with no database. It must
@@ -27,7 +29,5 @@ scenario is a scripted "answer with text" model call.
 
 ## Invariants
 
-- adr.harness-admit.unknown-run-refused — admit-table refusal covered
-  by `contracts/harness/v1` conformance suite
-- adr.harness-admit.config-readonly — missing rendered config fails
-  startup (`TestStoreMissing` covers the missing-input refusal family)
+- adr.harness-admit.unknown-run-refused — `TestCancelUnknownRun`
+- adr.harness-admit.config-readonly — `TestSpaceNoDB` (mount inspection)
