@@ -4,7 +4,7 @@ set -eu
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
 
-if ! go test -tags hhubdb -json -count=1 ./... > "$report"; then
+if ! go test -tags "hhubdb libsqlite3" -json -count=1 ./... > "$report"; then
   cat "$report"
   exit 1
 fi
