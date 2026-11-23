@@ -118,6 +118,11 @@ restore-drill:
       -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} sh /src/tools/backup/restore-drill.sh
 
+# live-install upgrade: drain runtimes, activate new images, smoke,
+# roll back to the previous pins on failure
+upgrade:
+    sh tools/upgrade/upgrade.sh
+
 # --- real provider path (manual only; checks and CI never reach it) ---
 
 # materialize the cliproxy client key + config into the two volumes
