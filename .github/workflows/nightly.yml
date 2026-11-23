@@ -18,8 +18,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Build pinned dev tools
+        env:
+          GHCR_TOKEN: ${{ github.token }}
         run: |
-          docker build -f deploy/dev.Dockerfile -t hhub-dev:ci .
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -f deploy/dev.Dockerfile --build-arg "SQLCIPHER_BASE=$(cat deploy/sqlcipher-base.ref)" -t hhub-dev:ci .
           id=$(docker create hhub-dev:ci)
           mkdir -p "$RUNNER_TEMP/bin"
           docker cp "$id:/usr/local/bin/just" "$RUNNER_TEMP/bin/just"

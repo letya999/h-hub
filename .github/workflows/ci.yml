@@ -19,9 +19,13 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/hhub
-          key: hhub-dev-${{ hashFiles('go.sum', 'deploy/dev.Dockerfile') }}
+          key: hhub-dev-${{ hashFiles('go.sum', 'deploy/dev.Dockerfile', 'deploy/sqlcipher-base.ref') }}
+      - name: GHCR login
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Build hhub-dev
-        run: docker build -f deploy/dev.Dockerfile -t hhub-dev:ci .
+        run: docker build -f deploy/dev.Dockerfile --build-arg "SQLCIPHER_BASE=$(cat deploy/sqlcipher-base.ref)" -t hhub-dev:ci .
       - name: Prepare stack
         run: |
           mkdir -p ~/.cache/hhub/root

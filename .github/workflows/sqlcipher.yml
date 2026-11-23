@@ -1,0 +1,41 @@
+name: publish sqlcipher base
+
+# The SQLCipher base image is built once here and consumed by
+# digest (deploy/sqlcipher-base.ref); no SQLCipher compile happens in
+# developer builds or ordinary check runs.
+on:
+  push:
+    branches: [main]
+    paths: [deploy/sqlcipher.Dockerfile]
+  pull_request:
+    paths: [deploy/sqlcipher.Dockerfile, .github/workflows/sqlcipher.yml]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and publish
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/sqlcipher-base"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -f deploy/sqlcipher.Dockerfile -t "$image:build" .
+          docker push "$image:build"
+          digest=$(docker image inspect "$image:build" --format '{{index .RepoDigests 0}}')
+          echo "::notice::pin deploy/sqlcipher-base.ref to $digest"
+
+  alert:
+    needs: publish
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark base image publication failure
+        run: |
+          echo "::error::sqlcipher-base publication failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
