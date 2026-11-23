@@ -1,8 +1,8 @@
-# Phase 5 report — rollback baseline published, release validation pending
+# Phase 5 report — released as v0.0.5
 
 ## What passed
 
-- Published `main` and tags `v0.0.1`–`v0.0.4` at
+- Published `main` and tags `v0.0.1`–`v0.0.5` at
   [letya999/h-hub](https://github.com/letya999/h-hub). The first green
   [CI run](https://github.com/letya999/h-hub/actions/runs/45123645133)
   preceded branch protection. `main` now requires a green `check` status,
@@ -25,7 +25,7 @@
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
-  is refused. The full e2e passed in **61.458 s** after Docker network
+  is refused. The full e2e passed in **70.317 s** after Docker network
   confinement, with this negative check; local `just check` passed.
   The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
@@ -79,7 +79,11 @@
   `sha256:b3c0e0c6a549cdb9c32fcad5d096bdb431a2f5f055c7aed907a2dd9de0b4e02d`.
   A fresh nine-database backup restored on schema 0.0.5; the published
   v0.0.4.1 binary started, its issuer key decrypted, and a new message
-  got an answer. The local N-1 smoke passed.
+  got an answer. The local N-1 smoke and the
+  [release CI smoke](https://github.com/letya999/h-hub/actions/runs/45170610093)
+  passed. PostgreSQL readiness is checked over TCP so the drill cannot
+  mistake the temporary initialization server for the final server
+  ([regression](../../tools/backup/postgres_ready_test.go)).
 - The [invariant register](../invariants.md) lists all **47** declared IDs:
   **27 proved** and **20 deferred**. For each proved ID, `just check`
   now runs the named scenario without test caching and requires both a
@@ -92,67 +96,73 @@
 ## `sys.*` matrix
 
 `Proved` means the cited scenario ran and checks the stated boundary.
-`Deferred` identifies an absent owner and destination phase. `Blocked`
-means a phase-5 owner exists but the required proof is still missing;
-it does **not** count as a passing status.
+`Deferred` identifies an absent owner and destination phase. Partial
+evidence does not count as `Proved`.
 
 | ID | Status | Owner / evidence or missing proof |
 | --- | --- | --- |
-| `tenant-isolation` | Proved | Task/channel/spawn e2e refuses owner A reading B's data. |
-| `forged-token` | Proved | Cross-owner and wrong-key e2e return an error. |
-| `secret-leak` | Proved | Dump, log, inspect and answer checks refuse plaintext exposure. |
-| `kill-uncertain` | Proved | SIGKILL/outbox scenarios keep uncertain work from blind retry. |
-| `store-missing` | Proved | Missing database refuses service startup. |
-| `stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer and settled job rejects cancellation. |
-| `late-receipt` | Proved | Settled job remains settled after a late receipt. |
-| `seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
-| `sweep-lag` | Proved | Task-engine: one-minute overdue job creates a durable operator alert; operator token cannot forge it. |
-| `wedge-unblock` | Proved | CLI exits a held job and live runtime; contract scenarios cover every non-final state and refuse cross-owner exit. |
-| `schema-version` | Proved | Future spec version is refused; additive migration is checked. |
-| `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
-| `space-no-db` | Deferred to phase 13 | Runtime inspect has no DB credential/socket; worker owner is absent. |
-| `seal-at-rest` | Deferred to phase 7 | Issuer seed is sealed; credential-broker secret-value owner is absent. |
-| `watchdog-stale` | Proved | Stale tick makes spawn-controller unhealthy; channel-hub sends a direct operator alert, and an unauthenticated status read is refused. |
-| `service-edge` | Proved | Wrong operation or absent token is refused. |
-| `worker-tenant` | Deferred to phase 13 | Worker owner is absent. |
-| `worker-stop-confirmed` | Deferred to phase 13 | Worker owner is absent. |
-| `package-build` | Deferred to phase 17 | Package owner is absent. |
-| `recipe-hosts` | Deferred to phase 17 | Recipe owner is absent. |
+| `sys.tenant-isolation` | Proved | Task/channel/spawn e2e refuses owner A reading B's data. |
+| `sys.forged-token` | Proved | Cross-owner and wrong-key e2e return an error. |
+| `sys.secret-leak` | Proved | Dump, log, inspect and answer checks refuse plaintext exposure. |
+| `sys.kill-uncertain` | Proved | SIGKILL/outbox scenarios keep uncertain work from blind retry. |
+| `sys.store-missing` | Proved | Missing database refuses service startup. |
+| `sys.stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer and settled job rejects cancellation. |
+| `sys.late-receipt` | Proved | Settled job remains settled after a late receipt. |
+| `sys.seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
+| `sys.sweep-lag` | Proved | Task-engine: one-minute overdue job creates a durable operator alert; operator token cannot forge it. |
+| `sys.wedge-unblock` | Proved | CLI exits a held job and live runtime; contract scenarios cover every non-final state and refuse cross-owner exit. |
+| `sys.schema-version` | Proved | Future spec version is refused; additive migration is checked. |
+| `sys.worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
+| `sys.space-no-db` | Deferred to phase 13 | Runtime inspect has no DB credential/socket; worker owner is absent. |
+| `sys.seal-at-rest` | Deferred to phase 7 | Issuer seed is sealed; credential-broker secret-value owner is absent. |
+| `sys.watchdog-stale` | Proved | Stale tick makes spawn-controller unhealthy; channel-hub sends a direct operator alert, and an unauthenticated status read is refused. |
+| `sys.service-edge` | Proved | Wrong operation or absent token is refused. |
+| `sys.worker-tenant` | Deferred to phase 13 | Worker owner is absent. |
+| `sys.worker-stop-confirmed` | Deferred to phase 13 | Worker owner is absent. |
+| `sys.package-build` | Deferred to phase 17 | Package owner is absent. |
+| `sys.recipe-hosts` | Deferred to phase 17 | Recipe owner is absent. |
 
 The `space-no-db` row is limited to the runtime in this phase. A phase-13
 worker scenario must complete the broader claim before release of that
 worker. The `seal-at-rest` row remains deferred for the same reason.
 
-## Remaining work and release decision
+## Release validation
 
-- The v0.0.4 image remains immutable and incompatible with migration 6.
-  The owner-approved v0.0.4.1 digest passes the local rollback smoke.
-  The smoke exercises the published identity image; it is not a full
-  previous-version stack, and the new task-engine migration is not
-  independently exercised by the old task-engine image.
-- The new register conservatively defers **12** ADR claims whose
-  existing tests still lack a refusal at the relevant boundary. Those
-  tests remain useful partial checks; they are not counted as proof.
-- The first [phase-5 PR CI](https://github.com/letya999/h-hub/actions/runs/45130542931)
-  passed `just check` but stopped before the image smoke because the
-  runner could not find nested `just init`. A regression test failed
-  before the workflow PATH fix and passed afterward. The updated PR
-  reached the published-image incompatibility in the
-  [second CI run](https://github.com/letya999/h-hub/actions/runs/45132085394):
-  `just check` passed, then the v0.0.4 identity binary rejected migration 6.
-- The [latest completed PR CI](https://github.com/letya999/h-hub/actions/runs/45151032918)
-  also passed Ubuntu `just check` and failed only at the pinned v0.0.4
-  image smoke with `migrations: invalid: err.migration`.
-- The [trace-enabled PR CI](https://github.com/letya999/h-hub/actions/runs/45155247013)
-  exposed a test race: a parallel SIGKILL scenario selected an unrelated
-  runtime and timed out. It now selects the container belonging to the
-  target space. Its focused e2e and the full local `just check` passed;
-  Ubuntu CI must confirm the fix.
-- Phase 5 is **not ready for merge or `v0.0.5`** until the new PR CI
-  passes. Manual dispatch of
-  `nightly.yml` returned HTTP 404 because the workflow is not on the
-  default branch. The synthetic failure-to-issue check cannot run yet.
-  No skipped check is counted as passing.
+- The [phase-5 PR](https://github.com/letya999/h-hub/pull/5) passed
+  [Ubuntu CI](https://github.com/letya999/h-hub/actions/runs/45164496016):
+  `just check` and the published-image N-1 smoke. A separate
+  [PostgreSQL readiness PR](https://github.com/letya999/h-hub/pull/7)
+  passed its [CI](https://github.com/letya999/h-hub/actions/runs/45169804160)
+  after a real regression test failed on the temporary socket server.
+  The [release commit on main](https://github.com/letya999/h-hub/actions/runs/45170610093)
+  passed both gates again. [Tag v0.0.5](https://github.com/letya999/h-hub/tree/v0.0.5)
+  points to that green commit.
+- The [GHCR image run](https://github.com/letya999/h-hub/actions/runs/45171339057)
+  published all six `v0.0.5` service and CLI images and printed a digest
+  for each. The [manually dispatched nightly](https://github.com/letya999/h-hub/actions/runs/45171353174)
+  passed `Check`, a 36-message load, backup, full nine-database restore,
+  message-to-answer probe, and the published-digest N-1 smoke. The load
+  took **7.4 s** with **0 errors**; the whole nightly took **5m28s**.
+- An [intentional failure run](https://github.com/letya999/h-hub/actions/runs/45172856579)
+  on a separate branch failed before build, then its `Alert on failure`
+  step created [issue #8](https://github.com/letya999/h-hub/issues/8)
+  with the exact run URL. The branch was deleted and the probe issue
+  closed. The successful nightly did not create an issue.
+
+## Remaining limits
+
+- The original v0.0.4 image is immutable and rejects migration 6. The
+  owner-approved v0.0.4.1 digest is the tested rollback baseline. The
+  smoke runs the published **identity-hub** binary on the 0.0.5 backup;
+  it does not run the full previous-version stack. In particular, the
+  old task-engine image has not been tested independently against its
+  new alert-intent table.
+- The invariant register defers **12 ADR claims** without an executed
+  refusal at their boundary. The **8 deferred `sys.*` IDs** await the
+  owners and phases named in the matrix. Partial tests are not proof.
+- Cleanup and the dispatch-race fix reduced repeated 36-message loads
+  to 7.4–9.0 s, but the earlier 26.9 s outlier cannot be attributed to
+  orphan containers alone from these measurements.
 
 ## Redesign signals
 
@@ -161,15 +171,12 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   channel-hub **872/4,000**, harness-runtime **395/6,000**.
   No size trigger fired. Keep the four deployed product services plus
   the per-space harness runtime.
-- Mandatory e2e: **61.458 s** at the prior network-confinement checkpoint
-  against 10 minutes. Full local `just check` with the trace gate and
-  mandatory e2e took **249.9 s** on the first measured run, **167.3 s**
-  after rebase and **236.7 s** with the rollback-pin regression, all
-  under five minutes. Passing three-user loads are
-  **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
-  unexplained outlier, though runtime leakage was present then. A
-  separate early-result race caused one later 311.6 s failed run;
-  its focused regression and two post-fix load runs are green.
-- The original rollback incompatibility was resolved by the approved
-  v0.0.4.1 patch baseline. Remaining release gates are remote CI and
-  nightly validation, not service size or the measured local duration.
+- Mandatory e2e: **70.317 s** against the 10-minute limit. Full local
+  `just check` with executed trace proofs and real-container e2e took
+  **263.9 s**, under five minutes. The release CI completed in **4m14s**;
+  the manually triggered nightly completed in **5m28s**. No duration
+  trigger fired.
+- Passing three-user loads after cleanup and dispatch-race repair took
+  **7.4–9.0 s** for 36 messages, compared with the earlier **26.9 s**
+  outlier. The separate early-result race once caused a **311.6 s**
+  failed load; its regression and subsequent loads passed.
