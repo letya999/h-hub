@@ -4,6 +4,8 @@
 package proof
 
 import (
+	"crypto/rand"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -55,13 +57,25 @@ func TestDepguardBroken(t *testing.T) {
 	}
 }
 
-// TestGitleaksBroken proves gitleaks finds the planted test secret.
+// TestGitleaksBroken proves gitleaks finds a generated test secret.
 func TestGitleaksBroken(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(root(t), "testdata", "broken", "gitleaks")
-	out, failed := run(t, dir, "gitleaks", "dir", ".")
+	dir := t.TempDir()
+	key := make([]byte, 16)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	for i := range key {
+		key[i] = alphabet[int(key[i])%len(alphabet)]
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secret.txt"),
+		[]byte("AWS_ACCESS_KEY_ID=AKIA"+string(key)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, failed := run(t, dir, "gitleaks", "dir", "--redact", ".")
 	if !failed {
-		t.Fatalf("gitleaks passed on planted secret:\n%s", out)
+		t.Fatalf("gitleaks passed on generated secret:\n%s", out)
 	}
 }
 

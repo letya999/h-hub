@@ -99,9 +99,9 @@ Pre-commit `check-fast` ~10 s.
   are not part of `just check`, which must stay offline-fast. A smoke
   recipe could join up+init+doctor later; owner decision needed on
   whether it belongs in check or stays a manual smoke.
-- gitleaks: the AWS documentation example key (`AKIA...EXAMPLE`) is in
-  gitleaks' own allowlist — the fixture uses a non-documented key so the
-  proof is real. `testdata/broken/` is allowlisted in `.gitleaks.toml`.
+- gitleaks: the broken-case test generates a key in a temporary directory,
+  so no secret fixture is stored in Git history. The repository has no
+  path allowlist for secrets.
 - Forbidden-word and windows-path gates are text scans and needed two
   heuristics: char classes inside the rule regex itself, and
   uppercase-drive + non-word-boundary for `VAR:/mount` and `%s:\n`

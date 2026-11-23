@@ -1,5 +1,1 @@
 title = "h-hub gitleaks"
-
-[allowlist]
-description = "planted secrets that prove the gitleaks gate"
-paths = ['''testdata/broken/''']
