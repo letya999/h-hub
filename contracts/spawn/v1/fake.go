@@ -33,6 +33,7 @@ func (f *Fake) Handlers() Handlers {
 		EnsureRuntime:  f.ensure,
 		ResolveSpec:    f.resolve,
 		ReleaseRuntime: f.release,
+		SetModel:       f.setModel,
 	}
 }
 
@@ -105,6 +106,24 @@ func (f *Fake) resolve(_ context.Context, r ResolveSpecReq) (ResolveSpecResp, er
 
 func (f *Fake) release(_ context.Context, _ ReleaseRuntimeReq) (ReleaseRuntimeResp, error) {
 	return ReleaseRuntimeResp{OK: true}, nil
+}
+
+// modelRoutes is the fixed route set the fake's SetModel validates
+// against — the same names the default passport template declares.
+var modelRoutes = map[string]bool{"scripted": true, "scripted-alt": true, "devin": true}
+
+func (f *Fake) setModel(_ context.Context, r SetModelReq) (SetModelResp, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.spaces[r.Space]
+	if !ok || s.Owner != f.owner {
+		return SetModelResp{}, herrors.New(herrors.CodeNotFound, "err.not-found").With("id", r.Space) //nolint:wrapcheck // shared error form
+	}
+	if !modelRoutes[r.Default] {
+		return SetModelResp{}, herrors.New(herrors.CodeInvalid, "err.invalid-arg")
+	}
+	s.Digest = digestOf(s.Digest, r.Default)
+	return SetModelResp{Digest: s.Digest}, nil
 }
 
 func spaceID(n int) string {
