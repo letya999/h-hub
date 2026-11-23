@@ -66,6 +66,7 @@ func TestRunClaimUnique(t *testing.T) {
 	if success != 1 || conflicts != 1 {
 		t.Fatalf("parallel claims: success=%d unique-conflict=%d", success, conflicts)
 	}
+	testkit.Deny(t, "adr.task-jobs.run-unique", conflicts == 1)
 }
 
 type claimBarrier struct {

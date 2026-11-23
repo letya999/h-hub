@@ -96,16 +96,13 @@ func TestMockChannelThreeUsers(t *testing.T) {
 		}
 		waitMock(t, o, cursor, "answer: hello "+o, 3*time.Minute)
 	}
-	if _, err := mockClient(t, owners[0], "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[1]}); herrors.CodeOf(err) != herrors.CodeForbidden {
-		t.Fatalf("cross-tenant outbox: %v", err)
-	}
-	if _, err := mockClient(t, owners[0], "Inject").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[0]}); herrors.CodeOf(err) != herrors.CodeForbidden {
-		t.Fatalf("wrong operation edge: %v", err)
-	}
+	_, err := mockClient(t, owners[0], "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[1]})
+	testkit.Deny(t, "sys.tenant-isolation", herrors.CodeOf(err) == herrors.CodeForbidden)
+	_, err = mockClient(t, owners[0], "Inject").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[0]})
+	testkit.Deny(t, "sys.service-edge", herrors.CodeOf(err) == herrors.CodeForbidden)
 	forgedClient := forgedMock(t, owners[0])
-	if _, err := forgedClient.ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[0]}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
-		t.Fatalf("forged outbox token: %v", err)
-	}
+	_, err = forgedClient.ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owners[0]})
+	testkit.Deny(t, "sys.forged-token", herrors.CodeOf(err) == herrors.CodeUnauthorized)
 }
 
 func forgedMock(t *testing.T, owner string) *cv1.Client {

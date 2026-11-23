@@ -186,10 +186,8 @@ func TestJobToAnswer(t *testing.T) {
 		t.Fatal("alice space missing")
 	}
 	alice := ownerSpace{"alice", aliceSpace.(string)}
-	if _, err := taskClient(t, alice).GetJob(context.Background(),
-		tv1.GetJobReq{ID: borisJob.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
-		t.Fatalf("alice read boris job: %v", err)
-	}
+	_, foreignErr := taskClient(t, alice).GetJob(context.Background(), tv1.GetJobReq{ID: borisJob.(string)})
+	testkit.Deny(t, "adr.task-jobs.tenant-isolation", herrors.CodeOf(foreignErr) == herrors.CodeNotFound)
 	if _, err := taskClient(t, alice).CancelJob(context.Background(),
 		tv1.JobReq{ID: borisJob.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice cancelled boris job: %v", err)
@@ -319,6 +317,9 @@ func TestKillUncertain(t *testing.T) {
 	if runs != 1 {
 		t.Fatalf("expected 1 run, got %d", runs)
 	}
+	_, retryErr := taskClient(t, ownerSpace{owner, space}).RetryJob(context.Background(), tv1.JobReq{ID: res.ID})
+	testkit.Deny(t, "sys.kill-uncertain", herrors.CodeOf(retryErr) == herrors.CodeConflict)
+	testkit.Deny(t, "adr.task-jobs.kill-to-uncertain", herrors.CodeOf(retryErr) == herrors.CodeConflict)
 	_ = j
 }
 
@@ -333,9 +334,8 @@ func TestForgedToken(t *testing.T) {
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
 	ownerTok := forge(t, key, "owner", `{"sub":"operator","owner":"alice","aud":["task-engine","spawn-controller"],"exp":9999999999}`)
 	badTask := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, ownerTok)}}
-	if _, err := badTask.GetJob(context.Background(), tv1.GetJobReq{ID: "job_none"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
-		t.Fatalf("forged task owner token: %v", err)
-	}
+	_, err := badTask.GetJob(context.Background(), tv1.GetJobReq{ID: "job_none"})
+	testkit.Deny(t, "adr.service-edges.forged-rejected", herrors.CodeOf(err) == herrors.CodeUnauthorized)
 	if _, err := badTask.CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: "space_none", Conversation: "c", Input: "forged", Idem: "forged"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
 		t.Fatalf("forged task create token: %v", err)
@@ -350,7 +350,7 @@ func TestForgedToken(t *testing.T) {
 	}
 	tok := forge(t, key, "service", `{"sub":"task-engine","aud":["spawn-controller"],"exp":9999999999,"kid":"k"}`)
 	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, tok)}}
-	_, err := c.EnsureRuntime(context.Background(),
+	_, err = c.EnsureRuntime(context.Background(),
 		sv1.EnsureRuntimeReq{Space: "none", Digest: "x"})
 	if err == nil {
 		t.Fatalf("forged service token accepted")
@@ -383,11 +383,10 @@ func TestServiceEdge(t *testing.T) {
 	testkit.Req(t, "sys.service-edge")
 	testkit.Req(t, "adr.service-edges.edge-required")
 	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}
-	if _, err := c.CreateSpace(context.Background(), sv1.CreateSpaceReq{
-		Name: "unauthenticated", Template: "default"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
-		t.Fatalf("unauthenticated owner call: %v", err)
-	}
-	_, err := c.EnsureRuntime(context.Background(),
+	_, err := c.CreateSpace(context.Background(), sv1.CreateSpaceReq{
+		Name: "unauthenticated", Template: "default"})
+	testkit.Deny(t, "adr.service-edges.edge-required", herrors.CodeOf(err) == herrors.CodeUnauthorized)
+	_, err = c.EnsureRuntime(context.Background(),
 		sv1.EnsureRuntimeReq{Space: "none", Digest: "x"})
 	if err == nil {
 		t.Fatalf("unauthenticated service call accepted")
@@ -521,10 +520,9 @@ func TestStackRestart(t *testing.T) {
 	if j.Result != "answer: restart check" {
 		t.Fatalf("lost result after restart: %q", j.Result)
 	}
-	if _, err := taskClient(t, ownerSpace{owner, space}).CancelJob(context.Background(),
-		tv1.JobReq{ID: res.ID}); herrors.CodeOf(err) != herrors.CodeConflict {
-		t.Fatalf("settled job accepted cancellation after restart: %v", err)
-	}
+	_, err = taskClient(t, ownerSpace{owner, space}).CancelJob(context.Background(), tv1.JobReq{ID: res.ID})
+	testkit.Deny(t, "sys.stack-restart", herrors.CodeOf(err) == herrors.CodeConflict)
+	testkit.Deny(t, "adr.task-jobs.restart-durable", herrors.CodeOf(err) == herrors.CodeConflict)
 	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
 		External: owner, UpdateID: idem("after", owner), Text: "after restart"}); err != nil {
 		t.Fatal(err)

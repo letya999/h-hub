@@ -225,9 +225,7 @@ func TestCASRace(t *testing.T) {
 	}
 	chg2 := Change{ID: "m1", From: s2, Event: "start", To: "active", Actor: "b"}
 	err = m.commitTransition(ctx, tx2, commit{version: v2, chg: chg2, at: time.Now()})
-	if !stderrors.Is(err, ErrStale) {
-		t.Fatalf("CAS loser must get ErrStale, got %v", err)
-	}
+	testkit.Deny(t, "adr.fsm.cas-version", stderrors.Is(err, ErrStale))
 	if got := stateOf(t, conn, m, "m1"); got != "active" {
 		t.Fatalf("state=%s", got)
 	}
@@ -329,9 +327,8 @@ func TestLeaseContention(t *testing.T) {
 		t.Fatalf("first acquire ok=%v err=%v", ok, err)
 	}
 	ok, err = AcquireLease(ctx, conn, schema, req("b", now))
-	if err != nil || ok {
-		t.Fatalf("contended acquire ok=%v err=%v", ok, err)
-	}
+	testkit.Deny(t, "adr.fsm.lease-atomic", err == nil && !ok)
+	testkit.Deny(t, "adr.fsm.single-sweeper", err == nil && !ok)
 	ok, err = AcquireLease(ctx, conn, schema, req("b", now.Add(2*time.Minute)))
 	if err != nil || !ok {
 		t.Fatalf("expired acquire ok=%v err=%v", ok, err)

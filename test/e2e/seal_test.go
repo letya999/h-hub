@@ -41,6 +41,8 @@ func TestSecretsAbsentFromDumpLogsInspectAndAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = sealer.Open("other-purpose", kid, sealed)
+	testkit.Deny(t, "sys.secret-leak", err != nil)
 	dump := dockerOutput(t, "exec", "postgres", "pg_dump", "-U", "postgres", "identity_hub")
 	if bytes.Contains(dump, []byte(code)) || bytes.Contains(dump, []byte(hex.EncodeToString(seed))) {
 		t.Fatal("plaintext code or signing key in pg_dump")

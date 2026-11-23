@@ -47,8 +47,7 @@ func TestSweepLagOperatorAlert(t *testing.T) {
 		"sweep-lag-"+job.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("lag alert intent: count=%d err=%v", count, err)
 	}
-	if _, err := mockClient(t, "operator", "ReadOutbox").Alert(ctx,
-		cv1.AlertReq{Key: "denied-" + job.ID, Code: "sweep-lag"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
-		t.Fatalf("operator forged a service alert: %v", err)
-	}
+	_, err = mockClient(t, "operator", "ReadOutbox").Alert(ctx,
+		cv1.AlertReq{Key: "denied-" + job.ID, Code: "sweep-lag"})
+	testkit.Deny(t, "sys.sweep-lag", herrors.CodeOf(err) == herrors.CodeUnauthorized)
 }

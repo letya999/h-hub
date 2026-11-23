@@ -52,12 +52,9 @@ func TestStaleSpawnTickRefusesHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer res.Body.Close() //nolint:errcheck // best-effort close
-	if res.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("stale watchdog accepted: %d", res.StatusCode)
-	}
-	if _, err := (&sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}).WatchdogStatus(ctx,
-		sv1.WatchdogStatusReq{}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
-		t.Fatalf("unauthenticated watchdog read accepted: %v", err)
-	}
+	testkit.Deny(t, "sys.watchdog-stale", res.StatusCode == http.StatusServiceUnavailable)
+	_, err = (&sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}).WatchdogStatus(ctx,
+		sv1.WatchdogStatusReq{})
+	testkit.Deny(t, "sys.watchdog-stale", herrors.CodeOf(err) == herrors.CodeUnauthorized)
 	waitOperatorDelivery(t, "spawn-watchdog-2020-01-01T00:00:00Z", "Spawn controller watchdog is stale")
 }

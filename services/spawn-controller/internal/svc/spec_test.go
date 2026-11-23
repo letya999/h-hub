@@ -42,7 +42,6 @@ func TestSpecSchemaVersion(t *testing.T) {
 			t.Fatalf("cannot read old/new spec: %v", err)
 		}
 	}
-	if _, err := specPassports(spaceRow{spec: []byte(`{"schema_version":2}`)}); err == nil {
-		t.Fatal("future version accepted")
-	}
+	_, err = specPassports(spaceRow{spec: []byte(`{"schema_version":2}`)})
+	testkit.Deny(t, "sys.schema-version", err != nil)
 }

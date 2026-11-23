@@ -22,7 +22,6 @@ func TestCancelUnknownRun(t *testing.T) {
 	ctx := context.WithValue(context.Background(), principalKey{},
 		httpapi.Principal{Aud: []string{"harness-runtime"}, Payload: payload})
 	s := New("harness-runtime", Deps{})
-	if _, err := s.cancelRun(ctx, hv1.CancelRunReq{Run: "r"}); herrors.CodeOf(err) != herrors.CodeNotFound {
-		t.Fatalf("unknown run was not refused: %v", err)
-	}
+	_, err = s.cancelRun(ctx, hv1.CancelRunReq{Run: "r"})
+	testkit.Deny(t, "adr.harness-admit.unknown-run-refused", herrors.CodeOf(err) == herrors.CodeNotFound)
 }

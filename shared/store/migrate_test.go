@@ -40,8 +40,10 @@ func TestReadMigrationsRejects(t *testing.T) {
 		"zero":    {"0000_a.sql": "SELECT 1"},
 	}
 	for name, files := range cases {
-		if _, err := readMigrations(migFS(files), "migrations"); err == nil {
+		_, err := readMigrations(migFS(files), "migrations")
+		if err == nil {
 			t.Errorf("%s must be rejected", name)
 		}
+		testkit.Deny(t, "adr.store.numbered-sql", err != nil)
 	}
 }
