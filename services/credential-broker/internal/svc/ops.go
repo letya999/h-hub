@@ -3,7 +3,10 @@ package svc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -151,6 +154,9 @@ func (s *Server) snapshot(ctx context.Context, _ credv1.SnapshotReq) (credv1.Sna
 	dst := filepath.Join(filepath.Dir(s.deps.DBPath), "broker-snapshot.db")
 	if strings.Contains(dst, `'`) {
 		return credv1.SnapshotResp{}, fmt.Errorf("snapshot path %q: invalid", dst)
+	}
+	if err := os.Remove(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return credv1.SnapshotResp{}, fmt.Errorf("snapshot clear: %w", err)
 	}
 	if _, err := s.db.ExecContext(ctx, `VACUUM INTO '`+dst+`'`); err != nil {
 		return credv1.SnapshotResp{}, fmt.Errorf("snapshot: %w", err)

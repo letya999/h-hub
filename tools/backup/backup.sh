@@ -7,6 +7,7 @@ dest="/backup/$stamp"
 mkdir "$dest"
 mkdir "$dest/db" "$dest/conf"
 cp /run/hhub-secrets/seal-kek "$dest/seal-kek"
+cp /run/hhub-secrets/credential_broker-db-key "$dest/broker-db-key"
 cp -a /etc/hhub/. "$dest/conf/"
 docker exec postgres pg_dumpall -U postgres --globals-only > "$dest/globals.sql"
 docker exec postgres psql -U postgres -Atq -c \
@@ -23,5 +24,5 @@ docker run --rm --network hhub -v hhub-conf:/etc/hhub:ro \
   hhub-hubctl:local secret snapshot
 docker cp credential-broker:/data/broker-snapshot.db "$dest/broker-snapshot.db"
 
-(cd "$dest" && sha256sum db/*.dump seal-kek globals.sql broker-snapshot.db > SHA256SUMS)
+(cd "$dest" && sha256sum db/*.dump seal-kek broker-db-key globals.sql broker-snapshot.db > SHA256SUMS)
 printf 'backup: %s (%s databases)\n' "$dest" "$(wc -l < "$dest/databases")"
