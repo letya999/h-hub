@@ -81,7 +81,7 @@ func (d *dispatcher) dispatchInner(ctx context.Context, l *log.L, jobID string) 
 	if err != nil || !ack.Accepted {
 		return fmt.Errorf("submit refused")
 	}
-	return d.withJobTx(ctx, jobID, "dispatch", "dispatcher", nil)
+	return nil
 }
 
 // awaitRuntime polls EnsureRuntime until the runtime is warm and
@@ -142,6 +142,10 @@ func (d *dispatcher) bindRun(ctx context.Context, j jobRow, runID, digest string
 	if err := d.s.runM.Create(ctx, tx, clock{d.s.deps.Now},
 		fsm.CreateReq{ID: runID, Initial: "dispatched", Actor: "dispatcher"}); err != nil {
 		return fmt.Errorf("run machine: %w", err)
+	}
+	if err := d.s.jobM.Transition(ctx, tx, fsm.Request{
+		ID: j.id, Event: "dispatch", Actor: "dispatcher", At: d.s.deps.Now()}, nil); err != nil {
+		return fmt.Errorf("job running: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
