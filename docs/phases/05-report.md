@@ -25,8 +25,8 @@
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
-  is refused. The full e2e passed in **63.748 s** after the watchdog
-  alert scenario was added, with this negative
+  is refused. The full e2e passed in **61.826 s** after the runtime
+  exit command was added, with this negative
   check; local `just check` passed. The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
   **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
@@ -49,6 +49,13 @@
   tick: spawn-controller returned unhealthy, an unauthenticated status
   read was refused, and channel-hub sent the operator alert through its
   direct delivery outbox. A stable tick value deduplicates each incident.
+- [Exit-command e2e](../../test/e2e/wedge_unblock_test.go) applied
+  `hubctl job cancel` to a held job and `hubctl user runtime-drain` to a
+  live runtime, then saw the runtime reach `absent` and its container
+  disappear. DB contract scenarios cover every non-final job and
+  runtime state and refuse a foreign owner's request
+  ([job](../../services/task-engine/internal/svc/wedge_db_test.go),
+  [runtime](../../services/spawn-controller/internal/svc/drain_runtime_db_test.go)).
 - Phase 5 adds the additive identity-hub migration
   `0006_link_codes_expiry.sql` and task-engine alert-intent table
   migration `0003_operator_alerts.sql`. The live identity database
@@ -79,7 +86,7 @@ it does **not** count as a passing status.
 | `late-receipt` | Proved | Settled job remains settled after a late receipt. |
 | `seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
 | `sweep-lag` | Proved | Task-engine: one-minute overdue job creates a durable operator alert; operator token cannot forge it. |
-| `wedge-unblock` | Blocked | Job/runtime owners: no hubctl exit for every nonfinal state. |
+| `wedge-unblock` | Proved | CLI exits a held job and live runtime; contract scenarios cover every non-final state and refuse cross-owner exit. |
 | `schema-version` | Proved | Future spec version is refused; additive migration is checked. |
 | `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
 | `space-no-db` | Deferred to phase 13 | Runtime inspect has no DB credential/socket; worker owner is absent. |
@@ -108,8 +115,7 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   attaching the live socket would let the restored janitor affect live
   containers. This needs an isolated Docker engine for a safe end-to-end
   recovery drill.
-- `wedge-unblock` still needs the scenario described in the matrix.
-  The trace gate still checks links, not
+- The trace gate still checks links, not
   execution plus negative assertions; the invariant registry and new
   gate are not complete.
 - The first [phase-5 PR CI](https://github.com/letya999/h-hub/actions/runs/45130542931)
@@ -134,7 +140,7 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   channel-hub **872/4,000**, harness-runtime **395/6,000**.
   No size trigger fired. Keep the four deployed product services plus
   the per-space harness runtime.
-- Mandatory e2e: **63.748 s** against 10 minutes. Local `just check`
+- Mandatory e2e: **61.826 s** against 10 minutes. Local `just check`
   passed against the 5-minute criterion. Passing three-user loads are
   **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
   unexplained outlier, though runtime leakage was present then. A
