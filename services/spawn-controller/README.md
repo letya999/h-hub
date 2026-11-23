@@ -59,3 +59,5 @@ inspect `fsm.machines` for a runtime wedged in `starting` and the
 container logs of `hhub-rt-*`; check `intents` for the last action.
 `hubctl user runtime-drain <owner> <space>` requests removal without
 deleting the space ([TestHubctlUnblocksJobAndRuntime](../../test/e2e/wedge_unblock_test.go)).
+Docker inspect, removal and orphan scans are confined to this installation's
+network ([TestDockerRefusesForeignNetwork](internal/backend/docker_test.go)).
