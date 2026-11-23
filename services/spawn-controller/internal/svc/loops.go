@@ -196,6 +196,9 @@ func (s *Server) dockerRemove(ctx context.Context, e rmEffect) error {
 // reconcilePass inspects live runtimes against the daemon and drives
 // state that only observation can settle.
 func (s *Server) reconcilePass(ctx context.Context, l *log.L) {
+	if _, err := s.runM.Sweep(ctx, s.db, s.deps.Now(), 32, runtimeSweepHook); err != nil {
+		l.Error(ctx, "runtime sweep", err)
+	}
 	rts, err := liveRuntimes(ctx, s.db)
 	if err != nil {
 		l.Error(ctx, "reconcile read", err)
@@ -209,6 +212,29 @@ func (s *Server) reconcilePass(ctx context.Context, l *log.L) {
 	if err := reapOrphans(ctx, s.db, s.deps.Docker, l); err != nil {
 		l.Error(ctx, "orphan janitor", err)
 	}
+}
+
+func runtimeSweepHook(ctx context.Context, tx *sql.Tx, ch fsm.Change) error {
+	if ch.To != "draining" && ch.To != "failed" {
+		return nil
+	}
+	var container string
+	if err := tx.QueryRowContext(ctx,
+		"SELECT container FROM runtimes WHERE id=$1", ch.ID).Scan(&container); err != nil {
+		return fmt.Errorf("sweep container: %w", err)
+	}
+	if container == "" {
+		return nil
+	}
+	payload, err := json.Marshal(rmEffect{Runtime: ch.ID, Container: container})
+	if err != nil {
+		return fmt.Errorf("sweep removal: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
+		(kind,machine_id,topic,payload) VALUES ('runtime',$1,'docker-rm',$2)`, ch.ID, payload); err != nil {
+		return fmt.Errorf("sweep outbox: %w", err)
+	}
+	return nil
 }
 
 func reapOrphans(ctx context.Context, db *sql.DB, docker *backend.Docker, l *log.L) error {
