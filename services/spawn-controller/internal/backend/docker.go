@@ -14,7 +14,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -184,6 +186,30 @@ func (d *Docker) Inspect(ctx context.Context, id string) (exists, running bool, 
 		return false, false, err
 	}
 	return true, out.State.Running, nil
+}
+
+// ManagedContainer identifies a container owned by one runtime.
+type ManagedContainer struct{ ID, Runtime string }
+
+// ManagedContainers lists runtime containers, including stopped ones.
+func (d *Docker) ManagedContainers(ctx context.Context) ([]ManagedContainer, error) {
+	var rows []struct {
+		ID     string            `json:"Id"`
+		Names  []string          `json:"Names"`
+		Labels map[string]string `json:"Labels"`
+	}
+	filter := url.QueryEscape(`{"label":["hhub.managed=true"]}`)
+	if err := d.req(ctx, http.MethodGet, "/containers/json?all=1&filters="+filter, nil, &rows); err != nil {
+		return nil, fmt.Errorf("list managed containers: %w", err)
+	}
+	var out []ManagedContainer
+	for _, row := range rows {
+		name := row.Labels["hhub.runtime"]
+		if strings.HasPrefix(name, "hhub-rt-") && slices.Contains(row.Names, "/"+name) {
+			out = append(out, ManagedContainer{row.ID, name})
+		}
+	}
+	return out, nil
 }
 
 // Remove force-removes a container; a missing container is already done.

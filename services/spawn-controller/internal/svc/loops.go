@@ -206,6 +206,32 @@ func (s *Server) reconcilePass(ctx context.Context, l *log.L) {
 			l.Error(ctx, "reconcile "+rt.id, err)
 		}
 	}
+	if err := reapOrphans(ctx, s.db, s.deps.Docker, l); err != nil {
+		l.Error(ctx, "orphan janitor", err)
+	}
+}
+
+func reapOrphans(ctx context.Context, db *sql.DB, docker *backend.Docker, l *log.L) error {
+	containers, err := docker.ManagedContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("list managed: %w", err)
+	}
+	for _, c := range containers {
+		var exists bool
+		runtimeID := strings.TrimPrefix(c.Runtime, "hhub-")
+		if err := db.QueryRowContext(ctx,
+			"SELECT EXISTS(SELECT 1 FROM runtimes WHERE id=$1)", runtimeID).Scan(&exists); err != nil {
+			return fmt.Errorf("orphan registry lookup: %w", err)
+		}
+		if exists {
+			continue
+		}
+		if err := docker.Remove(ctx, c.ID); err != nil {
+			return fmt.Errorf("remove orphan %s: %w", c.ID, err)
+		}
+		l.Info(ctx, "orphan runtime removed", "container", c.ID, "reason", "missing registry row")
+	}
+	return nil
 }
 
 func liveRuntimes(ctx context.Context, db *sql.DB) ([]runtimeRow, error) {
