@@ -50,6 +50,12 @@ while IFS= read -r db; do
     < "$dir/db/$db.dump" >/dev/null
 done < "$dir/databases"
 
+if test -n "${REQUIRE_IDENTITY_MIGRATION:-}"; then
+  version=$(docker exec "$pg" psql -U postgres -d identity_hub -tAc \
+    'SELECT max(num) FROM schema_migrations')
+  test "$version" = "$REQUIRE_IDENTITY_MIGRATION"
+fi
+
 go run ./cmd/keydist --conf "$dir/conf" --keys "$dir/keys" --descriptor /src/deploy/descriptor.yaml
 for service in identity-hub task-engine channel-hub spawn-controller; do
   vol="hhub-restore-keys-$service-$id"
