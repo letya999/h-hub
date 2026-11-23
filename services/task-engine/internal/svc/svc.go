@@ -35,6 +35,7 @@ func Migrations() fs.FS { return migrations }
 type Deps struct {
 	IdentityURL string
 	SpawnURL    string
+	ChannelURL  string
 	Issuer      ed25519.PublicKey // issuer of service/run tokens
 	SelfKey     ed25519.PrivateKey
 	EdgeTab     edges.Table // inbound edge table for this service

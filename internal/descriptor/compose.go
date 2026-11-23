@@ -177,6 +177,7 @@ var envFixed = map[string]string{
 	"HHUB_DOCKER_SOCK":   "/var/run/docker.sock",
 	"HHUB_IDENTITY_URL":  "http://identity-hub:9000",
 	"HHUB_SPAWN_URL":     "http://spawn-controller:9000",
+	"HHUB_CHANNEL_URL":   "http://channel-hub:9000",
 	"HHUB_TASK_URL":      "http://task-engine:9000",
 	"HHUB_MODEL_URL":     "http://scripted-model:9000",
 	// Compose prefixes volume names with the project name "hhub".

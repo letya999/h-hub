@@ -42,9 +42,14 @@ func New(sub string, db *sql.DB, deps Deps) *Server {
 
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	ops := cv1.Ops(cv1.Handlers{Inject: s.inject, ReadOutbox: s.readOutbox})
+	ops := cv1.Ops(cv1.Handlers{Inject: s.inject, ReadOutbox: s.readOutbox, Alert: (&alertOps{s}).alert})
 	ver := httpapi.EdgeVerifier(s.deps.OperatorPub, "operator", s.sub, s.deps.Edges, s.deps.Now)
+	serviceVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Edges, s.deps.Now)
 	for name, op := range ops {
+		if name == "Alert" {
+			mux.Handle("/v1/"+name, httpapi.HandleAuth(serviceVer, func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error { return op(w, r) }))
+			continue
+		}
 		mux.Handle("/v1/"+name, httpapi.HandleAuth(ver, func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error { return op(w, r) }))
 	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

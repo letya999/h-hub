@@ -78,6 +78,7 @@ docker run -d --rm --name "$task" --network "$net" --network-alias task-engine \
   -e HHUB_SUB=task-engine -e 'HHUB_DSN=postgres://task_engine@postgres:5432/task_engine?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -e HHUB_CHANNEL_URL=http://channel-hub:9000 \
   -v "hhub-restore-keys-task-engine-$id:/etc/hhub:ro" hhub-task-engine:local >/dev/null
 docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hub \
   -e HHUB_SUB=channel-hub -e 'HHUB_DSN=postgres://channel_hub@postgres:5432/channel_hub?sslmode=disable' \

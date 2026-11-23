@@ -80,6 +80,9 @@ func (lp *loopRunner) sweepPass(ctx context.Context, l *log.L) {
 		}
 		return
 	}
+	if err := lp.alertSweepLag(ctx, lp.s.deps.Now()); err != nil {
+		l.Error(ctx, "sweep lag alert", err)
+	}
 	if _, err := lp.s.jobM.Sweep(ctx, lp.s.db, lp.s.deps.Now(), 32, lp.jobSweepHook); err != nil {
 		l.Error(ctx, "job sweep", err)
 	}
@@ -172,6 +175,8 @@ func (lp *loopRunner) execEffect(ctx context.Context, f fsm.OutEffect) error {
 			return fmt.Errorf("release runtime: %w", err)
 		}
 		return nil
+	case "operator-alert":
+		return lp.deliverOperatorAlert(ctx, f.Payload)
 	default:
 		return fmt.Errorf("unknown topic %q", f.Topic)
 	}

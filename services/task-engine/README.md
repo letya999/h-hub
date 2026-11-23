@@ -48,7 +48,7 @@ service's own sweeper.
 ## Config
 
 `HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`,
-`HHUB_SPAWN_URL`; loaded once in `internal/config`.
+`HHUB_SPAWN_URL`, `HHUB_CHANNEL_URL`; loaded once in `internal/config`.
 
 ## Runbook
 
@@ -57,3 +57,6 @@ tick. If jobs sit `admitted`, check `EnsureRuntime` reachability; if
 they fall to `uncertain`, inspect `job_events` for the lost run and
 the runtime container's liveness. `hubctl job retry|cancel|
 unquarantine` operates the `LongLived` exits.
+If a deadline is over 30 seconds late, the sweeper records an operator
+alert and delivers it through channel-hub
+([TestSweepLagOperatorAlert](../../test/e2e/sweep_lag_test.go)).
