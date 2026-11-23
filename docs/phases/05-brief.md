@@ -2,7 +2,7 @@
 
 Source: owner overnight brief; `h-hub-blueprint.md` §9 and
 `enforcement.md` §§4, 6. Work branch: `phase-05` from the local
-`v0.0.4` merge. No LLM, Telegram, new product service or push.
+`v0.0.4` merge. No LLM, Telegram, or new product service.
 
 ## Goal
 
@@ -11,14 +11,19 @@ three-user load before adding a real model.
 
 ## Scope
 
-- Run real scenarios for every `sys.*` invariant in the enforcement
-  list: tenant-isolation, forged-token, secret-leak, kill-uncertain,
-  store-missing, stack-restart, late-receipt, seam-onesided,
-  sweep-lag, wedge-unblock, schema-version, worker-intent,
-  space-no-db, seal-at-rest, watchdog-stale, service-edge,
-  worker-tenant, worker-stop-confirmed, package-build and
-  recipe-hosts. Record an absent owning subsystem as unproved; do not
-  claim a passing test for a future service.
+- Prove the invariants owned by the current stack: tenant-isolation,
+  forged-token, secret-leak, kill-uncertain, store-missing,
+  stack-restart, late-receipt, sweep-lag, wedge-unblock,
+  schema-version, space-no-db, seal-at-rest for the issuer seed,
+  watchdog-stale, service-edge, and the runtime part of worker-intent.
+  Each proved claim needs a runnable scenario and a negative assertion.
+- Defer the absent owners, with an explicit destination: seam-onesided
+  to the channel adapter in phase 10 and tool seam in phase 18;
+  worker-intent (worker part), worker-tenant and
+  worker-stop-confirmed to the worker owner in phase 13;
+  package-build and recipe-hosts to the package/recipe owner in phase
+  17; seal-at-rest for secret values to the credential-broker in phase
+  7. A partial proof does not turn the whole `sys.*` ID green.
 - Inject faults at each implemented write seam: FSM transition versus
   effect, Docker intent versus create, and channel send versus
   acknowledgement. Verify durable state, idempotent replay and no
@@ -45,5 +50,5 @@ full redesign-signal report and a recommendation on service count.
 Use the existing services and their contracts. Preserve phase-4 data
 and the v0.0.4 image for rollback. Do not weaken a gate or invent a
 passing result for an invariant whose owning subsystem is absent.
-An unmet criterion goes in `05-report.md` and prevents a release tag;
-continue with independent work.
+An unmet current-owner criterion goes in `05-report.md` and prevents a
+release tag; continue with independent work.
