@@ -48,16 +48,39 @@ func (rep *runReporter) applyEvent(ctx context.Context, runID string, e tv1.RunE
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
-	if err := appendEvent(ctx, tx, runID, e); err != nil {
+	inserted, err := appendEvent(ctx, tx, runID, e)
+	if err != nil {
 		return err
 	}
-	if err := rep.eventMachines(ctx, tx, runID, e); err != nil {
+	if err := rep.applyIfOpen(ctx, tx, runID, e, inserted); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+func (rep *runReporter) applyIfOpen(ctx context.Context, tx *sql.Tx, runID string, e tv1.RunEvent, inserted bool) error {
+	if !inserted {
+		return nil
+	}
+	state, err := lockedRunState(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	if state == "settled" {
+		return nil
+	}
+	return rep.eventMachines(ctx, tx, runID, e)
+}
+
+func lockedRunState(ctx context.Context, tx *sql.Tx, run string) (string, error) {
+	var state string
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM fsm.machines WHERE kind='run' AND id=$1 FOR UPDATE`, run).Scan(&state); err != nil {
+		return "", fmt.Errorf("run state: %w", err)
+	}
+	return state, nil
 }
 
 // eventMachines maps journal kinds to machine events. A final event

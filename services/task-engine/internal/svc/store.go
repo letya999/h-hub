@@ -218,13 +218,17 @@ func releaseRun(ctx context.Context, tx *sql.Tx, run string) error {
 }
 
 // appendEvent writes one journal row; the run/seq pair is the idem key.
-func appendEvent(ctx context.Context, tx *sql.Tx, run string, e tv1.RunEvent) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO run_events (run, seq, kind, data)
+func appendEvent(ctx context.Context, tx *sql.Tx, run string, e tv1.RunEvent) (bool, error) {
+	res, err := tx.ExecContext(ctx, `INSERT INTO run_events (run, seq, kind, data)
 		VALUES ($1,$2,$3,$4) ON CONFLICT (run, seq) DO NOTHING`, run, e.Seq, e.Kind, e.Data)
 	if err != nil {
-		return fmt.Errorf("append event: %w", err)
+		return false, fmt.Errorf("append event: %w", err)
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("event rows: %w", err)
+	}
+	return n == 1, nil
 }
 
 // runEvents reads the journal after a cursor position.
