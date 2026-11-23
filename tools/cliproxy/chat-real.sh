@@ -4,8 +4,11 @@
 # prints the answer plus the recorded spend. Run on the host with the
 # stack and cliproxy up: sh tools/cliproxy/chat-real.sh [user] [msg]
 set -eu
+export MSYS_NO_PATHCONV=1
 
-src=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+# The host may be Git Bash on Windows: with path conversion off, the
+# volume source needs the Windows form; /command args pass through.
+src=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && (pwd -W 2>/dev/null || pwd))
 data="$src/../h-hub-data"
 user=${1:-manual}
 msg=${2:-say hello in one short sentence}
