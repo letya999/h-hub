@@ -41,6 +41,9 @@ func (s *Server) sweepPass(ctx context.Context, l *log.L) {
 	if err := fsm.WriteTick(ctx, s.db, "fsm", s.sub, s.now()); err != nil {
 		l.Error(ctx, "watchdog tick", err)
 	}
+	if err := checkSpawnWatchdog(s, ctx); err != nil {
+		l.Error(ctx, "spawn watchdog", err)
+	}
 }
 
 func (s *Server) outboxPass(ctx context.Context, l *log.L) {

@@ -70,6 +70,13 @@ func (c *Client) ReleaseRuntime(ctx context.Context, r ReleaseRuntimeReq) (Relea
 	return out, err
 }
 
+// WatchdogStatus reads the last spawn watchdog tick.
+func (c *Client) WatchdogStatus(ctx context.Context, r WatchdogStatusReq) (WatchdogStatusResp, error) {
+	var out WatchdogStatusResp
+	err := c.call(ctx, "WatchdogStatus", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

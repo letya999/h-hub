@@ -109,6 +109,7 @@ services:
       HHUB_KEYS: /etc/hhub
       HHUB_IDENTITY_URL: http://identity-hub:9000
       HHUB_TASK_URL: http://task-engine:9000
+      HHUB_SPAWN_URL: http://spawn-controller:9000
     volumes:
       - keys-channel-hub:/etc/hhub:ro
     depends_on:

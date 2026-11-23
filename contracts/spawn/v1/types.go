@@ -92,6 +92,15 @@ type ReleaseRuntimeResp struct {
 	OK bool `json:"ok"`
 }
 
+// WatchdogStatusReq reads the spawn watchdog without changing it.
+type WatchdogStatusReq struct{}
+
+// WatchdogStatusResp identifies one stale tick for deduplicated alerts.
+type WatchdogStatusResp struct {
+	Stale bool   `json:"stale"`
+	Tick  string `json:"tick"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateSpace    func(context.Context, CreateSpaceReq) (CreateSpaceResp, error)
@@ -100,6 +109,7 @@ type Handlers struct {
 	EnsureRuntime  func(context.Context, EnsureRuntimeReq) (EnsureRuntimeResp, error)
 	ResolveSpec    func(context.Context, ResolveSpecReq) (ResolveSpecResp, error)
 	ReleaseRuntime func(context.Context, ReleaseRuntimeReq) (ReleaseRuntimeResp, error)
+	WatchdogStatus func(context.Context, WatchdogStatusReq) (WatchdogStatusResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -111,6 +121,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"EnsureRuntime":  op(h.EnsureRuntime),
 		"ResolveSpec":    op(h.ResolveSpec),
 		"ReleaseRuntime": op(h.ReleaseRuntime),
+		"WatchdogStatus": op(h.WatchdogStatus),
 	}
 }
 
