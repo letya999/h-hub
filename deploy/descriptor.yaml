@@ -14,6 +14,7 @@ volumes:
   - name: hhub-render
   - name: keys-identity-hub
   - name: keys-task-engine
+  - name: keys-channel-hub
   - name: keys-spawn-controller
 services:
   - name: spawn-controller
@@ -52,6 +53,7 @@ services:
       - HHUB_SUB
       - HHUB_DSN
       - HHUB_KEYS
+      - HHUB_KEK_PATH
     volumes:
       - name: keys-identity-hub
         path: /etc/hhub
@@ -124,13 +126,25 @@ services:
     edges: []
   - name: channel-hub
     zone: edge
+    deploy: true
     database: postgres
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
-    volumes: []
-    edges: []
+    env:
+      - HHUB_SUB
+      - HHUB_DSN
+      - HHUB_KEYS
+      - HHUB_IDENTITY_URL
+      - HHUB_TASK_URL
+    volumes:
+      - name: keys-channel-hub
+        path: /etc/hhub
+    edges:
+      - to: identity-hub
+        ops: [LinkConfirm, Resolve, MintLinkToken]
+      - to: task-engine
+        ops: [CreateJob, GetJob, ListJobs, CancelJob]
   - name: ingress-gateway
     zone: edge
     database: none
@@ -173,9 +187,11 @@ clients:
   - name: operator
     edges:
       - to: identity-hub
-        ops: [ActAs]
+        ops: [ActAs, CreatePrincipal, DeactivateHuman, LinkBegin]
       - to: task-engine
         ops: [CreateJob, GetJob, ListJobs, CancelJob, RetryJob,
               UnquarantineJob, SetHold, GetRun]
       - to: spawn-controller
         ops: [CreateSpace, GetSpace, DestroySpace]
+      - to: channel-hub
+        ops: [Inject, ReadOutbox]

@@ -144,17 +144,26 @@ func (s Service) view() (svcView, error) {
 		}
 		v.Env = append(v.Env, envKV{K: e, V: val})
 	}
+	v.Mounts = s.mounts()
+	return v, nil
+}
+
+func (s Service) mounts() []string {
+	var mounts []string
 	for _, m := range s.Volumes {
 		mount := m.Name + ":" + m.Path + ":ro"
 		if m.RW {
 			mount = m.Name + ":" + m.Path
 		}
-		v.Mounts = append(v.Mounts, mount)
+		mounts = append(mounts, mount)
 	}
 	if s.Name == "spawn-controller" {
-		v.Mounts = append(v.Mounts, "/var/run/docker.sock:/var/run/docker.sock")
+		mounts = append(mounts, "/var/run/docker.sock:/var/run/docker.sock")
 	}
-	return v, nil
+	if s.Name == "identity-hub" {
+		mounts = append(mounts, "./../.local/secrets:/run/hhub-secrets")
+	}
+	return mounts
 }
 
 // envFixed is the closed set of compose values independent of the
@@ -162,6 +171,7 @@ func (s Service) view() (svcView, error) {
 // below) fails generation.
 var envFixed = map[string]string{
 	"HHUB_KEYS":          keysPath,
+	"HHUB_KEK_PATH":      "/run/hhub-secrets/seal-kek",
 	"HHUB_CONFIG":        keysPath + "/config.json",
 	"HHUB_RUNTIME_IMAGE": "hhub-harness-runtime:local",
 	"HHUB_DOCKER_SOCK":   "/var/run/docker.sock",

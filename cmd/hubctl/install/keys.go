@@ -1,6 +1,7 @@
 package install
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
@@ -129,4 +130,44 @@ func ensureKEK(dir string) error {
 	}
 	_, err := writeOnce(filepath.Join(dir, fileKEK), raw, 0o600)
 	return err
+}
+
+// ensureHostKEK relocates the pre-phase-4 KEK, then keeps only the host copy.
+func ensureHostKEK(configDir, hostDir string) error {
+	old := filepath.Join(configDir, fileKEK)
+	data, err := os.ReadFile(old)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ensureKEK(hostDir)
+	}
+	if err != nil {
+		return fmt.Errorf("read old KEK: %w", err)
+	}
+	if len(data) != 32 {
+		return fmt.Errorf("old KEK has wrong length")
+	}
+	newPath := filepath.Join(hostDir, fileKEK)
+	created, err := writeOnce(newPath, data, 0o600)
+	if err != nil {
+		return err
+	}
+	if !created {
+		if err := checkSameKEK(newPath, data); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(old); err != nil {
+		return fmt.Errorf("remove volume KEK: %w", err)
+	}
+	return nil
+}
+
+func checkSameKEK(path string, old []byte) error {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read host KEK: %w", err)
+	}
+	if !bytes.Equal(old, existing) {
+		return fmt.Errorf("old and host KEKs differ")
+	}
+	return nil
 }

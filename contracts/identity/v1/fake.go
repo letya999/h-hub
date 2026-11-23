@@ -1,14 +1,10 @@
 package v1
 
 import (
-	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
-
-	herrors "github.com/letya999/h-hub/shared/errors"
+	"sync"
 )
 
 // ServiceTTL is the service-token lifetime (blueprint §6.1: 15 min).
@@ -23,10 +19,14 @@ type Signer func(purpose string, payload []byte) (string, error)
 // caller's signature against registered public keys and mints tokens
 // through the injected signer. Contract-conformant by the suite.
 type Fake struct {
-	sign Signer
-	kid  string
-	pubs map[string]ed25519.PublicKey
-	now  func() int64
+	sign   Signer
+	kid    string
+	pubs   map[string]ed25519.PublicKey
+	now    func() int64
+	mu     sync.Mutex
+	people map[string]fakePerson
+	codes  map[string]string
+	links  map[string]string
 }
 
 // NewFake builds a Fake: sign mints tokens, kid marks the issuer,
@@ -34,7 +34,8 @@ type Fake struct {
 // seconds.
 func NewFake(sign Signer, kid string, pubs map[string]ed25519.PublicKey,
 	now func() int64) *Fake {
-	return &Fake{sign: sign, kid: kid, pubs: pubs, now: now}
+	return &Fake{sign: sign, kid: kid, pubs: pubs, now: now,
+		people: map[string]fakePerson{}, codes: map[string]string{}, links: map[string]string{}}
 }
 
 // Kid derives the issuer key id from a public key.
@@ -45,87 +46,16 @@ func Kid(pub ed25519.PublicKey) string {
 
 // Handlers exposes the fake as the contract operation table.
 func (f *Fake) Handlers() Handlers {
+	h := NewIssuer(f.sign, f.kid, f.pubs, f.now).Handlers()
 	return Handlers{
-		IssueServiceToken: f.issueService,
-		MintRunToken:      f.mintRun,
-		ActAs:             f.actAs,
+		IssueServiceToken: h.IssueServiceToken,
+		MintRunToken:      h.MintRunToken,
+		ActAs:             h.ActAs,
+		CreatePrincipal:   f.createPrincipal,
+		DeactivateHuman:   f.deactivateHuman,
+		LinkBegin:         f.linkBegin,
+		LinkConfirm:       f.linkConfirm,
+		Resolve:           f.resolve,
+		MintLinkToken:     f.mintLinkToken,
 	}
-}
-
-func (f *Fake) actAs(_ context.Context, r ActAsReq) (ActAsResp, error) {
-	if r.Owner == "" || r.Aud == "" {
-		return ActAsResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
-	}
-	exp := f.now() + ServiceTTL
-	claims, err := json.Marshal(OwnerClaims{
-		Sub: "operator", Owner: r.Owner, Space: r.Space, Aud: []string{r.Aud}, Exp: exp, Kid: f.kid,
-	})
-	if err != nil {
-		return ActAsResp{}, fmt.Errorf("owner claims: %w", err)
-	}
-	tok, err := f.sign("owner", claims)
-	if err != nil {
-		return ActAsResp{}, fmt.Errorf("sign owner: %w", err)
-	}
-	return ActAsResp{Token: tok, ExpiresAt: exp}, nil
-}
-
-func (f *Fake) issueService(_ context.Context, r IssueServiceTokenReq) (IssueServiceTokenResp, error) {
-	var out IssueServiceTokenResp
-	if err := herrors.Require(r.Sub != "" && r.Aud != "" && r.Nonce != "", "err.invalid-arg"); err != nil {
-		return out, err //nolint:wrapcheck // shared error form
-	}
-	if err := VerifyServiceProof(r, f.pubs); err != nil {
-		return out, err
-	}
-	exp := f.now() + ServiceTTL
-	claims, err := json.Marshal(ServiceClaims{
-		Sub: r.Sub, Aud: []string{r.Aud}, Exp: exp, Kid: f.kid,
-	})
-	if err != nil {
-		return out, fmt.Errorf("claims: %w", err)
-	}
-	tok, err := f.sign("service", claims)
-	if err != nil {
-		return out, fmt.Errorf("sign: %w", err)
-	}
-	return IssueServiceTokenResp{Token: tok, ExpiresAt: exp}, nil
-}
-
-// VerifyServiceProof authenticates the one signed issuance request.
-func VerifyServiceProof(r IssueServiceTokenReq, pubs map[string]ed25519.PublicKey) error {
-	pub, ok := pubs[r.Sub]
-	if !ok {
-		return herrors.New(herrors.CodeForbidden, "err.forbidden").With("sub", r.Sub) //nolint:wrapcheck // shared error form
-	}
-	proof, err := ProofBytes(r.Proof)
-	if err != nil {
-		return err
-	}
-	if !ed25519.Verify(pub, CanonicalProof(r.Sub, r.Aud, r.Nonce), proof) {
-		return herrors.New(herrors.CodeForbidden, "err.forbidden")
-	}
-	return nil
-}
-
-func (f *Fake) mintRun(_ context.Context, r MintRunTokenReq) (MintRunTokenResp, error) {
-	var out MintRunTokenResp
-	if err := herrors.Require(r.Job != "" && r.Run != "" && r.Space != "" &&
-		r.Owner != "" && len(r.Aud) > 0, "err.invalid-arg"); err != nil {
-		return out, err //nolint:wrapcheck // shared error form
-	}
-	exp := f.now() + ServiceTTL
-	claims, err := json.Marshal(RunClaims{
-		Sub: "run:" + r.Run, Job: r.Job, Run: r.Run, Space: r.Space,
-		Owner: r.Owner, Digest: r.Digest, Aud: r.Aud, Exp: exp,
-		Kid: f.kid,
-	})
-	if err != nil {
-		return out, fmt.Errorf("claims: %w", err)
-	}
-	tok, err := f.sign("run", claims)
-	if err != nil {
-		return out, fmt.Errorf("sign: %w", err)
-	}
-	return MintRunTokenResp{Token: tok, ExpiresAt: exp}, nil
 }

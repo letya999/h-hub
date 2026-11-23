@@ -1,6 +1,4 @@
-// Package svc is identity-hub's HTTP surface: the phase-3 fake
-// contract implementation plus the single-use nonce store, wired to
-// the shared auth plumbing.
+// Package svc is identity-hub's HTTP surface and persistent identity store.
 package svc
 
 import (
@@ -21,6 +19,7 @@ import (
 	"github.com/letya999/h-hub/shared/edges"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/seal"
 )
 
 //go:embed migrations
@@ -40,6 +39,9 @@ type Server struct {
 	nonce Noncer
 	now   func() int64
 	ops   idv1.Handlers
+	seal  *seal.Seal
+	sign  idv1.Signer
+	kid   string
 }
 
 // Deps are the issuer collaborators: the signer bound to the issuer
@@ -54,14 +56,15 @@ type Deps struct {
 	Tab         edges.Table
 	Nonce       Noncer
 	Now         func() int64
+	Seal        *seal.Seal
 }
 
 // New builds a Server.
 func New(sub string, db *sql.DB, deps Deps) *Server {
-	fake := idv1.NewFake(deps.Sign, deps.Kid, deps.Pubs, deps.Now)
+	issuer := idv1.NewIssuer(deps.Sign, deps.Kid, deps.Pubs, deps.Now)
 	s := &Server{sub: sub, db: db, pub: deps.Pub, opPub: deps.OperatorPub, pubs: deps.Pubs, tab: deps.Tab,
-		nonce: deps.Nonce, now: deps.Now}
-	h := fake.Handlers()
+		nonce: deps.Nonce, now: deps.Now, seal: deps.Seal, sign: deps.Sign, kid: deps.Kid}
+	h := issuer.Handlers()
 	base := h.IssueServiceToken
 	h.IssueServiceToken = func(ctx context.Context, r idv1.IssueServiceTokenReq) (idv1.IssueServiceTokenResp, error) {
 		if err := deps.Nonce.Claim(ctx, r.Sub, r.Nonce, time.Unix(deps.Now()+idv1.ServiceTTL, 0)); err != nil {
@@ -92,6 +95,12 @@ func New(sub string, db *sql.DB, deps Deps) *Server {
 		}
 		return out, nil
 	}
+	h.CreatePrincipal = s.createPrincipal
+	h.DeactivateHuman = s.deactivateHuman
+	h.LinkBegin = s.linkBegin
+	h.LinkConfirm = s.linkConfirm
+	h.Resolve = s.resolve
+	h.MintLinkToken = s.mintLinkToken
 	s.ops = h
 	return s
 }
@@ -117,6 +126,18 @@ func (s *Server) Mux() *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
 			return ops["ActAs"](w, r)
 		}))
+	for _, name := range []string{"CreatePrincipal", "DeactivateHuman", "LinkBegin"} {
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(opVer,
+			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+				return ops[name](w, r)
+			}))
+	}
+	for _, name := range []string{"LinkConfirm", "Resolve", "MintLinkToken"} {
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(verifier,
+			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+				return ops[name](w, r)
+			}))
+	}
 	mux.HandleFunc("/healthz", s.healthz)
 	return mux
 }

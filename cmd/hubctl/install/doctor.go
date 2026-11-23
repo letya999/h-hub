@@ -31,6 +31,8 @@ func Doctor(ctx context.Context, cfg Config, out io.Writer) error {
 	ok("descriptor", derr)
 	id, err := os.ReadFile(filepath.Join(cfg.ConfigDir, fileID))
 	ok("install-id file", err)
+	ok("host KEK", secretIn(cfg.KEKDir, fileKEK))
+	ok("volume KEK absent", volumeKEKAbsent(cfg.ConfigDir))
 	if err == nil && f != nil {
 		ok("config files", checkFiles(cfg.ConfigDir, f))
 	}
@@ -44,10 +46,22 @@ func Doctor(ctx context.Context, cfg Config, out io.Writer) error {
 	}
 	defer db.Close() //nolint:errcheck // best-effort close
 	checkDBs(ctx, db, f, scope{cfg: cfg, id: string(id), ok: ok})
+	ok("principal-space pairs", checkPrincipalSpacePairs(ctx, cfg.AdminDSN))
 	if fails > 0 {
 		return fmt.Errorf("doctor: %d check(s) failed", fails)
 	}
 	return nil
+}
+
+func volumeKEKAbsent(dir string) error {
+	_, err := os.Stat(filepath.Join(dir, fileKEK))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("volume KEK stat: %w", err)
+	}
+	return fmt.Errorf("old volume KEK remains")
 }
 
 // scope bundles the per-run values passed to check helpers.
@@ -112,13 +126,14 @@ func checkFiles(dir string, f *descriptor.File) error {
 	secret := func(rel string) error { return secretIn(dir, rel) }
 	plain := func(rel string) error { return statIn(dir, rel) }
 	files := map[string]func(string) error{
-		fileKEK:                              secret,
 		filepath.Join(dirKeys, opKey+".key"): secret,
 		filepath.Join(dirKeys, opKey+".pub"): plain,
 	}
 	for _, s := range f.Services {
 		p := filepath.Join(dirSvc, s.Name, svcKey)
-		files[p+".key"] = secret
+		if s.Name != "identity-hub" {
+			files[p+".key"] = secret
+		}
 		files[p+".pub"] = plain
 		if s.Database == "postgres" {
 			files[filepath.Join(dirDB, dbName(s.Name)+dbSuffix)] = secret
@@ -130,7 +145,21 @@ func checkFiles(dir string, f *descriptor.File) error {
 			return err
 		}
 	}
+	if err := absent(filepath.Join(dir, dirSvc, "identity-hub", svcKey+".key")); err != nil {
+		return err
+	}
 	return nil
+}
+
+func absent(path string) error {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	return fmt.Errorf("plaintext issuer key remains at %s", path)
 }
 
 // checkServiceDB verifies one service database: fsm schema, install id,
@@ -161,6 +190,15 @@ func checkServiceDB(ctx context.Context, sc scope, svc string) {
 	}
 	sc.ok(role+" install id", err)
 	sc.ok(role+" watchdog_ro grants", watchdogGrants(ctx, sdb))
+	if svc == "identity-hub" {
+		var n int
+		err := sdb.QueryRowContext(ctx, `SELECT count(*) FROM signing_keys WHERE purpose='signing-key'`).Scan(&n)
+		if err == nil && n != 1 {
+			err = fmt.Errorf("issuer key not imported")
+		}
+		sc.ok("sealed issuer", err)
+		sc.ok("issuer bootstrap consumed", absent(filepath.Join(sc.cfg.KEKDir, issuerBootstrap)))
+	}
 }
 
 func watchdogGrants(ctx context.Context, db *sql.DB) error {

@@ -19,6 +19,7 @@ go.work.sum
 # Env / secrets
 .env
 .env.*
+/.local/
 
 # OS / editor
 .DS_Store

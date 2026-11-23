@@ -1,6 +1,4 @@
-// scripted-model is the phase-3 test model: an OpenAI-compatible
-// endpoint with one built-in scenario — answer the user text back
-// with a fixed prefix. No LLM, no state, test infrastructure only.
+// scripted-model is an OpenAI-compatible deterministic test endpoint.
 package main
 
 import (
@@ -19,14 +17,17 @@ type message struct {
 
 func main() {
 	mux := http.NewServeMux()
+	m := &model{scripts: newScriptStore()}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("/v1/chat/completions", completions)
+	mux.HandleFunc("/v1/chat/completions", m.completions)
+	mux.HandleFunc("POST /v1/scenarios", m.loadScenario)
+	mux.HandleFunc("GET /v1/scenarios/{id}/verify", m.verifyScenario)
 	log.Fatal(http.ListenAndServe(":9000", mux)) //nolint:gocritic // process exit
 }
 
-func completions(w http.ResponseWriter, r *http.Request) {
+func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Model    string    `json:"model"`
 		Messages []message `json:"messages"`
@@ -41,19 +42,20 @@ func completions(w http.ResponseWriter, r *http.Request) {
 			input = m.Content
 		}
 	}
+	if strings.HasPrefix(input, "scenario:") {
+		m.scriptCompletion(w, r, input)
+		return
+	}
+	defaultCompletion(w, r, input)
+}
+
+func defaultCompletion(w http.ResponseWriter, r *http.Request, input string) {
 	// "slow:<ms> <text>" holds the turn open for kill/cancel tests;
 	// every other input answers immediately.
-	if rest, ok := strings.CutPrefix(input, "slow:"); ok {
-		if num, tail, found := strings.Cut(rest, " "); found {
-			if d, err := strconv.Atoi(num); err == nil && d > 0 && d <= 300000 {
-				select {
-				case <-time.After(time.Duration(d) * time.Millisecond):
-				case <-r.Context().Done():
-					return
-				}
-				input = tail
-			}
-		}
+	var ok bool
+	input, ok = slowInput(r, input)
+	if !ok {
+		return
 	}
 	writeJSON(w, map[string]any{
 		"choices": []map[string]any{{
@@ -65,6 +67,27 @@ func completions(w http.ResponseWriter, r *http.Request) {
 			"finish_reason": "stop",
 		}},
 	})
+}
+
+func slowInput(r *http.Request, input string) (string, bool) {
+	rest, slow := strings.CutPrefix(input, "slow:")
+	if !slow {
+		return input, true
+	}
+	num, tail, found := strings.Cut(rest, " ")
+	if !found {
+		return input, true
+	}
+	d, err := strconv.Atoi(num)
+	if err != nil || d <= 0 || d > 300000 {
+		return input, true
+	}
+	select {
+	case <-time.After(time.Duration(d) * time.Millisecond):
+		return tail, true
+	case <-r.Context().Done():
+		return "", false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

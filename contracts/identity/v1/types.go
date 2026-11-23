@@ -1,6 +1,5 @@
 // Package v1 is the identity-hub contract: token issuance and the
-// claims schema every verifier parses (rules 7-9). The phase-3 fake
-// implements this contract; the real hub arrives in phase 4.
+// claims schema every verifier parses (rules 7-9).
 package v1
 
 import (
@@ -39,7 +38,7 @@ func ParseOwnerClaims(payload []byte) (OwnerClaims, error) {
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return c, herrors.Wrap(herrors.CodeUnauthorized, "err.token", err)
 	}
-	if c.Sub != "operator" || c.Owner == "" {
+	if (c.Sub != "operator" && c.Sub != "channel-hub") || c.Owner == "" {
 		return c, herrors.New(herrors.CodeUnauthorized, "err.token")
 	}
 	return c, nil
@@ -152,6 +151,12 @@ type Handlers struct {
 	IssueServiceToken func(context.Context, IssueServiceTokenReq) (IssueServiceTokenResp, error)
 	MintRunToken      func(context.Context, MintRunTokenReq) (MintRunTokenResp, error)
 	ActAs             func(context.Context, ActAsReq) (ActAsResp, error)
+	CreatePrincipal   func(context.Context, CreatePrincipalReq) (CreatePrincipalResp, error)
+	DeactivateHuman   func(context.Context, DeactivateHumanReq) (DeactivateHumanResp, error)
+	LinkBegin         func(context.Context, LinkBeginReq) (LinkBeginResp, error)
+	LinkConfirm       func(context.Context, LinkConfirmReq) (LinkConfirmResp, error)
+	Resolve           func(context.Context, ResolveReq) (ResolveResp, error)
+	MintLinkToken     func(context.Context, MintLinkTokenReq) (MintLinkTokenResp, error)
 }
 
 // Ops maps operation names to request handlers (unauthenticated: auth
@@ -161,6 +166,12 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"IssueServiceToken": op(h.IssueServiceToken),
 		"MintRunToken":      op(h.MintRunToken),
 		"ActAs":             op(h.ActAs),
+		"CreatePrincipal":   op(h.CreatePrincipal),
+		"DeactivateHuman":   op(h.DeactivateHuman),
+		"LinkBegin":         op(h.LinkBegin),
+		"LinkConfirm":       op(h.LinkConfirm),
+		"Resolve":           op(h.Resolve),
+		"MintLinkToken":     op(h.MintLinkToken),
 	}
 }
 

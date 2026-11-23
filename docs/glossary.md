@@ -38,6 +38,15 @@ by `hubctl init`; proves all databases belong to one installation.
 **KEK** — the 32-byte key-encryption key stored as a file outside
 volumes and backups; used by `shared/seal`.
 
+**principal** — an active or disabled human owner stored by identity-hub;
+it names one provisioned home space.
+
+**channel link** — identity-hub's binding from a channel-specific
+external id to an active principal, confirmed with a one-time code.
+
+**mock outbox** — channel-hub's persisted messages for the private mock
+adapter; `hubctl chat` reads them through a scoped contract.
+
 **lease** — `fsm.sweeper_leases`: an atomic owner+expiry row that picks
 which instance runs the sweeper.
 

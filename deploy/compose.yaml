@@ -28,6 +28,7 @@ services:
       - ./descriptor.yaml:/descriptor.yaml:ro
       - keys-identity-hub:/keys/keys-identity-hub
       - keys-task-engine:/keys/keys-task-engine
+      - keys-channel-hub:/keys/keys-channel-hub
       - keys-spawn-controller:/keys/keys-spawn-controller
     networks: [hhub]
   spawn-controller:
@@ -67,8 +68,10 @@ services:
       HHUB_SUB: identity-hub
       HHUB_DSN: postgres://identity_hub@postgres:5432/identity_hub?sslmode=disable
       HHUB_KEYS: /etc/hhub
+      HHUB_KEK_PATH: /run/hhub-secrets/seal-kek
     volumes:
       - keys-identity-hub:/etc/hhub:ro
+      - ./../.local/secrets:/run/hhub-secrets
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
@@ -92,6 +95,25 @@ services:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
     networks: [hhub]
+  channel-hub:
+    image: hhub-channel-hub:local
+    container_name: channel-hub
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 256
+    environment:
+      HHUB_SUB: channel-hub
+      HHUB_DSN: postgres://channel_hub@postgres:5432/channel_hub?sslmode=disable
+      HHUB_KEYS: /etc/hhub
+      HHUB_IDENTITY_URL: http://identity-hub:9000
+      HHUB_TASK_URL: http://task-engine:9000
+    volumes:
+      - keys-channel-hub:/etc/hhub:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      keydist: {condition: service_completed_successfully}
+    networks: [hhub]
 volumes:
   # hhub-conf is shared with install-time hubctl runs outside compose;
   # pin the name so the project prefix does not split it in two.
@@ -103,6 +125,7 @@ volumes:
   hhub-render:
   keys-identity-hub:
   keys-task-engine:
+  keys-channel-hub:
   keys-spawn-controller:
 networks:
   hhub:

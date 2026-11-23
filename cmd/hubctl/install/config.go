@@ -15,6 +15,7 @@ type Config struct {
 	AdminDSN   string // HHUB_ADMIN_DSN: install-role postgres DSN
 	ConfigDir  string // HHUB_CONFIG_DIR: install config dir outside volumes
 	Descriptor string // HHUB_DESCRIPTOR: path to deploy/descriptor.yaml
+	KEKDir     string // HHUB_KEK_DIR: host bind outside Docker volumes
 }
 
 // Env loads Config from the environment.
@@ -23,12 +24,16 @@ func Env() (Config, error) {
 		AdminDSN:   os.Getenv("HHUB_ADMIN_DSN"),
 		ConfigDir:  os.Getenv("HHUB_CONFIG_DIR"),
 		Descriptor: os.Getenv("HHUB_DESCRIPTOR"),
+		KEKDir:     os.Getenv("HHUB_KEK_DIR"),
 	}
 	if c.ConfigDir == "" {
 		c.ConfigDir = "/etc/hhub"
 	}
 	if c.Descriptor == "" {
 		c.Descriptor = "deploy/descriptor.yaml"
+	}
+	if c.KEKDir == "" {
+		c.KEKDir = "/run/hhub-secrets"
 	}
 	if c.AdminDSN == "" {
 		return c, fmt.Errorf("install: HHUB_ADMIN_DSN is required")
