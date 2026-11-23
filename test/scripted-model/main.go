@@ -51,22 +51,55 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 
 func defaultCompletion(w http.ResponseWriter, r *http.Request, input string) {
 	// "slow:<ms> <text>" holds the turn open for kill/cancel tests;
-	// every other input answers immediately.
+	// "burn:<n> <text>" reports n spent tokens for ceiling tests;
+	// "nousage: <text>" omits the usage block (estimate path).
 	var ok bool
 	input, ok = slowInput(r, input)
 	if !ok {
 		return
 	}
-	writeJSON(w, map[string]any{
+	answer, burn, nousage := scriptedAnswer(input)
+	resp := map[string]any{
 		"choices": []map[string]any{{
-			"index": 0,
-			"message": map[string]string{
-				"role":    "assistant",
-				"content": "answer: " + input,
-			},
+			"index":         0,
+			"message":       map[string]string{"role": "assistant", "content": answer},
 			"finish_reason": "stop",
 		}},
-	})
+	}
+	if burn > 0 {
+		resp["usage"] = usageOf(burn)
+	} else if !nousage {
+		prompt := int64(len(input)+3) / 4
+		resp["usage"] = usageOf(prompt + int64(len(answer)+3)/4)
+	}
+	writeJSON(w, resp)
+}
+
+// scriptedAnswer strips the test directives and returns the answer
+// text, the forced token spend and the omit-usage flag.
+func scriptedAnswer(input string) (answer string, burn int64, nousage bool) {
+	text := input
+	if rest, cut := strings.CutPrefix(text, "burn:"); cut {
+		if num, tail, found := strings.Cut(rest, " "); found {
+			if n, err := strconv.ParseInt(num, 10, 64); err == nil && n > 0 {
+				burn = n
+				text = tail
+			}
+		}
+	}
+	if tail, cut := strings.CutPrefix(text, "nousage:"); cut {
+		nousage = true
+		text = strings.TrimSpace(tail)
+	}
+	return "answer: " + text, burn, nousage
+}
+
+func usageOf(total int64) map[string]int64 {
+	return map[string]int64{
+		"prompt_tokens":     total / 2,
+		"completion_tokens": total - total/2,
+		"total_tokens":      total,
+	}
 }
 
 func slowInput(r *http.Request, input string) (string, bool) {

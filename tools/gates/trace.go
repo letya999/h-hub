@@ -17,6 +17,8 @@ var sysIDs = map[string]bool{
 	"space-no-db": true, "seal-at-rest": true, "watchdog-stale": true,
 	"service-edge": true, "worker-tenant": true,
 	"worker-stop-confirmed": true, "package-build": true, "recipe-hosts": true,
+	"model-usage": true, "model-quota": true, "model-route": true,
+	"space-egress": true,
 }
 
 var (
