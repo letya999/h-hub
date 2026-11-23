@@ -99,7 +99,7 @@ func (rep *runReporter) touchJob(ctx context.Context, tx *sql.Tx, runID string) 
 	return nil
 }
 
-// settle commits run -> settled, clears the conversation pointer,
+// settle commits run -> settled, releases its conversation claim,
 // stores the result and settles the job; the runtime release rides
 // outbox topic release-runtime.
 func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e tv1.RunEvent) error {
@@ -116,7 +116,7 @@ func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e 
 		return fmt.Errorf("release effect: %w", err)
 	}
 	hook := func(ctx context.Context, tx *sql.Tx, ch fsm.Change) error {
-		if err := clearActiveRun(ctx, tx, runID); err != nil {
+		if err := releaseRun(ctx, tx, runID); err != nil {
 			return err
 		}
 		if err := setResult(ctx, tx, run.job, e.Data); err != nil {

@@ -233,7 +233,16 @@ func TestJobToAnswer(t *testing.T) {
 	if err != nil || len(secondJobs.Jobs) != 0 {
 		t.Fatalf("cross-space list: %+v, %v", secondJobs.Jobs, err)
 	}
-	// Tenant isolation: alice's listing contains only her job.
+	next, err := taskClient(t, alice).CreateJob(context.Background(), tv1.CreateJobReq{
+		Space: alice.space, Conversation: "c1", Input: "second turn",
+		Idem: idem("j", "alice", "2")})
+	if err != nil {
+		t.Fatalf("second conversation turn: %v", err)
+	}
+	if got := waitJob(t, alice, next.ID, "succeeded", 3*time.Minute); got.Result != "answer: second turn" {
+		t.Fatalf("second conversation result: %q", got.Result)
+	}
+	// Tenant isolation: alice's listing contains only her jobs.
 	res, err := taskClient(t, alice).ListJobs(context.Background(), tv1.ListJobsReq{})
 	if err != nil {
 		t.Fatalf("list: %v", err)

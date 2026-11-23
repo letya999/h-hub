@@ -117,7 +117,7 @@ func (lp *loopRunner) runSweepHook(ctx context.Context, tx *sql.Tx, ch fsm.Chang
 	if err != nil {
 		return err
 	}
-	if err := clearActiveRun(ctx, tx, ch.ID); err != nil {
+	if err := releaseRun(ctx, tx, ch.ID); err != nil {
 		return err
 	}
 	err = lp.s.jobM.Transition(ctx, tx, fsm.Request{
@@ -210,7 +210,7 @@ func (lp *loopRunner) withRunTx(ctx context.Context, runID string) error {
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
 	hook := func(ctx context.Context, tx *sql.Tx, ch fsm.Change) error {
-		return clearActiveRun(ctx, tx, runID)
+		return releaseRun(ctx, tx, runID)
 	}
 	err = lp.s.runM.Transition(ctx, tx, fsm.Request{
 		ID: runID, Event: "settle", Actor: "outbox", At: lp.s.deps.Now()}, hook)
