@@ -17,7 +17,7 @@ func TestOrphanRuntimeRemoved(t *testing.T) {
 	id, err := d.CreateRun(context.Background(), testkit.CreateSpec{
 		Image: "hhub-task-engine:local", Name: name,
 		Labels:   map[string]string{"hhub.managed": "true", "hhub.runtime": name},
-		Networks: []string{"hhub"},
+		Networks: []string{"hhub-space"},
 	})
 	if err != nil {
 		t.Fatal(err)
