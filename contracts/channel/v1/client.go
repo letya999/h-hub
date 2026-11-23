@@ -38,3 +38,11 @@ func (c *Client) ReadOutbox(ctx context.Context, r ReadOutboxReq) (ReadOutboxRes
 	}
 	return out, nil
 }
+
+func (c *Client) Alert(ctx context.Context, r AlertReq) (AlertResp, error) {
+	var out AlertResp
+	if err := c.T.Call(ctx, "Alert", r, &out); err != nil {
+		return out, fmt.Errorf("alert: %w", err)
+	}
+	return out, nil
+}

@@ -24,6 +24,7 @@ func TestStoreMissingDatabaseRefusesStartup(t *testing.T) {
 		"-e", "HHUB_KEYS=/etc/hhub",
 		"-e", "HHUB_IDENTITY_URL=http://identity-hub:9000",
 		"-e", "HHUB_SPAWN_URL=http://spawn-controller:9000",
+		"-e", "HHUB_CHANNEL_URL=http://channel-hub:9000",
 		"hhub-task-engine:local")
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil || err == nil || !strings.Contains(string(out), db) ||

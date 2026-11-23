@@ -30,13 +30,22 @@ type ReadOutboxResp struct {
 	Messages []OutMessage `json:"messages"`
 }
 
+type AlertReq struct {
+	Key  string `json:"key"`
+	Code string `json:"code"`
+}
+type AlertResp struct {
+	OK bool `json:"ok"`
+}
+
 type Handlers struct {
 	Inject     func(context.Context, InjectReq) (InjectResp, error)
 	ReadOutbox func(context.Context, ReadOutboxReq) (ReadOutboxResp, error)
+	Alert      func(context.Context, AlertReq) (AlertResp, error)
 }
 
 func Ops(h Handlers) map[string]httpapi.Handler {
-	return map[string]httpapi.Handler{"Inject": op(h.Inject), "ReadOutbox": op(h.ReadOutbox)}
+	return map[string]httpapi.Handler{"Inject": op(h.Inject), "ReadOutbox": op(h.ReadOutbox), "Alert": op(h.Alert)}
 }
 
 func op[Req, Resp any](fn func(context.Context, Req) (Resp, error)) httpapi.Handler {

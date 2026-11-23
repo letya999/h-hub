@@ -60,6 +60,10 @@ declared in code.
 atomically with the transition, delivered later with the same
 identity.
 
+**operator alert** — a system fault signal delivered to the operator
+through channel-hub's normal durable delivery path, with a stable key
+to prevent duplicate sends.
+
 **phase** — a checkpointed slice of the blueprint ending in a tag
 (`v0.0.x`) and a report under `docs/phases/`.
 
@@ -75,6 +79,9 @@ import services or domain code.
 **sweeper** — the shared/fsm loop that reads narrow due-row
 projections, re-verifies inside a write transaction, and fires the
 deadline event with CAS.
+
+**sweep lag** — the time from the oldest pending machine deadline to
+the current sweep pass; task-engine alerts the operator above 30 seconds.
 
 **tenant** — a user of the installation; tenant identifiers flow
 through `shared/log` context.

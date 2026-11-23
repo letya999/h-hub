@@ -71,6 +71,7 @@ services:
       - HHUB_KEYS
       - HHUB_IDENTITY_URL
       - HHUB_SPAWN_URL
+      - HHUB_CHANNEL_URL
     volumes:
       - name: keys-task-engine
         path: /etc/hhub
@@ -79,6 +80,8 @@ services:
         ops: [MintRunToken]
       - to: spawn-controller
         ops: [EnsureRuntime, ReleaseRuntime, ResolveSpec]
+      - to: channel-hub
+        ops: [Alert]
       - to: harness-runtime
         ops: [SubmitRun, CancelRun]
   - name: harness-runtime

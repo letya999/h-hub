@@ -43,5 +43,7 @@ loaded once in `internal/config`.
 
 Run `just stack` and use `hubctl chat <user>`. `/healthz` checks the database.
 Inspect the service log, FSM outbox and `mock_outbox` when a delivery stalls.
+Service alerts use the same delivery path and accept only declared service
+edges ([TestOperatorAlert](../../test/e2e/operator_alert_test.go)).
 Long answers become five text parts plus a remainder file
 ([TestScriptedLongAnswer](../../test/e2e/scripted_channel_test.go)).
