@@ -21,6 +21,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
@@ -486,8 +487,13 @@ func TestMissingConfigRefused(t *testing.T) {
 func TestStackRestart(t *testing.T) {
 	testkit.Req(t, "sys.stack-restart")
 	testkit.Req(t, "adr.task-jobs.restart-durable")
-	owner := "reba"
-	space := ensureSpace(t, owner, idem("s", owner))
+	owner := "restart_" + nonce
+	space, code := addUser(t, owner)
+	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
+		External: owner, UpdateID: idem("link", owner), Text: "/start " + code}); err != nil {
+		t.Fatal(err)
+	}
+	cursor := waitMock(t, owner, 0, "Account linked", 10*time.Second)
 	res, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: space, Conversation: "c1",
 		Input: "restart check", Idem: idem("j", "reba", "1")})
@@ -497,7 +503,7 @@ func TestStackRestart(t *testing.T) {
 	waitJob(t, ownerSpace{owner, space}, res.ID, "succeeded", 3*time.Minute)
 	d := testkit.NewDocker(t)
 	for _, name := range []string{"task-engine", "spawn-controller",
-		"identity-hub", "postgres"} {
+		"identity-hub", "channel-hub", "postgres"} {
 		if err := d.Restart(context.Background(), name); err != nil {
 			t.Fatalf("restart %s: %v", name, err)
 		}
@@ -515,6 +521,11 @@ func TestStackRestart(t *testing.T) {
 	if j.Result != "answer: restart check" {
 		t.Fatalf("lost result after restart: %q", j.Result)
 	}
+	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
+		External: owner, UpdateID: idem("after", owner), Text: "after restart"}); err != nil {
+		t.Fatal(err)
+	}
+	waitMock(t, owner, cursor, "answer: after restart", 3*time.Minute)
 }
 
 // adminDB opens the admin DSN against one service database; Postgres
