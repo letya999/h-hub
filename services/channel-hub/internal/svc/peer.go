@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	mv1 "github.com/letya999/h-hub/contracts/model/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -53,4 +54,36 @@ func (s *Server) taskClient(ctx context.Context, external string) (*tv1.Client, 
 		return nil, resolved, fmt.Errorf("mint link token: %w", err)
 	}
 	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(s.deps.TaskURL, tok.Token)}}, resolved, nil
+}
+
+// linkToken mints an owner-scoped link token for one callee audience;
+// the same delegation channel-hub uses for job ops now covers the
+// model ops declared for the space.
+func (s *commandOps) linkToken(ctx context.Context, external, aud string) (string, error) {
+	id, err := s.identityClient(ctx)
+	if err != nil {
+		return "", err
+	}
+	tok, err := id.MintLinkToken(ctx, idv1.MintLinkTokenReq{
+		Channel: "mock", External: external, Aud: aud})
+	if err != nil {
+		return "", fmt.Errorf("mint link token %s: %w", aud, err)
+	}
+	return tok.Token, nil
+}
+
+func (s *commandOps) modelClient(ctx context.Context, external string) (*mv1.Client, error) {
+	tok, err := s.linkToken(ctx, external, "model-gateway")
+	if err != nil {
+		return nil, err
+	}
+	return &mv1.Client{T: mv1.HTTP{C: httpapi.NewClient(s.deps.ModelURL, tok)}}, nil
+}
+
+func (s *commandOps) spawnOwnerClient(ctx context.Context, external string) (*sv1.Client, error) {
+	tok, err := s.linkToken(ctx, external, "spawn-controller")
+	if err != nil {
+		return nil, err
+	}
+	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(s.deps.SpawnURL, tok)}}, nil
 }
