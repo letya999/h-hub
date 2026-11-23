@@ -61,6 +61,18 @@ type createReq struct {
 	Labels       map[string]string   `json:"Labels"`
 	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
 	HostConfig   hostConfig          `json:"HostConfig"`
+	Healthcheck  healthCheck         `json:"Healthcheck"`
+}
+
+// healthCheck runs inside the runtime's own net namespace: the
+// control zone has no network path into the space zone, so the
+// readiness probe rides the engine instead of HTTP.
+type healthCheck struct {
+	Test        []string `json:"Test"`
+	Interval    int64    `json:"Interval"`
+	Timeout     int64    `json:"Timeout"`
+	Retries     int64    `json:"Retries"`
+	StartPeriod int64    `json:"StartPeriod"`
 }
 
 type hostConfig struct {
@@ -118,6 +130,14 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 			Tmpfs:          map[string]string{"/tmp": "rw,noexec,nosuid,size=16m"},
 			SecurityOpt:    []string{"no-new-privileges"},
 		},
+		Healthcheck: healthCheck{
+			Test: []string{"CMD", "wget", "-q", "-O", "/dev/null",
+				"http://127.0.0.1:9000/healthz"},
+			Interval:    1e9,
+			Timeout:     2e9,
+			Retries:     30,
+			StartPeriod: 5e9,
+		},
 	}
 	if l.RenderVol != "" {
 		spec.HostConfig.Mounts = []mount{{
@@ -146,7 +166,12 @@ type containerInspect struct {
 		Env    []string
 		Labels map[string]string
 	}
-	State           struct{ Running bool }
+	State struct {
+		Running bool
+		Health  struct {
+			Status string
+		}
+	}
 	NetworkSettings struct{ Networks map[string]json.RawMessage }
 }
 
@@ -199,6 +224,20 @@ func (d *Docker) Inspect(ctx context.Context, id string) (exists, running bool, 
 func (d *Docker) onNetwork(networks map[string]json.RawMessage) bool {
 	_, ok := networks[d.network]
 	return d.network != "" && ok
+}
+
+// Healthy reports the engine-side health of a container: the runtime
+// probes itself, so readiness needs no network path from the control
+// zone into the space zone.
+func (d *Docker) Healthy(ctx context.Context, id string) (bool, error) {
+	var out containerInspect
+	if err := d.req(ctx, http.MethodGet, "/containers/"+id+"/json", nil, &out); err != nil {
+		if isNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return out.State.Health.Status == "healthy", nil
 }
 
 // ManagedContainer identifies a container owned by one runtime.

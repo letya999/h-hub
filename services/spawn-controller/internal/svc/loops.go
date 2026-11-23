@@ -9,8 +9,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -324,32 +322,16 @@ func (s *Server) reconcileOne(ctx context.Context, rt runtimeRow) error {
 		return s.withRuntimeTx(ctx, rt.id, "reaped", "reconcile")
 	case !exists, !running:
 		return s.withRuntimeTx(ctx, rt.id, "lost", "reconcile")
-	case st == "starting" && healthy(ctx, rt.endpoint):
-		return s.withRuntimeTx(ctx, rt.id, "ready", "reconcile")
+	case st == "starting":
+		ok, err := s.deps.Docker.Healthy(ctx, rt.container)
+		if err != nil {
+			return fmt.Errorf("health: %w", err)
+		}
+		if ok {
+			return s.withRuntimeTx(ctx, rt.id, "ready", "reconcile")
+		}
 	}
 	return nil
-}
-
-// healthy probes the runtime's health endpoint on the internal net.
-func healthy(ctx context.Context, endpoint string) bool {
-	if endpoint == "" {
-		return false
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		endpoint+"/healthz", nil)
-	if err != nil {
-		return false
-	}
-	hc := &http.Client{Timeout: 2 * time.Second}
-	res, err := hc.Do(req)
-	if err != nil {
-		return false
-	}
-	defer res.Body.Close() //nolint:errcheck // best-effort close
-	if _, err := io.Copy(io.Discard, res.Body); err != nil {
-		return false
-	}
-	return res.StatusCode == http.StatusOK
 }
 
 // withRuntimeTx applies one runtime event in its own transaction;

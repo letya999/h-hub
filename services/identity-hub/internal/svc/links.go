@@ -188,9 +188,15 @@ func (s *Server) resolve(ctx context.Context, r idv1.ResolveReq) (idv1.ResolveRe
 	return idv1.ResolveResp{Owner: owner, Space: space}, nil
 }
 
+// linkAud is the closed set of audiences a channel link token may
+// carry: the job surface and the owner-scoped model ops.
+var linkAud = map[string]bool{
+	"task-engine": true, "model-gateway": true, "spawn-controller": true,
+}
+
 func (s *Server) mintLinkToken(ctx context.Context, r idv1.MintLinkTokenReq) (idv1.MintLinkTokenResp, error) {
 	p := httpapi.PrincipalFrom(ctx)
-	if p == nil || p.Sub != "channel-hub" || r.Aud != "task-engine" {
+	if p == nil || p.Sub != "channel-hub" || !linkAud[r.Aud] {
 		return idv1.MintLinkTokenResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	resolved, err := s.resolve(ctx, idv1.ResolveReq{Channel: r.Channel, External: r.External})

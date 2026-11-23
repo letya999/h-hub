@@ -12,10 +12,12 @@ volumes:
   - name: broker-data
   - name: memory-vault
   - name: hhub-render
+  - name: cliproxy-auth
   - name: keys-identity-hub
   - name: keys-task-engine
   - name: keys-channel-hub
   - name: keys-spawn-controller
+  - name: keys-model-gateway
 services:
   - name: spawn-controller
     zone: control
@@ -98,6 +100,8 @@ services:
     edges:
       - to: task-engine
         ops: [ReportRun]
+      - to: model-gateway
+        ops: [Complete]
   - name: proactive-engine
     zone: control
     database: postgres
@@ -141,6 +145,7 @@ services:
       - HHUB_IDENTITY_URL
       - HHUB_TASK_URL
       - HHUB_SPAWN_URL
+      - HHUB_MODEL_URL
     volumes:
       - name: keys-channel-hub
         path: /etc/hhub
@@ -150,7 +155,9 @@ services:
       - to: task-engine
         ops: [CreateJob, GetJob, ListJobs, CancelJob]
       - to: spawn-controller
-        ops: [WatchdogStatus]
+        ops: [WatchdogStatus, SetModel]
+      - to: model-gateway
+        ops: [Usage, Routes]
   - name: ingress-gateway
     zone: edge
     database: none
@@ -182,13 +189,23 @@ services:
     edges: []
   - name: model-gateway
     zone: egress
+    deploy: true
     database: postgres
     mem: 128m
     cpu: 0.5
     pids: 256
-    env: []
-    volumes: []
-    edges: []
+    env:
+      - HHUB_SUB
+      - HHUB_DSN
+      - HHUB_KEYS
+      - HHUB_IDENTITY_URL
+      - HHUB_SPAWN_URL
+    volumes:
+      - name: keys-model-gateway
+        path: /etc/hhub
+    edges:
+      - to: spawn-controller
+        ops: [ResolveSpec]
 clients:
   - name: operator
     edges:
