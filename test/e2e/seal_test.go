@@ -6,12 +6,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/letya999/h-hub/cmd/hubctl/operator"
 	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
+	credv1 "github.com/letya999/h-hub/contracts/cred/v1"
+	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	"github.com/letya999/h-hub/shared/auth"
+	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/seal"
 	"github.com/letya999/h-hub/shared/testkit"
 )
@@ -63,6 +69,54 @@ func TestSecretsAbsentFromDumpLogsInspectAndAnswer(t *testing.T) {
 		if strings.Contains(m.Body, code) || strings.Contains(m.Body, hex.EncodeToString(seed)) {
 			t.Fatal("secret in answer")
 		}
+	}
+	// Broker path: a live secret rides the operator write and comes
+	// back through a lease — then the whole surface must stay clean.
+	brokerCanary(t, owner, dump)
+}
+
+// brokerCanary writes a secret through the operator edge, reads it back
+// through a service lease, and refuses every readable surface.
+func brokerCanary(t *testing.T, owner string, dump []byte) {
+	t.Helper()
+	canary := "cnry" + nonce
+	cTok, err := operator.Token("", "", "SetSecret", "credential-broker", "/etc/hhub/keys/operator.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc := &credv1.Client{T: credv1.HTTP{
+		C: httpapi.NewClient(os.Getenv("HHUB_BROKER_URL"), cTok)}}
+	set, err := bc.SetSecret(context.Background(), credv1.SetSecretReq{
+		Name: "seal-canary", Value: canary})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sKey, err := auth.LoadPrivateKey("/etc/hhub/services/channel-hub/service.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(identityURL, "")}}
+	svc, err := identity.IssueServiceToken(context.Background(),
+		"channel-hub", "credential-broker", idem("seal-svc-token", owner), sKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc.T = credv1.HTTP{C: httpapi.NewClient(os.Getenv("HHUB_BROKER_URL"), svc.Token)}
+	acq, err := bc.Acquire(context.Background(), credv1.AcquireReq{Ref: set.Ref})
+	if err != nil || acq.Fields["value"] != canary {
+		t.Fatalf("lease round trip: %v %v", acq, err)
+	}
+	vol := dockerOutput(t, "run", "--rm", "-v", "hhub_broker-data:/d",
+		"alpine:3.21", "cat", "/d/broker.db")
+	testkit.Deny(t, "sys.seal-at-rest", !bytes.Contains(vol, []byte(canary)))
+	for _, args := range [][]string{{"logs", "credential-broker"},
+		{"inspect", "credential-broker"}} {
+		out := dockerOutput(t, args...)
+		testkit.Deny(t, "sys.seal-at-rest", !bytes.Contains(out, []byte(canary)))
+	}
+	testkit.Deny(t, "sys.seal-at-rest", !bytes.Contains(dump, []byte(canary)))
+	if t.Failed() {
+		t.Fatal("canary escaped a sealed surface")
 	}
 }
 

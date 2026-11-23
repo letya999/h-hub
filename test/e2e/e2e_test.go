@@ -520,15 +520,17 @@ func TestStackRestart(t *testing.T) {
 			t.Fatalf("restart %s: %v", name, err)
 		}
 	}
-	// Wait for task-engine to answer again.
-	testkit.Poll(t, 90*time.Second, time.Second, func() bool {
-		res, err := http.Get(taskURL + "/healthz")
-		if err != nil {
-			return false
-		}
-		res.Body.Close()
-		return res.StatusCode == http.StatusOK
-	})
+	// Wait for task-engine and channel-hub to answer again.
+	for _, base := range []string{taskURL, "http://channel-hub:9000"} {
+		testkit.Poll(t, 90*time.Second, time.Second, func() bool {
+			res, err := http.Get(base + "/healthz")
+			if err != nil {
+				return false
+			}
+			res.Body.Close()
+			return res.StatusCode == http.StatusOK
+		})
+	}
 	j := waitJob(t, ownerSpace{owner, space}, res.ID, "succeeded", time.Minute)
 	if j.Result != "answer: restart check" {
 		t.Fatalf("lost result after restart: %q", j.Result)
