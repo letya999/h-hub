@@ -25,7 +25,8 @@
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
-  is refused. The full e2e passed in **68.974 s** with this negative
+  is refused. The full e2e passed in **63.748 s** after the watchdog
+  alert scenario was added, with this negative
   check; local `just check` passed. The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
   **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
@@ -44,6 +45,10 @@
   the alert and outbox intent in one transaction; channel-hub delivers
   it once by key. A forged operator call to the service alert endpoint
   is refused ([contract e2e](../../test/e2e/operator_alert_test.go)).
+- [Watchdog e2e](../../test/e2e/watchdog_stale_test.go) froze the spawn
+  tick: spawn-controller returned unhealthy, an unauthenticated status
+  read was refused, and channel-hub sent the operator alert through its
+  direct delivery outbox. A stable tick value deduplicates each incident.
 - Phase 5 adds the additive identity-hub migration
   `0006_link_codes_expiry.sql` and task-engine alert-intent table
   migration `0003_operator_alerts.sql`. The live identity database
@@ -79,7 +84,7 @@ it does **not** count as a passing status.
 | `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
 | `space-no-db` | Deferred to phase 13 | Runtime inspect has no DB credential/socket; worker owner is absent. |
 | `seal-at-rest` | Deferred to phase 7 | Issuer seed is sealed; credential-broker secret-value owner is absent. |
-| `watchdog-stale` | Blocked | Stale-tick e2e gets unhealthy from spawn-controller; channel alert bypass is missing. |
+| `watchdog-stale` | Proved | Stale tick makes spawn-controller unhealthy; channel-hub sends a direct operator alert, and an unauthenticated status read is refused. |
 | `service-edge` | Proved | Wrong operation or absent token is refused. |
 | `worker-tenant` | Deferred to phase 13 | Worker owner is absent. |
 | `worker-stop-confirmed` | Deferred to phase 13 | Worker owner is absent. |
@@ -103,8 +108,8 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   attaching the live socket would let the restored janitor affect live
   containers. This needs an isolated Docker engine for a safe end-to-end
   recovery drill.
-- `watchdog-stale` and `wedge-unblock` need the scenarios
-  described in the matrix. The trace gate still checks links, not
+- `wedge-unblock` still needs the scenario described in the matrix.
+  The trace gate still checks links, not
   execution plus negative assertions; the invariant registry and new
   gate are not complete.
 - The first [phase-5 PR CI](https://github.com/letya999/h-hub/actions/runs/45130542931)
@@ -126,7 +131,7 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   channel-hub **872/4,000**, harness-runtime **395/6,000**.
   No size trigger fired. Keep the four deployed product services plus
   the per-space harness runtime.
-- Mandatory e2e: **68.974 s** against 10 minutes. Local `just check`
+- Mandatory e2e: **63.748 s** against 10 minutes. Local `just check`
   passed against the 5-minute criterion. Passing three-user loads are
   **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
   unexplained outlier, though runtime leakage was present then. A
