@@ -19,8 +19,10 @@ conversation pointers and `mock_outbox`; it owns no principal or job state
 ## Contracts
 
 Implements `contracts/channel/v1` (`Inject`, `ReadOutbox`) and consumes
-`contracts/identity/v1` and `contracts/task/v1`
-([TestMockChannelThreeUsers](../../test/e2e/channel_test.go)).
+`contracts/identity/v1`, `contracts/task/v1`, `contracts/model/v1`
+(`Usage`, `Routes` for `/usage` and `/model`) and `contracts/spawn/v1`
+(`SetModel`)
+([TestModelChannelCommands](../../test/e2e/model_test.go)).
 
 ## Does not do
 
@@ -36,7 +38,7 @@ changes on `/new` ([TestInjectDedupAndIsolation](internal/svc/intake_db_test.go)
 
 ## Config
 
-`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`, `HHUB_TASK_URL`, `HHUB_SPAWN_URL`;
+`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`, `HHUB_TASK_URL`, `HHUB_SPAWN_URL`, `HHUB_MODEL_URL`;
 loaded once in `internal/config`.
 
 ## Runbook

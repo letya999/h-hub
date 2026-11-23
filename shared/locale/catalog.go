@@ -3,7 +3,7 @@ package locale
 // Catalogs are declared in code so keys stay typed and parity is a
 // simple map comparison. Keep ru and en key sets identical.
 var catalogs = map[Lang]map[string]string{
-	EN: {
+	EN: { //nolint:dupl // translations mirror the same keys per language
 		"err.invalid":             "invalid request",
 		"err.invalid-arg":         "invalid argument {field}",
 		"err.not-found":           "not found",
@@ -20,9 +20,15 @@ var catalogs = map[Lang]map[string]string{
 		"err.lease":               "lease conflict",
 		"err.seal":                "cannot open sealed value",
 		"err.token":               "bad token",
+		"err.quota":               "token budget exceeded",
+		"err.missing-input":       "empty request",
 		"channel.linked":          "Account linked. Send a message to begin.",
 		"channel.link-required":   "Link this account with /start <code> first.",
-		"channel.help":            "Commands: /start <code>, /help, /new, /status, /stop.",
+		"channel.help":            "Commands: /start <code>, /help, /new, /status, /stop, /usage, /model [route].",
+		"channel.usage":           "Spent today: {spent} of {daily} tokens; {reserved} reserved; per-run ceiling {run}.",
+		"channel.models":          "Model routes: {list}. Active: {active}.",
+		"channel.model-set":       "Model route switched to {route}.",
+		"channel.model-unknown":   "Unknown route {route}. Routes: {list}.",
 		"channel.job-failed":      "The request ended in {state}.",
 		"channel.truncated":       "\n[Answer truncated; remainder attached as a file.]",
 		"channel.file":            "[Attached file follows]",
@@ -34,7 +40,7 @@ var catalogs = map[Lang]map[string]string{
 		"operator.sweep-lag":      "Job deadlines are overdue; check task-engine sweeper.",
 		"operator.watchdog-stale": "Spawn controller watchdog is stale; check the service.",
 	},
-	RU: {
+	RU: { //nolint:dupl // translations mirror the same keys per language
 		"err.invalid":             "некорректный запрос",
 		"err.invalid-arg":         "некорректный аргумент {field}",
 		"err.not-found":           "не найдено",
@@ -51,9 +57,15 @@ var catalogs = map[Lang]map[string]string{
 		"err.lease":               "конфликт лизы",
 		"err.seal":                "не удалось расшифровать значение",
 		"err.token":               "некорректный токен",
+		"err.quota":               "превышен лимит токенов",
+		"err.missing-input":       "пустой запрос",
 		"channel.linked":          "Аккаунт привязан. Отправьте сообщение.",
 		"channel.link-required":   "Сначала привяжите аккаунт командой /start <код>.",
-		"channel.help":            "Команды: /start <код>, /help, /new, /status, /stop.",
+		"channel.help":            "Команды: /start <код>, /help, /new, /status, /stop, /usage, /model [маршрут].",
+		"channel.usage":           "Потрачено сегодня: {spent} из {daily} токенов; зарезервировано {reserved}; потолок на прогон {run}.",
+		"channel.models":          "Маршруты моделей: {list}. Активен: {active}.",
+		"channel.model-set":       "Маршрут модели переключён на {route}.",
+		"channel.model-unknown":   "Неизвестный маршрут {route}. Маршруты: {list}.",
 		"channel.job-failed":      "Запрос завершился в состоянии {state}.",
 		"channel.truncated":       "\n[Ответ обрезан; остаток приложен файлом.]",
 		"channel.file":            "[Далее содержимое приложенного файла]",
