@@ -25,13 +25,29 @@
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
-  is refused. The full e2e passed in **56.889 s** with this negative
+  is refused. The full e2e passed in **68.974 s** with this negative
   check; local `just check` passed. The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
   **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
   not proof that orphan containers alone caused the outlier.
+- A later load exposed a separate dispatch race: one runtime reported
+  its final result before task-engine moved the job from `admitted` to
+  `running`. The result was refused and the load timed out after
+  **311.6 s**. The [regression](../../services/task-engine/internal/svc/dispatch_race_db_test.go)
+  failed before the fix and passed after moving that transition into
+  the run-binding transaction. Two new 36-message runs passed with
+  **0 errors** in **9.0 s** and **8.7 s**. Cleanup again left zero
+  `hhub-rt-*` containers.
+- [Sweep-lag e2e](../../test/e2e/sweep_lag_test.go) held a queued job,
+  moved its deadline one minute into the past, and received its exact
+  operator alert. The threshold is 30 seconds. Task-engine records
+  the alert and outbox intent in one transaction; channel-hub delivers
+  it once by key. A forged operator call to the service alert endpoint
+  is refused ([contract e2e](../../test/e2e/operator_alert_test.go)).
 - Phase 5 adds the additive identity-hub migration
-  `0006_link_codes_expiry.sql`. The live database reports version **6**.
+  `0006_link_codes_expiry.sql` and task-engine alert-intent table
+  migration `0003_operator_alerts.sql`. The live identity database
+  reports version **6**.
   The frozen v0.0.4 identity image was published by the
   [GHCR run](https://github.com/letya999/h-hub/actions/runs/45127280913)
   and the smoke now pulls its pinned digest. After restoring a version-6
@@ -57,7 +73,7 @@ it does **not** count as a passing status.
 | `stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer and settled job rejects cancellation. |
 | `late-receipt` | Proved | Settled job remains settled after a late receipt. |
 | `seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
-| `sweep-lag` | Blocked | Task-engine: no operator alert on excessive lag yet. |
+| `sweep-lag` | Proved | Task-engine: one-minute overdue job creates a durable operator alert; operator token cannot forge it. |
 | `wedge-unblock` | Blocked | Job/runtime owners: no hubctl exit for every nonfinal state. |
 | `schema-version` | Proved | Future spec version is refused; additive migration is checked. |
 | `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
@@ -78,13 +94,16 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
 
 - The rollback gate is red on the published v0.0.4 digest and version-6
   schema. Do not substitute a locally rebuilt image or hide the migration.
+  The old task-engine binary also predates its new migration; the
+  current smoke exercises the published identity image, not a full
+  previous-version stack.
 - The restore drill starts four services and decrypts the backed-up
   issuer key, but does not yet prove message-to-answer. Its isolated
   spawn-controller has no Docker socket, so it cannot start a runtime;
   attaching the live socket would let the restored janitor affect live
   containers. This needs an isolated Docker engine for a safe end-to-end
   recovery drill.
-- `sweep-lag`, `watchdog-stale` and `wedge-unblock` need the scenarios
+- `watchdog-stale` and `wedge-unblock` need the scenarios
   described in the matrix. The trace gate still checks links, not
   execution plus negative assertions; the invariant registry and new
   gate are not complete.
@@ -92,7 +111,9 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   passed `just check` but stopped before the image smoke because the
   runner could not find nested `just init`. A regression test failed
   before the workflow PATH fix and passed afterward. The updated PR
-  still needs a remote run to reach the published-image incompatibility.
+  reached the published-image incompatibility in the
+  [second CI run](https://github.com/letya999/h-hub/actions/runs/45132085394):
+  `just check` passed, then the v0.0.4 identity binary rejected migration 6.
 - Phase 5 is **not ready for merge or `v0.0.5`**. Manual dispatch of
   `nightly.yml` returned HTTP 404 because the workflow is not on the
   default branch. The synthetic failure-to-issue check cannot run yet.
@@ -100,12 +121,16 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
 
 ## Redesign signals
 
-- Current production Go size stays below the blueprint budgets;
-  no measured service-count trigger fired. Keep the four deployed
-  product services plus the per-space harness runtime.
-- Mandatory e2e: **56.889 s** against 10 minutes. Local `just check`
-  passed against the 5-minute criterion. Three-user load is now
-  **7.6–8.5 s** for 36 messages; the earlier **26.9 s** remains an
-  unexplained outlier, though runtime leakage was present then.
+- Production Go lines excluding tests: spawn-controller **1,417/8,000**,
+  identity-hub **798/3,000**, task-engine **1,598/4,000**,
+  channel-hub **872/4,000**, harness-runtime **395/6,000**.
+  No size trigger fired. Keep the four deployed product services plus
+  the per-space harness runtime.
+- Mandatory e2e: **68.974 s** against 10 minutes. Local `just check`
+  passed against the 5-minute criterion. Passing three-user loads are
+  **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
+  unexplained outlier, though runtime leakage was present then. A
+  separate early-result race caused one later 311.6 s failed run;
+  its focused regression and two post-fix load runs are green.
 - The release blocker is compatibility with the immutable previous
   binary, not service size or test duration.
