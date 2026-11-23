@@ -1,5 +1,8 @@
 # h-hub
 
+License: **AGPL-3.0-only**. See [LICENSE](LICENSE) and
+[THIRD_PARTY.md](THIRD_PARTY.md).
+
 A security, control and reliability layer over AI assistants —
 harness-agnostic, Hermes first. Hermes thinks; h-hub makes execution
 safe and reliable for several equal users, initially through Telegram,
