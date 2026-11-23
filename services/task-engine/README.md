@@ -57,6 +57,8 @@ tick. If jobs sit `admitted`, check `EnsureRuntime` reachability; if
 they fall to `uncertain`, inspect `job_events` for the lost run and
 the runtime container's liveness. `hubctl job retry|cancel|
 unquarantine` operates the `LongLived` exits.
+The exit command for every job state is checked at the contract boundary
+([TestJobExitCommandsCoverEveryNonfinalState](internal/svc/wedge_db_test.go)).
 If a deadline is over 30 seconds late, the sweeper records an operator
 alert and delivers it through channel-hub
 ([TestSweepLagOperatorAlert](../../test/e2e/sweep_lag_test.go)).
