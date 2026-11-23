@@ -18,7 +18,7 @@ const operatorKey = "/etc/hhub/keys/operator.key"
 
 func Run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: hubctl user add|disable <id> [--template default]")
+		return fmt.Errorf("usage: hubctl user add|disable|runtime-drain")
 	}
 	switch args[0] {
 	case "add":
@@ -34,8 +34,40 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 			return fmt.Errorf("usage: hubctl user disable <id>")
 		}
 		return disable(ctx, args[1], out)
+	case "runtime-drain":
+		return runRuntimeDrain(ctx, args[1:], out)
 	}
-	return fmt.Errorf("usage: hubctl user add|disable <id>")
+	return fmt.Errorf("usage: hubctl user add|disable|runtime-drain")
+}
+
+func runRuntimeDrain(ctx context.Context, args []string, out io.Writer) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: hubctl user runtime-drain <owner> <space>")
+	}
+	return runtimeDrain(ctx, args[0], args[1], out)
+}
+
+func runtimeDrain(ctx context.Context, owner, space string, out io.Writer) error {
+	if owner == "" || space == "" {
+		return fmt.Errorf("owner and space are required")
+	}
+	id, err := identityClient(owner, space, "spawn-controller")
+	if err != nil {
+		return err
+	}
+	delegated, err := id.ActAs(ctx, idv1.ActAsReq{Owner: owner, Space: space, Aud: "spawn-controller"})
+	if err != nil {
+		return fmt.Errorf("act as: %w", err)
+	}
+	sp := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, delegated.Token)}}
+	res, err := sp.DrainRuntime(ctx, sv1.DrainRuntimeReq{Space: space})
+	if err != nil {
+		return fmt.Errorf("drain runtime: %w", err)
+	}
+	if _, err := fmt.Fprintf(out, "%s %s\n", space, res.State); err != nil {
+		return fmt.Errorf("output: %w", err)
+	}
+	return nil
 }
 
 func identityClient(owner, space, target string) (*idv1.Client, error) {

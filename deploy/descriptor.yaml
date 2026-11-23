@@ -198,6 +198,6 @@ clients:
         ops: [CreateJob, GetJob, ListJobs, CancelJob, RetryJob,
               UnquarantineJob, SetHold, GetRun]
       - to: spawn-controller
-        ops: [CreateSpace, GetSpace, DestroySpace]
+        ops: [CreateSpace, GetSpace, DestroySpace, DrainRuntime]
       - to: channel-hub
         ops: [Inject, ReadOutbox]

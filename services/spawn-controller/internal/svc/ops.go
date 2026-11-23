@@ -27,6 +27,9 @@ func (s *Server) handlers() sv1.Handlers {
 		EnsureRuntime:  s.ensureRuntime,
 		ResolveSpec:    s.resolveSpec,
 		ReleaseRuntime: s.releaseRuntime,
+		DrainRuntime: func(ctx context.Context, r sv1.DrainRuntimeReq) (sv1.DrainRuntimeResp, error) {
+			return drainRuntimeOp(s, ctx, r)
+		},
 		WatchdogStatus: func(ctx context.Context, r sv1.WatchdogStatusReq) (sv1.WatchdogStatusResp, error) {
 			return watchdogStatus(s, ctx, r)
 		},

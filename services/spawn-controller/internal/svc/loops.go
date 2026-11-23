@@ -108,6 +108,13 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 // through the backend and binds the runtime row — after this the
 // reconcile pass drives starting -> warm.
 func (s *Server) dockerCreate(ctx context.Context, e createEffect) error {
+	state, err := s.runM.State(ctx, s.db, e.Runtime)
+	if err != nil {
+		return fmt.Errorf("create state: %w", err)
+	}
+	if state != "starting" {
+		return nil
+	}
 	sp, err := getSpaceAny(ctx, s.db, e.Space)
 	if err != nil {
 		return err
@@ -185,10 +192,19 @@ func harnessEnv(space string) []string {
 }
 
 func (s *Server) dockerRemove(ctx context.Context, e rmEffect) error {
-	if e.Container != "" {
-		if err := s.deps.Docker.Remove(ctx, e.Container); err != nil {
-			return fmt.Errorf("docker rm: %w", err)
-		}
+	container := e.Container
+	if container == "" {
+		container = "hhub-" + e.Runtime
+	}
+	if err := s.deps.Docker.Remove(ctx, container); err != nil {
+		return fmt.Errorf("docker rm: %w", err)
+	}
+	state, err := s.runM.State(ctx, s.db, e.Runtime)
+	if err != nil {
+		return fmt.Errorf("rm state: %w", err)
+	}
+	if state == "absent" {
+		return nil
 	}
 	return s.withRuntimeTx(ctx, e.Runtime, "reaped", "outbox")
 }
