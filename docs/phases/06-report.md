@@ -116,8 +116,17 @@ config, space-without-database, and the spec-digest image pin.
   gitleaks and the descriptor check. The mandatory e2e took
   **125.2 s** of the 10-minute budget; the whole gate took about
   **7 minutes** with a warm build cache.
-- PR, CI run, merge, tag and the dispatched nightly are linked in the
-  release validation table of this document's PR description.
+- The [phase-6 PR](https://github.com/letya999/h-hub/pull/10) passed
+  [CI](https://github.com/letya999/h-hub/actions/runs/45216626124):
+  `just check` and the published-image N-1 smoke in 5m56s. The
+  [release commit on main](https://github.com/letya999/h-hub/actions/runs/45217810381)
+  passed again. [Tag v0.0.6](https://github.com/letya999/h-hub/tree/v0.0.6)
+  points to that green commit.
+- The [GHCR image run](https://github.com/letya999/h-hub/actions/runs/45217841848)
+  published all seven `v0.0.6` service and CLI images, model-gateway
+  included. The [manually dispatched nightly](https://github.com/letya999/h-hub/actions/runs/45218066562)
+  passed `Check` and the fault-scenario matrix in **6m10s**; no alert
+  issue was opened.
 
 ## Remaining limits
 
