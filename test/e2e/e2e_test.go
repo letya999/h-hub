@@ -438,18 +438,28 @@ func TestSpaceNoDB(t *testing.T) {
 	}
 }
 
-// TestRuntimeIntent proves the intent registry has rows for launched
-// runtimes: intent precedes docker create.
+// TestRuntimeIntent checks the runtime's own registry row. Ordering of
+// intent versus Docker creation remains a deferred proof.
 func TestRuntimeIntent(t *testing.T) {
 	testkit.Req(t, "adr.spawn-runtime.intent-first")
+	owner := "intent_" + nonce
+	space := ensureSpace(t, owner, idem("intent-space"))
+	client := taskServiceSpawnClient(t, space)
+	var runtime string
+	testkit.Poll(t, time.Minute, 250*time.Millisecond, func() bool {
+		res, err := client.EnsureRuntime(context.Background(), sv1.EnsureRuntimeReq{Space: space})
+		runtime = res.Runtime
+		return err == nil && res.Ready && runtime != ""
+	})
 	db := adminDB(t, "spawn_controller")
 	var n int
 	if err := db.QueryRowContext(context.Background(),
-		"SELECT count(*) FROM intents").Scan(&n); err != nil {
+		"SELECT count(*) FROM intents WHERE runtime=$1 AND space=$2 AND kind='runtime'",
+		runtime, space).Scan(&n); err != nil {
 		t.Fatalf("intents: %v", err)
 	}
-	if n < 1 {
-		t.Fatalf("no intent rows for launched runtimes")
+	if n != 1 {
+		t.Fatalf("runtime %s has %d intent rows", runtime, n)
 	}
 }
 
