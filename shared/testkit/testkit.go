@@ -28,7 +28,20 @@ func Req(t *testing.T, ids ...string) {
 		if !reqRe.MatchString(id) {
 			t.Fatalf("testkit.Req: malformed id %q", id)
 		}
+		t.Log("TRACE_REQ " + id)
 	}
+}
+
+// Deny records an exercised forbidden path only after its refusal is checked.
+func Deny(t *testing.T, id string, refused bool) {
+	t.Helper()
+	if !reqRe.MatchString(id) {
+		t.Fatalf("testkit.Deny: malformed id %q", id)
+	}
+	if !refused {
+		t.Fatalf("testkit.Deny: forbidden path accepted for %s", id)
+	}
+	t.Log("TRACE_DENY " + id)
 }
 
 // DSN returns the test Postgres DSN. The check recipe sets it after

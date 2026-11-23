@@ -20,19 +20,23 @@ var sysIDs = map[string]bool{
 }
 
 var (
-	reqLineRe = regexp.MustCompile(`\b(req:|requires:|testkit\.Req\()`)
+	reqLineRe = regexp.MustCompile(`\b(req:|requires:|testkit\.(Req|Deny)\()`)
 	idRe      = regexp.MustCompile(`\b(adr|cap|sys)\.[a-z0-9-]+(\.[a-z0-9-]+)?`)
 	adrFileRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-([a-z0-9-]+)\.md$`)
 	adrInvRe  = regexp.MustCompile(`\badr\.[a-z0-9-]+\.[a-z0-9-]+\b`)
 )
 
-// Trace is the traceability gate (rule 29): tests link to requirements
-// via `req:` comments, `requires:` lines, or testkit.Req(...) calls.
-// adr.<slug>.<invariant> resolves only when an ADR file declares the
-// invariant; cap.* stays unresolved until a capability catalog exists.
+// Trace checks every declared ID against the register and test references.
 func Trace(root string) error {
 	adrs, err := adrIndex(root)
 	if err != nil {
+		return err
+	}
+	rows, err := invariantRows(root)
+	if err != nil {
+		return err
+	}
+	if err := checkRegister(root, rows, adrs); err != nil {
 		return err
 	}
 	return findInFiles(root, []string{"_test.go", ".yaml", ".yml"}, func(rel, line string, n int) error {
@@ -40,8 +44,8 @@ func Trace(root string) error {
 			return nil
 		}
 		for _, id := range idRe.FindAllString(line, -1) {
-			if err := checkID(id, adrs); err != nil {
-				return fmt.Errorf("trace: %s:%d: %w", rel, n, err)
+			if _, ok := rows[id]; !ok {
+				return fmt.Errorf("trace: %s:%d: unregistered %s", rel, n, id)
 			}
 		}
 		return nil
