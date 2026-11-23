@@ -30,8 +30,8 @@ type migration struct {
 
 // Migrate applies embedded NNNN_name.sql migrations under a Postgres
 // advisory transaction lock. Numbering must be gap-free starting at
-// 0001; applied files are verified by sha256 and a database newer than
-// the binary's last migration is refused.
+// 0001; the binary's known applied files are verified by sha256. A
+// newer schema may be read by the previous release during rollback.
 func Migrate(ctx context.Context, db *sql.DB, fsys fs.FS, dir string) error {
 	migs, err := readMigrations(fsys, dir)
 	if err != nil {
@@ -145,9 +145,15 @@ func appliedSet(ctx context.Context, tx *sql.Tx) (map[int]string, error) {
 }
 
 func checkApplied(migs []migration, applied map[int]string) error {
+	maxVersion := 0
 	for num := range applied {
-		if num > len(migs) {
-			return migErr("num", strconv.Itoa(num), "database newer than binary")
+		if num > maxVersion {
+			maxVersion = num
+		}
+	}
+	for num := 1; num <= maxVersion; num++ {
+		if _, ok := applied[num]; !ok {
+			return migErr("num", strconv.Itoa(num), "applied migration gap")
 		}
 	}
 	for _, m := range migs {
