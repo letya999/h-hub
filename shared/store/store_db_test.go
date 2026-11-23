@@ -58,21 +58,32 @@ func TestMigrateRejectsTamperedBody(t *testing.T) {
 	}
 }
 
-func TestMigrateRejectsNewerDatabase(t *testing.T) {
+func TestMigrateReadsNewerDatabase(t *testing.T) {
 	t.Parallel()
+	testkit.Req(t, "adr.store.n-minus-one")
 	ctx := context.Background()
 	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	two := fstest.MapFS{
-		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte("SELECT 1")},
-		"migrations/0002_b.sql": &fstest.MapFile{Data: []byte("SELECT 2")},
+		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte("CREATE TABLE a (id int PRIMARY KEY)")},
+		"migrations/0002_b.sql": &fstest.MapFile{Data: []byte("ALTER TABLE a ADD COLUMN note text DEFAULT ''")},
 	}
 	if err := Migrate(ctx, db, two, "migrations"); err != nil {
 		t.Fatal(err)
 	}
 	one := fstest.MapFS{
-		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte("SELECT 1")},
+		"migrations/0001_a.sql": &fstest.MapFile{Data: []byte("CREATE TABLE a (id int PRIMARY KEY)")},
+	}
+	if err := Migrate(ctx, db, one, "migrations"); err != nil {
+		t.Fatalf("N-1 binary cannot read expanded database: %v", err)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM a`).Scan(&n); err != nil {
+		t.Fatalf("N-1 read: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM schema_migrations WHERE num=1`); err != nil {
+		t.Fatal(err)
 	}
 	if err := Migrate(ctx, db, one, "migrations"); err == nil {
-		t.Fatal("binary older than database must be refused")
+		t.Fatal("applied gap accepted")
 	}
 }
