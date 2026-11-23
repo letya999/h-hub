@@ -8,6 +8,24 @@ ARG GITLEAKS_VERSION=8.30.1
 ARG GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 ARG JUST_VERSION=1.59.0
 ARG JUST_SHA256=409044617b6f06517c1035e55ca38c8c856ff8b650e41bc2aa1ef82d5903a23e
+ARG SQLCIPHER_VERSION=4.6.1
+ARG SQLCIPHER_SHA256=d8f9afcbc2f4b55e316ca4ada4425daf3d0b4aab25f45e11a802ae422b9f53a3
+
+# SQLCipher is pinned and built from source like the broker image:
+# the libsqlite3 build tag links every check binary against it.
+RUN set -eu; \
+    apk add --no-cache gcc musl-dev make openssl-dev openssl-libs-static tcl; \
+    cd /tmp; \
+    wget -q "https://github.com/sqlcipher/sqlcipher/archive/v${SQLCIPHER_VERSION}.tar.gz" -O sqlcipher.tar.gz; \
+    test "$(sha256sum sqlcipher.tar.gz | cut -d' ' -f1)" = "${SQLCIPHER_SHA256}"; \
+    tar -xzf sqlcipher.tar.gz; \
+    cd "sqlcipher-${SQLCIPHER_VERSION}"; \
+    ./configure --disable-shared --enable-static --enable-tempstore=yes \
+        --with-crypto-lib=openssl CFLAGS="-DSQLITE_HAS_CODEC -O2"; \
+    make -j"$(nproc)" libsqlcipher.la; \
+    cp .libs/libsqlcipher.a /usr/lib/libsqlite3.a; \
+    cp sqlite3.h /usr/include/sqlite3.h; \
+    rm -rf /tmp/sqlcipher*
 
 RUN set -eu; \
     apk add --no-cache git docker-cli ca-certificates; \
