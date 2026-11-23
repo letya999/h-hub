@@ -30,6 +30,8 @@ var cases = []Case{
 	{"destroy", caseDestroy},
 	{"unknown_space", caseUnknownSpace},
 	{"invalid_input", caseInvalidInput},
+	{"set_model", caseSetModel},
+	{"set_model_unknown_route", caseSetModelUnknown},
 }
 
 func caseCreateGet(t *testing.T, ctx context.Context, c *Client) {
@@ -76,5 +78,37 @@ func caseInvalidInput(t *testing.T, ctx context.Context, c *Client) {
 	_, err := c.CreateSpace(ctx, CreateSpaceReq{})
 	if herrors.CodeOf(err) != herrors.CodeInvalid {
 		t.Fatalf("missing name: got %v, want invalid", err)
+	}
+}
+
+func caseSetModel(t *testing.T, ctx context.Context, c *Client) {
+	res, err := c.CreateSpace(ctx, CreateSpaceReq{Name: "m"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	set, err := c.SetModel(ctx, SetModelReq{Space: res.ID, Default: "scripted-alt"})
+	if err != nil {
+		t.Fatalf("set model: %v", err)
+	}
+	if set.Digest == "" || set.Digest == res.Digest {
+		t.Fatalf("digest unchanged after model switch: %q", set.Digest)
+	}
+	got, err := c.GetSpace(ctx, GetSpaceReq{ID: res.ID})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Space.Digest != set.Digest {
+		t.Fatalf("digest mismatch: got %q, want %q", got.Space.Digest, set.Digest)
+	}
+}
+
+func caseSetModelUnknown(t *testing.T, ctx context.Context, c *Client) {
+	res, err := c.CreateSpace(ctx, CreateSpaceReq{Name: "m2"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	_, err = c.SetModel(ctx, SetModelReq{Space: res.ID, Default: "no-such-route"})
+	if herrors.CodeOf(err) != herrors.CodeInvalid {
+		t.Fatalf("unknown route: got %v, want invalid", err)
 	}
 }

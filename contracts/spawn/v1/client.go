@@ -84,6 +84,13 @@ func (c *Client) WatchdogStatus(ctx context.Context, r WatchdogStatusReq) (Watch
 	return out, err
 }
 
+// SetModel switches the space's default model route.
+func (c *Client) SetModel(ctx context.Context, r SetModelReq) (SetModelResp, error) {
+	var out SetModelResp
+	err := c.call(ctx, "SetModel", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

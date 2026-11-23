@@ -111,6 +111,18 @@ type WatchdogStatusResp struct {
 	Tick  string `json:"tick"`
 }
 
+// SetModelReq switches the space's default model route to one of the
+// routes declared in its effective models passport.
+type SetModelReq struct {
+	Space   string `json:"space"`
+	Default string `json:"default"`
+}
+
+// SetModelResp reports the recompiled spec's digest.
+type SetModelResp struct {
+	Digest string `json:"digest"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateSpace    func(context.Context, CreateSpaceReq) (CreateSpaceResp, error)
@@ -121,6 +133,7 @@ type Handlers struct {
 	ReleaseRuntime func(context.Context, ReleaseRuntimeReq) (ReleaseRuntimeResp, error)
 	DrainRuntime   func(context.Context, DrainRuntimeReq) (DrainRuntimeResp, error)
 	WatchdogStatus func(context.Context, WatchdogStatusReq) (WatchdogStatusResp, error)
+	SetModel       func(context.Context, SetModelReq) (SetModelResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -134,6 +147,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"ReleaseRuntime": op(h.ReleaseRuntime),
 		"DrainRuntime":   op(h.DrainRuntime),
 		"WatchdogStatus": op(h.WatchdogStatus),
+		"SetModel":       op(h.SetModel),
 	}
 }
 

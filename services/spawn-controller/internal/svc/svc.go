@@ -60,7 +60,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := sv1.Ops(s.handlers())
 	ownerOps := map[string]bool{
-		"CreateSpace": true, "GetSpace": true, "DestroySpace": true, "DrainRuntime": true,
+		"CreateSpace": true, "GetSpace": true, "DestroySpace": true,
+		"DrainRuntime": true, "SetModel": true,
 	}
 	serviceVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.EdgeTab, s.deps.Now)
 	ownerVer := httpapi.EdgeVerifier(s.deps.Issuer, "owner", s.sub, s.deps.EdgeTab, s.deps.Now)

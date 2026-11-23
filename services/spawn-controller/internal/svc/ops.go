@@ -33,6 +33,9 @@ func (s *Server) handlers() sv1.Handlers {
 		WatchdogStatus: func(ctx context.Context, r sv1.WatchdogStatusReq) (sv1.WatchdogStatusResp, error) {
 			return watchdogStatus(s, ctx, r)
 		},
+		SetModel: func(ctx context.Context, r sv1.SetModelReq) (sv1.SetModelResp, error) {
+			return setModelOp(s, ctx, r)
+		},
 	}
 }
 
@@ -176,12 +179,30 @@ func (s *Server) drainRuntime(ctx context.Context, tx *sql.Tx, rt runtimeRow) er
 	return nil
 }
 
+// resolveSpec reads the persisted effective spec, upgrading a
+// phase-5 document to the phase-6 models shape once so the digest
+// keeps binding real stored bytes.
 func (s *Server) resolveSpec(ctx context.Context, r sv1.ResolveSpecReq) (sv1.ResolveSpecResp, error) {
 	sp, err := getSpaceAny(ctx, s.db, r.Space)
 	if err != nil {
 		return sv1.ResolveSpecResp{}, err
 	}
-	return sv1.ResolveSpecResp{Spec: string(sp.spec), Digest: sp.digest, Owner: sp.owner}, nil
+	p, err := specPassports(sp)
+	if err != nil {
+		return sv1.ResolveSpecResp{}, err
+	}
+	if !p.normalize(s.deps.ModelURL) {
+		return sv1.ResolveSpecResp{Spec: string(sp.spec), Digest: sp.digest, Owner: sp.owner}, nil
+	}
+	spec, digest, err := compile(p)
+	if err != nil {
+		return sv1.ResolveSpecResp{}, err
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE spaces SET spec=$2, digest=$3 WHERE id=$1`, sp.id, spec, digest); err != nil {
+		return sv1.ResolveSpecResp{}, fmt.Errorf("spec upgrade: %w", err)
+	}
+	return sv1.ResolveSpecResp{Spec: string(spec), Digest: digest, Owner: sp.owner}, nil
 }
 
 func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
