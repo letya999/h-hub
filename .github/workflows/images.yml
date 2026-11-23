@@ -47,4 +47,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Mark image publication failure
-        run: echo "::error::Image publication failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        run: |
+          echo "::error::Image publication failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
