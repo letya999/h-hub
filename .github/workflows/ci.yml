@@ -22,19 +22,9 @@ jobs:
           key: hhub-dev-${{ hashFiles('go.sum', 'deploy/dev.Dockerfile') }}
       - name: Build hhub-dev
         run: docker build -f deploy/dev.Dockerfile -t hhub-dev:ci .
-      - name: just check
+      - name: Prepare stack
         run: |
           mkdir -p ~/.cache/hhub/root
-          docker compose -f deploy/compose.yaml up -d --wait postgres
-          docker run --rm --network hhub \
-            -e "HHUB_TEST_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable" \
-            -v "$PWD:/src:ro" \
-            -v ~/.cache/hhub/root:/root/.cache \
-            hhub-dev:ci just check
-      - name: N-1 rollback smoke
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-        run: |
           id=$(docker create hhub-dev:ci)
           docker cp "$id:/usr/local/bin/just" "$RUNNER_TEMP/just"
           docker rm "$id"
@@ -42,5 +32,25 @@ jobs:
           docker images -q --no-trunc hhub-dev:ci > deploy/dev-image.ref
           docker tag hhub-dev:ci hhub-dev:0.0.1
           "$RUNNER_TEMP/just" stack
+      - name: just check
+        run: |
+          docker compose -f deploy/compose.yaml up -d --wait postgres
+          docker run --rm --network hhub \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e "HHUB_TEST_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable" \
+            -e "HHUB_ADMIN_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable" \
+            -e HHUB_TASK_URL=http://task-engine:9000 \
+            -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+            -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+            -v "$PWD:/src:ro" \
+            -v hhub-conf:/etc/hhub:ro \
+            -v "$PWD/../h-hub-data/secrets:/run/hhub-secrets:ro" \
+            -v ~/.cache/hhub/root:/root/.cache \
+            hhub-dev:ci just check
+      - name: N-1 rollback smoke
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          export PATH="$RUNNER_TEMP:$PATH"
           "$RUNNER_TEMP/just" backup
           "$RUNNER_TEMP/just" nminus1-smoke

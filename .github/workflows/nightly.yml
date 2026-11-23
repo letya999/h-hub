@@ -29,17 +29,22 @@ jobs:
           docker tag hhub-dev:ci hhub-dev:0.0.1
       - name: Check
         run: |
-          docker compose -f deploy/compose.yaml up -d --wait postgres
+          just stack
           docker run --rm --network hhub \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             -e 'HHUB_TEST_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable' \
+            -e 'HHUB_ADMIN_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable' \
+            -e HHUB_TASK_URL=http://task-engine:9000 \
+            -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+            -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+            -v hhub-conf:/etc/hhub:ro \
+            -v "$PWD/../h-hub-data/secrets:/run/hhub-secrets:ro" \
             -v "$PWD:/src:ro" -v hhub-gocache:/go -v hhub-cache:/root/.cache \
             hhub-dev:ci just check
       - name: Build stack and run fault scenarios
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
-          just stack
-          just e2e
           just load
           just backup
           just restore-drill
