@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   issues: write
+  packages: read
 
 jobs:
   matrix:
@@ -34,6 +35,8 @@ jobs:
             -v "$PWD:/src:ro" -v hhub-gocache:/go -v hhub-cache:/root/.cache \
             hhub-dev:ci just check
       - name: Build stack and run fault scenarios
+        env:
+          GHCR_TOKEN: ${{ github.token }}
         run: |
           just stack
           just e2e

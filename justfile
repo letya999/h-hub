@@ -109,7 +109,8 @@ restore-drill:
 
 # locally smoke the frozen 0.0.4 identity image on the restored 0.0.5 backup
 nminus1-smoke:
-    docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock \
+    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+      -e GHCR_TOKEN \
       -v {{ src }}:/src:ro -v {{ data }}/backups:/backup \
       -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} sh /src/tools/backup/nminus1-smoke.sh
