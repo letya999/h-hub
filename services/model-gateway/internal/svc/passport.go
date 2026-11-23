@@ -26,10 +26,11 @@ type modelsView struct {
 }
 
 type routeView struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Model   string `json:"model"`
-	KeyFile string `json:"key_file"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Model  string `json:"model"`
+	KeyRef string `json:"key_ref"`
+	Vision bool   `json:"vision"`
 }
 
 func (m modelsView) route(name string) (routeView, error) {

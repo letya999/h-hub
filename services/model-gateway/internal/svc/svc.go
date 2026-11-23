@@ -32,7 +32,7 @@ func Migrations() fs.FS { return migrations }
 type Deps struct {
 	IdentityURL string
 	SpawnURL    string
-	KeysDir     string // upstream key files live here, outside env
+	BrokerURL   string // route credentials are leased from here per call
 	Issuer      ed25519.PublicKey
 	SelfKey     ed25519.PrivateKey
 	EdgeTab     edges.Table

@@ -41,10 +41,12 @@ type UsageResp struct {
 // RoutesReq lists the routes of the caller's effective passport.
 type RoutesReq struct{}
 
-// RouteInfo is one named model route.
+// RouteInfo is one named model route. Vision marks the route as
+// accepting image parts so channels may send photo attachments.
 type RouteInfo struct {
-	Name  string `json:"name"`
-	Model string `json:"model"`
+	Name   string `json:"name"`
+	Model  string `json:"model"`
+	Vision bool   `json:"vision"`
 }
 
 // RoutesResp names the active default and every selectable route.

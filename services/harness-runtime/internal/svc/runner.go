@@ -89,13 +89,28 @@ func (r *HermesRunner) reportBest(a Admission, e tv1.RunEvent) {
 	}
 }
 
+// userContent renders the user message: plain text when the job
+// carried no attachments, OpenAI content parts when it did — the
+// gateway routes vision only to routes that declared it.
+func userContent(a Admission) any {
+	if len(a.Attachments) == 0 {
+		return a.Input
+	}
+	parts := []map[string]any{{"type": "text", "text": a.Input}}
+	for _, at := range a.Attachments {
+		parts = append(parts, map[string]any{"type": "image_url",
+			"image_url": map[string]string{"url": "data:" + at.Mime + ";base64," + at.Data}})
+	}
+	return parts
+}
+
 // turn is the one model call through the gateway's Complete op: the
 // request is stripped to exactly the OpenAI fields, the run token is
 // the only credential, and no other caller headers ever propagate.
 func (r *HermesRunner) turn(ctx context.Context, a Admission) (string, error) {
 	body, err := json.Marshal(map[string]any{
 		"model":    "scripted",
-		"messages": []map[string]string{{"role": "user", "content": a.Input}},
+		"messages": []map[string]any{{"role": "user", "content": userContent(a)}},
 	})
 	if err != nil {
 		return "", fmt.Errorf("model request: %w", err)

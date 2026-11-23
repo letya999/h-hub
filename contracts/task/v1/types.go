@@ -11,13 +11,20 @@ import (
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
+// Attachment is one binary input part for the model; Data is base64.
+type Attachment struct {
+	Mime string `json:"mime"`
+	Data string `json:"data"`
+}
+
 // CreateJobReq submits a job. Idem is the caller's idempotency key:
 // replaying it returns the existing job instead of a duplicate.
 type CreateJobReq struct {
-	Space        string `json:"space"`
-	Conversation string `json:"conversation"`
-	Input        string `json:"input"`
-	Idem         string `json:"idem"`
+	Space        string       `json:"space"`
+	Conversation string       `json:"conversation"`
+	Input        string       `json:"input"`
+	Idem         string       `json:"idem"`
+	Attachments  []Attachment `json:"attachments,omitempty"`
 }
 
 // CreateJobResp acknowledges a job.

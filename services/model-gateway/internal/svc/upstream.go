@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	credv1 "github.com/letya999/h-hub/contracts/cred/v1"
+	"github.com/letya999/h-hub/shared/httpapi"
 )
 
 // upstreamTimeout bounds one provider call; the caller's own deadline
@@ -39,24 +40,28 @@ func rewriteModel(body []byte, model string) ([]byte, error) {
 	return out, nil
 }
 
-// routeKey reads the bearer credential for a route from the keys
-// volume; the file is the only place the secret ever exists (never
-// env, never logs, never a dump). An absent file refuses the call
-// before it can hit an unauthenticated upstream. The name is a
-// basename inside routes/ — a spec cannot reach outside it.
-func (s *Server) routeKey(route routeView) (string, error) {
-	if route.KeyFile == "" {
+// routeKey leases the bearer credential for a route from the
+// credential-broker per call; the value lives in memory for the one
+// request and never reaches env, logs, files or dumps. An absent
+// broker object refuses the call before it hits the upstream.
+func (s *Server) routeKey(ctx context.Context, route routeView) (string, error) {
+	if route.KeyRef == "" {
 		return "", nil
 	}
-	name := filepath.Base(route.KeyFile)
-	if name != route.KeyFile || name == "." || name == ".." {
-		return "", fmt.Errorf("route key %q: invalid name", route.KeyFile)
-	}
-	data, err := os.ReadFile(filepath.Join(s.deps.KeysDir, "routes", name))
+	tok, err := s.toks.token(ctx, "credential-broker")
 	if err != nil {
-		return "", fmt.Errorf("route key %s: %w", name, err)
+		return "", fmt.Errorf("broker token: %w", err)
 	}
-	return strings.TrimSpace(string(data)), nil
+	c := &credv1.Client{T: credv1.HTTP{C: httpapi.NewClient(s.deps.BrokerURL, tok)}}
+	res, err := c.Acquire(ctx, credv1.AcquireReq{Ref: route.KeyRef})
+	if err != nil {
+		return "", fmt.Errorf("route key %s: %w", route.KeyRef, err)
+	}
+	v := strings.TrimSpace(res.Fields["value"])
+	if v == "" {
+		return "", fmt.Errorf("route key %s: empty credential", route.KeyRef)
+	}
+	return v, nil
 }
 
 // callUpstream posts the rewritten body to the route and returns the
@@ -68,7 +73,7 @@ func (s *Server) callUpstream(ctx context.Context, route routeView,
 	if err != nil {
 		return nil, 0, err
 	}
-	key, err := s.routeKey(route)
+	key, err := s.routeKey(ctx, route)
 	if err != nil {
 		return nil, 0, err
 	}

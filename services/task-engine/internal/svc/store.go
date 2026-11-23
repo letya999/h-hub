@@ -26,9 +26,9 @@ func createJob(ctx context.Context, tx *sql.Tx, j jobRow) error {
 		return fmt.Errorf("conversation cursor: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO jobs
-		(id, owner, space, conversation, input, idem, conv_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		j.id, j.owner, j.space, j.conv, j.input, j.idem, seq)
+		(id, owner, space, conversation, input, idem, conv_seq, attachments)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::jsonb)`,
+		j.id, j.owner, j.space, j.conv, j.input, j.idem, seq, j.attach)
 	if err != nil {
 		return fmt.Errorf("insert job: %w", err)
 	}
@@ -58,13 +58,14 @@ type jobRow struct {
 	input  string
 	idem   string
 	result string
+	attach string // raw jsonb of [{mime,data}], '' when absent
 }
 
 func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 AND id=$3`,
-		owner, space, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
+		input, idem, result, COALESCE(attachments::text,'') FROM jobs WHERE owner=$1 AND space=$2 AND id=$3`,
+		owner, space, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.attach)
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, herrors.New(herrors.CodeNotFound, "err.not-found"). //nolint:wrapcheck // shared error form
 										With("job", id)
@@ -77,7 +78,7 @@ func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, e
 
 func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]jobRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE owner=$1 AND space=$2 ORDER BY created`, owner, space)
+		input, idem, result, COALESCE(attachments::text,'') FROM jobs WHERE owner=$1 AND space=$2 ORDER BY created`, owner, space)
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
@@ -86,7 +87,7 @@ func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]jobRow, e
 	for rows.Next() {
 		var j jobRow
 		if err := rows.Scan(&j.id, &j.owner, &j.space, &j.conv,
-			&j.input, &j.idem, &j.result); err != nil {
+			&j.input, &j.idem, &j.result, &j.attach); err != nil {
 			return nil, fmt.Errorf("scan job: %w", err)
 		}
 		out = append(out, j)
@@ -127,7 +128,7 @@ func globalRunning(ctx context.Context, db *sql.DB) (int, error) {
 func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 	var j jobRow
 	err := tx.QueryRowContext(ctx, `SELECT j.id, j.owner, j.space,
-		j.conversation, j.input, j.idem, j.result
+		j.conversation, j.input, j.idem, j.result, COALESCE(j.attachments::text,'')
 		FROM jobs j
 		JOIN fsm.machines m ON m.kind='job' AND m.id=j.id AND m.state='queued'
 		JOIN conversations c ON c.owner=j.owner AND c.space=j.space
@@ -144,7 +145,7 @@ func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 					AND pm.state IN ('admitted','running'))
 		ORDER BY j.created LIMIT 1
 		FOR UPDATE OF c SKIP LOCKED`).Scan(
-		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
+		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.attach)
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, errNoClaim
 	}

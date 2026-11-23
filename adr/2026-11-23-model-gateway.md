@@ -15,10 +15,10 @@ deterministic upstream behind the same path a real provider uses.
 effective `models` passport from spawn-controller per call — the
 route table, the daily and per-run token ceilings and the reservation
 estimate live there under one digest, never as a local copy. The
-route pins the upstream URL, the model name and an optional key file
-name; the gateway rewrites the body's `model` field, attaches a
-`Bearer` read from `<keys>/routes/<file>` and relays the OpenAI
-response verbatim.
+route pins the upstream URL, the model name and an optional `key_ref`
+broker object; the gateway rewrites the body's `model` field, attaches
+a `Bearer` leased per call from credential-broker and relays the
+OpenAI response verbatim.
 
 Accounting is one conditional update per counter: a reservation of
 `reserve` tokens lands on `(owner, day)` and `(run)` only while
@@ -33,9 +33,10 @@ stored spec and recompiles the digest, so a route switch needs no
 runtime restart.
 
 CLIProxyAPI is the real upstream: pinned image on the egress network
-(which only model-gateway joins), its client key materialized into
-the gateway's keys volume, its OAuth session in cliproxy-auth. The
-scripted model rides the same route shape for checks and CI.
+(which only model-gateway joins), its client key held by
+credential-broker as `cred://builtin/platform/cliproxy-key`, its OAuth
+session in cliproxy-auth. The scripted model rides the same route
+shape for checks and CI.
 
 ## Rejected
 
@@ -51,6 +52,6 @@ scripted model rides the same route shape for checks and CI.
 - adr.model-gateway.reserve-conditional — `TestParallelReservesCannotOverflow`,
   `TestDailyCeilingRefuses`, `TestRunCeilingRefuses` (DB)
 - adr.model-gateway.measured-or-estimate — `TestEstimateChargedWhenUnmeasured` (DB)
-- adr.model-gateway.route-key-file — `TestRouteKeyConfinedToRoutesDir` (unit)
+- adr.model-gateway.route-key-lease — `TestRouteKeyLeasesFromBroker` (unit)
 - adr.model-gateway.spec-per-call — `TestModelChannelCommands` (e2e)
 - adr.model-gateway.run-token-bound — `TestForgedRunTokenRefused` (e2e)

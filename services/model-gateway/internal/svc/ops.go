@@ -42,7 +42,7 @@ func (s *Server) routes(ctx context.Context, _ mv1.RoutesReq) (mv1.RoutesResp, e
 	}
 	out := mv1.RoutesResp{Default: models.Default}
 	for _, r := range models.Routes {
-		out.Routes = append(out.Routes, mv1.RouteInfo{Name: r.Name, Model: r.Model})
+		out.Routes = append(out.Routes, mv1.RouteInfo{Name: r.Name, Model: r.Model, Vision: r.Vision})
 	}
 	return out, nil
 }
