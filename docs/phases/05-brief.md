@@ -28,8 +28,12 @@ three-user load before adding a real model.
   effect, Docker intent versus create, and channel send versus
   acknowledgement. Verify durable state, idempotent replay and no
   blind retry of an uncertain external effect.
-- In CI, apply 0.0.5 migrations and smoke the published 0.0.4 image
+- In CI, apply 0.0.5 migrations and smoke the published 0.0.4.1 image
   against the expanded schema. Fail a merge if N-1 cannot read it.
+  Owner amendment: the immutable 0.0.4 binary rejected any newer
+  migration number, so the owner approved 0.0.4.1 as the rollback
+  baseline. It contains the 0.0.4 code plus the forward-readable
+  migrator, published from a green PR and pinned by digest.
 - Back up every service database with `pg_dump` and the host KEK;
   restore to an isolated installation and prove the restored stack
   starts and can decrypt its issuer key. Keep artifacts out of git.
@@ -48,7 +52,8 @@ full redesign-signal report and a recommendation on service count.
 ## Constraints
 
 Use the existing services and their contracts. Preserve phase-4 data
-and the v0.0.4 image for rollback. Do not weaken a gate or invent a
-passing result for an invariant whose owning subsystem is absent.
+and the v0.0.4 image. Use published v0.0.4.1 for rollback. Do not
+weaken a gate or invent a passing result for an invariant whose owning
+subsystem is absent.
 An unmet current-owner criterion goes in `05-report.md` and prevents a
 release tag; continue with independent work.
