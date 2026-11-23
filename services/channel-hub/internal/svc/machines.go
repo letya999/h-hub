@@ -10,6 +10,7 @@ func intakeMachine() *fsm.Machine {
 	m, err := fsm.New(fsm.Spec{Kind: "intake", Final: []string{"completed", "failed"},
 		Edges: []fsm.Edge{{From: "queued", Event: "accept", To: "processing"},
 			{From: "queued", Event: "timeout", To: "failed"},
+			{From: "processing", Event: "photo-fetch", To: "processing"},
 			{From: "processing", Event: "wait", To: "waiting"},
 			{From: "processing", Event: "complete", To: "completed"},
 			{From: "processing", Event: "timeout", To: "failed"},

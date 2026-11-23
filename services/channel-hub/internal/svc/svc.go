@@ -21,11 +21,12 @@ var migrations embed.FS
 func Migrations() fs.FS { return migrations }
 
 type Deps struct {
-	IdentityURL, TaskURL, SpawnURL, ModelURL string
-	Issuer, OperatorPub                      ed25519.PublicKey
-	SelfKey                                  ed25519.PrivateKey
-	Edges                                    edges.Table
-	Now                                      func() time.Time
+	IdentityURL, TaskURL, SpawnURL, ModelURL, BrokerURL string
+	Issuer, OperatorPub                                 ed25519.PublicKey
+	SelfKey                                             ed25519.PrivateKey
+	Edges                                               edges.Table
+	TG                                                  *tgAPI // nil in tests without the adapter
+	Now                                                 func() time.Time
 }
 type Server struct {
 	sub      string
@@ -34,10 +35,14 @@ type Server struct {
 	intake   *fsm.Machine
 	delivery *fsm.Machine
 	thread   *fsm.Machine
+	tg       *tgAdapter
 }
 
 func New(sub string, db *sql.DB, deps Deps) *Server {
-	return &Server{sub: sub, db: db, deps: deps, intake: intakeMachine(), delivery: deliveryMachine(), thread: threadMachine()}
+	s := &Server{sub: sub, db: db, deps: deps, intake: intakeMachine(),
+		delivery: deliveryMachine(), thread: threadMachine()}
+	s.tg = &tgAdapter{s: s, api: deps.TG}
+	return s
 }
 
 func (s *Server) Mux() *http.ServeMux {
