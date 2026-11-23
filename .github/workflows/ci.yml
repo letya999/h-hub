@@ -27,3 +27,13 @@ jobs:
             -v "$PWD:/src:ro" \
             -v ~/.cache/hhub/root:/root/.cache \
             hhub-dev:ci just check
+      - name: N-1 rollback smoke
+        run: |
+          id=$(docker create hhub-dev:ci)
+          docker cp "$id:/usr/local/bin/just" "$RUNNER_TEMP/just"
+          docker rm "$id"
+          docker images -q --no-trunc hhub-dev:ci > deploy/dev-image.ref
+          docker tag hhub-dev:ci hhub-dev:0.0.1
+          "$RUNNER_TEMP/just" stack
+          "$RUNNER_TEMP/just" backup
+          "$RUNNER_TEMP/just" nminus1-smoke

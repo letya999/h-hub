@@ -77,8 +77,42 @@ e2e:
       -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
+      -v {{ src }}/.local/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e
+
+# optional three-user load measurement, separate from mandatory e2e
+load:
+    docker run --rm --network hhub \
+      -e HHUB_TASK_URL=http://task-engine:9000 \
+      -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+      -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+      -e HHUB_ADMIN_DSN={{ dsn }} \
+      -v hhub-conf:/etc/hhub:ro \
+      -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+      {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e
+
+# capture all databases, installation config and host KEK outside git
+backup:
+    docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock \
+      -v {{ src }}:/src:ro -v {{ src }}/.local/backups:/backup \
+      -v {{ src }}/.local/secrets:/run/hhub-secrets:ro -v hhub-conf:/etc/hhub:ro \
+      -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+      {{ img }} sh /src/tools/backup/backup.sh
+
+# restore the latest backup into fresh, isolated Docker resources
+restore-drill:
+    docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock \
+      -v {{ src }}:/src:ro -v {{ src }}/.local/backups:/backup \
+      -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+      {{ img }} sh /src/tools/backup/restore-drill.sh
+
+# locally smoke the frozen 0.0.4 identity image on the restored 0.0.5 backup
+nminus1-smoke:
+    docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock \
+      -v {{ src }}:/src:ro -v {{ src }}/.local/backups:/backup \
+      -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+      {{ img }} sh /src/tools/backup/nminus1-smoke.sh
 
 # start postgres from the generated compose
 up:

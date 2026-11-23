@@ -1,5 +1,6 @@
 // Package seal encrypts secrets at rest with AES-256-GCM. The KEK is a
-// 32-byte file kept outside volumes and backups; AAD binds each sealed
+// 32-byte file kept outside Docker volumes; explicit installation backups
+// include it. AAD binds each sealed
 // value to its purpose and key id.
 package seal
 

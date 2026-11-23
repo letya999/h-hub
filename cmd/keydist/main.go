@@ -62,6 +62,9 @@ func keyVolume(root string, s descriptor.Service) string {
 
 // distribute writes one service's material: service.key, pubs/*, edges.
 func distribute(conf, dst, name string, f *descriptor.File, rendered string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return fmt.Errorf("keydist: destination: %w", err)
+	}
 	if err := distributePrivateKey(conf, dst, name); err != nil {
 		return err
 	}
