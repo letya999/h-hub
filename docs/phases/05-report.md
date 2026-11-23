@@ -119,6 +119,9 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   reached the published-image incompatibility in the
   [second CI run](https://github.com/letya999/h-hub/actions/runs/45132085394):
   `just check` passed, then the v0.0.4 identity binary rejected migration 6.
+- The [latest PR CI](https://github.com/letya999/h-hub/actions/runs/45139439017)
+  also passed Ubuntu `just check` and failed only at the pinned v0.0.4
+  image smoke with `migrations: invalid: err.migration`.
 - Phase 5 is **not ready for merge or `v0.0.5`**. Manual dispatch of
   `nightly.yml` returned HTTP 404 because the workflow is not on the
   default branch. The synthetic failure-to-issue check cannot run yet.
