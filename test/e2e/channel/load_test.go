@@ -1,43 +1,43 @@
 //go:build hhube2e && hhubload
 
-package e2e
+package channel
 
 import (
 	"context"
 	"fmt"
+	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
+	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
-	"github.com/letya999/h-hub/shared/testkit"
 )
 
 func TestThreeUserLoad(t *testing.T) {
 	const turns = 12
-	owners := []string{"load_a_" + nonce, "load_b_" + nonce, "load_c_" + nonce}
+	owners := []string{"load_a_" + Nonce, "load_b_" + Nonce, "load_c_" + Nonce}
 	cursors := make(map[string]int64, len(owners))
 	for _, owner := range owners {
-		_, code := addUser(t, owner)
-		if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
-			External: owner, UpdateID: idem("load-link", owner), Text: "/start " + code,
+		_, code := AddUser(t, owner)
+		if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
+			External: owner, UpdateID: Idem("load-link", owner), Text: "/start " + code,
 		}); err != nil {
 			t.Fatal(err)
 		}
-		cursors[owner] = waitMock(t, owner, 0, "Account linked", 10*time.Second)
+		cursors[owner] = WaitMock(t, owner, 0, "Account linked", 10*time.Second)
 	}
 	start := time.Now()
 	errs := make(chan error, len(owners)*turns)
 	var wg sync.WaitGroup
 	for _, owner := range owners {
-		client := mockClient(t, owner, "Inject")
+		client := MockClient(t, owner, "Inject")
 		for i := range turns {
 			wg.Add(1)
 			go func(owner string, i int) {
 				defer wg.Done()
 				_, err := client.Inject(context.Background(), cv1.InjectReq{External: owner,
-					UpdateID: idem("load", owner, fmt.Sprint(i)), Text: fmt.Sprintf("load %s %d", owner, i)})
+					UpdateID: Idem("load", owner, fmt.Sprint(i)), Text: fmt.Sprintf("load %s %d", owner, i)})
 				errs <- err
 			}(owner, i)
 		}
@@ -52,7 +52,7 @@ func TestThreeUserLoad(t *testing.T) {
 	for _, owner := range owners {
 		owner := owner
 		testkit.Poll(t, 5*time.Minute, 500*time.Millisecond, func() bool {
-			res, err := mockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{
+			res, err := MockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{
 				External: owner, After: cursors[owner]})
 			if err != nil {
 				return false

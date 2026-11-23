@@ -90,7 +90,7 @@ e2e:
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e
+      {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e/...
 
 # optional three-user load measurement, separate from mandatory e2e
 load:
@@ -101,7 +101,7 @@ load:
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e
+      {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e/channel
 
 # capture all databases, installation config and host KEK outside git
 backup:

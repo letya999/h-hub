@@ -7,30 +7,30 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 
 | ID | Status | Owner | Scenario | Forbidden path that must be rejected |
 | --- | --- | --- | --- | --- |
-| `sys.tenant-isolation` | proved | channel-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | Owner A reads owner B's outbox. |
-| `sys.forged-token` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | A token signed by a foreign key reads an outbox. |
-| `sys.secret-leak` | proved | identity-hub | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A sealed key opened for the wrong purpose must fail. |
-| `sys.kill-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/e2e_test.go#TestKillUncertain) | Killed work must refuse blind retry. |
-| `sys.store-missing` | proved | task-engine | [TestStoreMissingDatabaseRefusesStartup](../test/e2e/store_missing_test.go#TestStoreMissingDatabaseRefusesStartup) | A service with a missing database must refuse startup. |
-| `sys.stack-restart` | proved | channel-hub | [TestStackRestart](../test/e2e/e2e_test.go#TestStackRestart) | A settled job must refuse cancellation after restart. |
+| `sys.tenant-isolation` | proved | channel-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | Owner A reads owner B's outbox. |
+| `sys.forged-token` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | A token signed by a foreign key reads an outbox. |
+| `sys.secret-leak` | proved | identity-hub | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/lifecycle/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A sealed key opened for the wrong purpose must fail. |
+| `sys.kill-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/lifecycle/e2e_test.go#TestKillUncertain) | Killed work must refuse blind retry. |
+| `sys.store-missing` | proved | task-engine | [TestStoreMissingDatabaseRefusesStartup](../test/e2e/lifecycle/store_missing_test.go#TestStoreMissingDatabaseRefusesStartup) | A service with a missing database must refuse startup. |
+| `sys.stack-restart` | proved | channel-hub | [TestStackRestart](../test/e2e/lifecycle/e2e_test.go#TestStackRestart) | A settled job must refuse cancellation after restart. |
 | `sys.late-receipt` | proved | task-engine | [TestLateReceiptRecordedWithoutReopening](../services/task-engine/internal/svc/late_receipt_db_test.go#TestLateReceiptRecordedWithoutReopening) | A late receipt must not reopen settled work. |
 | `sys.seam-onesided` | deferred:10,18 | channel adapter and tool seam absent | — | An adapter must not implement both sides of a seam. |
-| `sys.sweep-lag` | proved | task-engine | [TestSweepLagOperatorAlert](../test/e2e/sweep_lag_test.go#TestSweepLagOperatorAlert) | An operator token must be refused when forging a service alert. |
-| `sys.wedge-unblock` | proved | task-engine and spawn-controller | [TestHubctlUnblocksJobAndRuntime](../test/e2e/wedge_unblock_test.go#TestHubctlUnblocksJobAndRuntime) | A foreign owner must be refused when draining another runtime. |
+| `sys.sweep-lag` | proved | task-engine | [TestSweepLagOperatorAlert](../test/e2e/lifecycle/sweep_lag_test.go#TestSweepLagOperatorAlert) | An operator token must be refused when forging a service alert. |
+| `sys.wedge-unblock` | proved | task-engine and spawn-controller | [TestHubctlUnblocksJobAndRuntime](../test/e2e/lifecycle/wedge_unblock_test.go#TestHubctlUnblocksJobAndRuntime) | A foreign owner must be refused when draining another runtime. |
 | `sys.schema-version` | proved | spawn-controller | [TestSpecSchemaVersion](../services/spawn-controller/internal/svc/spec_test.go#TestSpecSchemaVersion) | A future runtime spec version must be refused. |
-| `sys.worker-intent` | deferred:13 | worker absent | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
-| `sys.space-no-db` | deferred:13 | worker absent | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
-| `sys.seal-at-rest` | proved | credential-broker | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A broker-held secret value is recovered from its volume dump, service logs, inspect output or a Postgres dump. |
-| `sys.watchdog-stale` | proved | spawn-controller and channel-hub | [TestStaleSpawnTickRefusesHealth](../test/e2e/watchdog_stale_test.go#TestStaleSpawnTickRefusesHealth) | A frozen tick must refuse health; an unauthenticated status read must fail. |
-| `sys.service-edge` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel_test.go#TestMockChannelThreeUsers) | A token for Inject must be refused at ReadOutbox. |
+| `sys.worker-intent` | deferred:13 | worker absent | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
+| `sys.space-no-db` | deferred:13 | worker absent | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
+| `sys.seal-at-rest` | proved | credential-broker | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/lifecycle/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A broker-held secret value is recovered from its volume dump, service logs, inspect output or a Postgres dump. |
+| `sys.watchdog-stale` | proved | spawn-controller and channel-hub | [TestStaleSpawnTickRefusesHealth](../test/e2e/lifecycle/watchdog_stale_test.go#TestStaleSpawnTickRefusesHealth) | A frozen tick must refuse health; an unauthenticated status read must fail. |
+| `sys.service-edge` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | A token for Inject must be refused at ReadOutbox. |
 | `sys.worker-tenant` | deferred:13 | worker absent | — | A worker must refuse another tenant's context. |
 | `sys.worker-stop-confirmed` | deferred:13 | worker absent | — | A stop request must not report success before worker exit. |
 | `sys.package-build` | deferred:17 | package builder absent | — | An unapproved package must not build. |
 | `sys.recipe-hosts` | deferred:17 | recipe host owner absent | — | A recipe must not access an undeclared host. |
-| `sys.model-usage` | proved | model-gateway | [TestGatewayAccountsSpend](../test/e2e/model_test.go#TestGatewayAccountsSpend) | A Complete call without a run token must be refused before any accounting. |
-| `sys.model-quota` | proved | model-gateway | [TestDailyQuotaRefusal](../test/e2e/model_test.go#TestDailyQuotaRefusal) | A request over the daily ceiling must be refused, not served. |
-| `sys.model-route` | proved | model-gateway and spawn-controller | [TestModelChannelCommands](../test/e2e/model_test.go#TestModelChannelCommands) | A route outside the passport's declared routes must be refused; a declared one applies without restart. |
-| `sys.space-egress` | proved | spawn-controller | [TestSpaceReachesOnlyModelGateway](../test/e2e/model_test.go#TestSpaceReachesOnlyModelGateway) | A space runtime reaching anything but declared edges must be refused. |
+| `sys.model-usage` | proved | model-gateway | [TestGatewayAccountsSpend](../test/e2e/channel/model_test.go#TestGatewayAccountsSpend) | A Complete call without a run token must be refused before any accounting. |
+| `sys.model-quota` | proved | model-gateway | [TestDailyQuotaRefusal](../test/e2e/channel/model_test.go#TestDailyQuotaRefusal) | A request over the daily ceiling must be refused, not served. |
+| `sys.model-route` | proved | model-gateway and spawn-controller | [TestModelChannelCommands](../test/e2e/channel/model_test.go#TestModelChannelCommands) | A route outside the passport's declared routes must be refused; a declared one applies without restart. |
+| `sys.space-egress` | proved | spawn-controller | [TestSpaceReachesOnlyModelGateway](../test/e2e/channel/model_test.go#TestSpaceReachesOnlyModelGateway) | A space runtime reaching anything but declared edges must be refused. |
 | `adr.fsm.cas-version` | proved | shared/fsm | [TestCASRace](../shared/fsm/fsm_db_test.go#TestCASRace) | A transition with a stale version must be refused. |
 | `adr.fsm.history-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
 | `adr.fsm.outbox-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
@@ -46,20 +46,20 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `adr.store.advisory-lock` | proved | shared/store | [TestMigrateApplyAndIdempotent](../shared/store/store_db_test.go#TestMigrateApplyAndIdempotent) | A second apply of an already-recorded migration must be refused. |
 | `adr.store.n-minus-one` | deferred:5 | shared/store | [TestMigrateReadsNewerDatabase](../shared/store/store_db_test.go#TestMigrateReadsNewerDatabase) | The published previous binary must not reject an additive next schema. |
 | `adr.harness-admit.unknown-run-refused` | proved | harness-runtime | [TestCancelUnknownRun](../services/harness-runtime/internal/svc/svc_test.go#TestCancelUnknownRun) | Cancellation of an unknown run must be refused. |
-| `adr.harness-admit.config-readonly` | proved | harness-runtime | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A runtime must not write the mounted config. |
-| `adr.service-edges.forged-rejected` | proved | identity-hub | [TestForgedToken](../test/e2e/e2e_test.go#TestForgedToken) | A forged token must be refused. |
-| `adr.service-edges.edge-required` | proved | identity-hub | [TestServiceEdge](../test/e2e/e2e_test.go#TestServiceEdge) | An undeclared service operation must be refused. |
+| `adr.harness-admit.config-readonly` | proved | harness-runtime | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | A runtime must not write the mounted config. |
+| `adr.service-edges.forged-rejected` | proved | identity-hub | [TestForgedToken](../test/e2e/lifecycle/e2e_test.go#TestForgedToken) | A forged token must be refused. |
+| `adr.service-edges.edge-required` | proved | identity-hub | [TestServiceEdge](../test/e2e/lifecycle/e2e_test.go#TestServiceEdge) | An undeclared service operation must be refused. |
 | `adr.service-edges.rendered-table` | proved | keydist | [TestRenderEdges](../cmd/keydist/main_test.go#TestRenderEdges) | An absent descriptor edge must not render a grant. |
 | `adr.service-edges.operator-audited` | proved | identity-hub | [TestActAsBindsAndAudits](../services/identity-hub/internal/svc/act_as_db_test.go#TestActAsBindsAndAudits) | An operator acting as a foreign owner must be refused. |
-| `adr.spawn-runtime.intent-first` | deferred:13 | spawn-controller | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
-| `adr.spawn-runtime.space-no-db` | proved | spawn-controller | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
+| `adr.spawn-runtime.intent-first` | deferred:13 | spawn-controller | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
+| `adr.spawn-runtime.space-no-db` | proved | spawn-controller | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
 | `adr.spawn-runtime.digest-pins-image` | proved | spawn-controller | [TestSpecDigestBindsImage](../services/spawn-controller/internal/svc/spec_test.go#TestSpecDigestBindsImage) | Runtime creation with a changed image must be refused. |
-| `adr.task-jobs.kill-to-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/e2e_test.go#TestKillUncertain) | Killed work must refuse automatic retry. |
-| `adr.task-jobs.tenant-isolation` | proved | task-engine | [TestJobToAnswer](../test/e2e/e2e_test.go#TestJobToAnswer) | Owner A must be refused when reading owner B's job. |
-| `adr.task-jobs.restart-durable` | proved | task-engine | [TestStackRestart](../test/e2e/e2e_test.go#TestStackRestart) | A settled job must refuse a second cancellation after restart. |
+| `adr.task-jobs.kill-to-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/lifecycle/e2e_test.go#TestKillUncertain) | Killed work must refuse automatic retry. |
+| `adr.task-jobs.tenant-isolation` | proved | task-engine | [TestJobToAnswer](../test/e2e/lifecycle/e2e_test.go#TestJobToAnswer) | Owner A must be refused when reading owner B's job. |
+| `adr.task-jobs.restart-durable` | proved | task-engine | [TestStackRestart](../test/e2e/lifecycle/e2e_test.go#TestStackRestart) | A settled job must refuse a second cancellation after restart. |
 | `adr.task-jobs.run-unique` | proved | task-engine | [TestRunClaimUnique](../services/task-engine/internal/svc/run_claim_db_test.go#TestRunClaimUnique) | A second claim of the same run must be refused. |
 | `adr.model-gateway.reserve-conditional` | proved | model-gateway | [TestParallelReservesCannotOverflow](../services/model-gateway/internal/svc/store_db_test.go#TestParallelReservesCannotOverflow) | A reservation over a ceiling, raced or not, must be refused. |
 | `adr.model-gateway.measured-or-estimate` | proved | model-gateway | [TestEstimateChargedWhenUnmeasured](../services/model-gateway/internal/svc/store_db_test.go#TestEstimateChargedWhenUnmeasured) | A settle without a matching reservation must be refused. |
 | `adr.model-gateway.route-key-lease` | proved | model-gateway | [TestRouteKeyLeasesFromBroker](../services/model-gateway/internal/svc/upstream_test.go#TestRouteKeyLeasesFromBroker) | A route credential comes only as a broker lease; a value in env, spec or files, or an unknown ref, must be refused. |
-| `adr.model-gateway.spec-per-call` | proved | model-gateway | [TestModelChannelCommands](../test/e2e/model_test.go#TestModelChannelCommands) | A route the effective passport does not declare must be refused before any upstream call. |
-| `adr.model-gateway.run-token-bound` | proved | model-gateway | [TestForgedRunTokenRefused](../test/e2e/model_test.go#TestForgedRunTokenRefused) | A Complete call without a valid run token must be refused. |
+| `adr.model-gateway.spec-per-call` | proved | model-gateway | [TestModelChannelCommands](../test/e2e/channel/model_test.go#TestModelChannelCommands) | A route the effective passport does not declare must be refused before any upstream call. |
+| `adr.model-gateway.run-token-bound` | proved | model-gateway | [TestForgedRunTokenRefused](../test/e2e/channel/model_test.go#TestForgedRunTokenRefused) | A Complete call without a valid run token must be refused. |

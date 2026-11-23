@@ -1,18 +1,18 @@
 //go:build hhube2e
 
-package e2e
+package lifecycle
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	"github.com/letya999/h-hub/cmd/hubctl/operator"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
+	"testing"
+	"time"
 )
 
 // TestUpgradePin walks the live upgrade/rollback seam: drain the
@@ -20,8 +20,8 @@ import (
 // drain and re-pin the previous digest as the rollback path.
 func TestUpgradePin(t *testing.T) {
 	testkit.Req(t, "adr.spawn-runtime.digest-pins-image")
-	owner := "upg_" + nonce
-	space := ensureSpace(t, owner, idem("upg-space"))
+	owner := "upg_" + Nonce
+	space := EnsureSpace(t, owner, Idem("upg-space"))
 	ctx := context.Background()
 
 	raw, err := operator.Token(owner, space, "spawn-controller", "identity-hub",
@@ -29,20 +29,20 @@ func TestUpgradePin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(identityURL, raw)}}
+	identity := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, raw)}}
 	delegated, err := identity.ActAs(ctx, idv1.ActAsReq{
 		Owner: owner, Space: space, Aud: "spawn-controller"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	scoped := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, delegated.Token)}}
+	scoped := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, delegated.Token)}}
 	sp, err := scoped.GetSpace(ctx, sv1.GetSpaceReq{ID: space})
 	if err != nil || sp.Space.Digest == "" {
 		t.Fatalf("space pin: %v %q", err, sp.Space.Digest)
 	}
 	pin := sp.Space.Digest
 
-	service := taskServiceSpawnClient(t, space)
+	service := TaskServiceSpawnClient(t, space)
 	_, err = service.EnsureRuntime(ctx, sv1.EnsureRuntimeReq{
 		Space: space, Digest: "sha256:not-a-real-pin"})
 	testkit.Deny(t, "adr.spawn-runtime.digest-pins-image",

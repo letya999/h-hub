@@ -4,146 +4,33 @@
 // CreateJob with real containers and the scripted model, plus the
 // system invariants. Requires the running stack (just stack) and a
 // docker socket.
-package e2e
+package lifecycle
 
 import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"database/sql"
-	"encoding/json"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
+	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
+	herrors "github.com/letya999/h-hub/shared/errors"
+	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
-	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
-	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
-	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
-	tv1 "github.com/letya999/h-hub/contracts/task/v1"
-	"github.com/letya999/h-hub/shared/auth"
-	herrors "github.com/letya999/h-hub/shared/errors"
-	"github.com/letya999/h-hub/shared/httpapi"
-	"github.com/letya999/h-hub/shared/testkit"
 )
 
-var (
-	taskURL     = testkit.Env("HHUB_TASK_URL", "http://task-engine:9000")
-	spawnURL    = testkit.Env("HHUB_SPAWN_URL", "http://spawn-controller:9000")
-	identityURL = testkit.Env("HHUB_IDENTITY_URL", "http://identity-hub:9000")
-	adminDSN    = testkit.Env("HHUB_ADMIN_DSN",
-		"postgres://postgres@postgres:5432/postgres?sslmode=disable")
-	// nonce makes idempotency keys unique per suite run: a second
-	// run must create fresh jobs, not replay yesterday's idem hits.
-	nonce       = strconv.FormatInt(time.Now().Unix(), 36)
-	ownerTokens sync.Map
-)
-
-func idem(parts ...string) string {
-	return strings.Join(append(parts, nonce), "-")
-}
-
-type ownerSpace struct{ owner, space string }
-
-func taskClient(t *testing.T, scope ownerSpace) *tv1.Client {
-	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, ownerToken(t, scope, "task-engine"))}}
-}
-
-func spawnClient(t *testing.T, scope ownerSpace) *sv1.Client {
-	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, ownerToken(t, scope, "spawn-controller"))}}
-}
-
-func ownerToken(t *testing.T, scope ownerSpace, aud string) string {
-	t.Helper()
-	key := scope.owner + "/" + scope.space + "/" + aud
-	if v, ok := ownerTokens.Load(key); ok {
-		return v.(string)
-	}
-	priv, err := auth.LoadPrivateKey("/etc/hhub/keys/operator.key")
-	if err != nil {
-		t.Fatalf("operator key: %v", err)
-	}
-	claims, err := json.Marshal(idv1.OwnerClaims{
-		Sub: "operator", Owner: scope.owner, Space: scope.space, Target: aud,
-		Aud: []string{"identity-hub"}, Exp: time.Now().Add(time.Minute).Unix(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	opToken, err := auth.Sign(priv, "operator", claims)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(identityURL, opToken)}}
-	res, err := c.ActAs(context.Background(), idv1.ActAsReq{Owner: scope.owner, Space: scope.space, Aud: aud})
-	if err != nil {
-		t.Fatalf("act as %s/%s for %s: %v", scope.owner, scope.space, aud, err)
-	}
-	v, _ := ownerTokens.LoadOrStore(key, res.Token)
-	return v.(string)
-}
-
-// ensureSpace creates the owner's space and returns its id — the
+// EnsureSpace creates the owner's space and returns its id — the
 // value jobs name in their space field.
-func ensureSpace(t *testing.T, owner, name string) string {
-	t.Helper()
-	res, err := spawnClient(t, ownerSpace{owner, ""}).CreateSpace(context.Background(), sv1.CreateSpaceReq{
-		Name: name, Template: "default"})
-	if err != nil {
-		t.Fatalf("create space %s: %v", name, err)
-	}
-	cleanupSpace(t, owner, res.ID)
-	return res.ID
-}
 
-func cleanupSpace(t *testing.T, owner, space string) {
-	t.Helper()
-	t.Cleanup(func() {
-		ownerTokens.Delete(owner + "/" + space + "/spawn-controller")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if _, err := spawnClient(t, ownerSpace{owner, space}).DestroySpace(ctx,
-			sv1.DestroySpaceReq{ID: space}); err != nil {
-			t.Errorf("destroy space %s: %v", space, err)
-		}
-	})
-}
+// WaitJob polls a job into the wanted state.
 
-// waitJob polls a job into the wanted state.
-func waitJob(t *testing.T, scope ownerSpace, id, want string, timeout time.Duration) tv1.JobInfo {
-	t.Helper()
-	var got tv1.JobInfo
-	testkit.Poll(t, timeout, 500*time.Millisecond, func() bool {
-		res, err := taskClient(t, scope).GetJob(context.Background(),
-			tv1.GetJobReq{ID: id})
-		if err != nil {
-			return false
-		}
-		got = res.Job
-		return got.State == want
-	})
-	return got
-}
-
-// runtimes lists live runtime containers (label hhub.managed).
-func runtimes(t *testing.T) []testkit.ContainerSummary {
-	t.Helper()
-	cs, err := testkit.NewDocker(t).List(context.Background(), "hhub.managed")
-	if err != nil {
-		t.Fatalf("list runtimes: %v", err)
-	}
-	var out []testkit.ContainerSummary
-	for _, c := range cs {
-		if c.State == "running" {
-			out = append(out, c)
-		}
-	}
-	return out
-}
+// Runtimes lists live runtime containers (label hhub.managed).
 
 // TestJobToAnswer is the core path: three owners, three spaces, three
 // conversations — answers come back and no owner sees another's data.
@@ -160,17 +47,17 @@ func TestJobToAnswer(t *testing.T) {
 		wg.Add(1)
 		go func(o string) {
 			defer wg.Done()
-			space := ensureSpace(t, o, idem("s", o))
+			space := EnsureSpace(t, o, Idem("s", o))
 			spaceIDs.Store(o, space)
-			res, err := taskClient(t, ownerSpace{o, space}).CreateJob(context.Background(), tv1.CreateJobReq{
+			res, err := TaskClient(t, OwnerSpace{Owner: o, Space: space}).CreateJob(context.Background(), tv1.CreateJobReq{
 				Space: space, Conversation: "c1",
-				Input: "hello " + o, Idem: idem("j", o, "1")})
+				Input: "hello " + o, Idem: Idem("j", o, "1")})
 			if err != nil {
 				t.Errorf("create job %s: %v", o, err)
 				return
 			}
 			jobIDs.Store(o, res.ID)
-			j := waitJob(t, ownerSpace{o, space}, res.ID, "succeeded", 3*time.Minute)
+			j := WaitJob(t, OwnerSpace{Owner: o, Space: space}, res.ID, "succeeded", 3*time.Minute)
 			if j.Result != "answer: hello "+o {
 				t.Errorf("%s: result %q", o, j.Result)
 			}
@@ -185,20 +72,20 @@ func TestJobToAnswer(t *testing.T) {
 	if !ok {
 		t.Fatal("alice space missing")
 	}
-	alice := ownerSpace{"alice", aliceSpace.(string)}
-	_, foreignErr := taskClient(t, alice).GetJob(context.Background(), tv1.GetJobReq{ID: borisJob.(string)})
+	alice := OwnerSpace{Owner: "alice", Space: aliceSpace.(string)}
+	_, foreignErr := TaskClient(t, alice).GetJob(context.Background(), tv1.GetJobReq{ID: borisJob.(string)})
 	testkit.Deny(t, "adr.task-jobs.tenant-isolation", herrors.CodeOf(foreignErr) == herrors.CodeNotFound)
-	if _, err := taskClient(t, alice).CancelJob(context.Background(),
+	if _, err := TaskClient(t, alice).CancelJob(context.Background(),
 		tv1.JobReq{ID: borisJob.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice cancelled boris job: %v", err)
 	}
-	db := adminDB(t, "task_engine")
+	db := AdminDB(t, "task_engine")
 	var borisRun string
 	if err := db.QueryRowContext(context.Background(), "SELECT id FROM runs WHERE job=$1",
 		borisJob.(string)).Scan(&borisRun); err != nil {
 		t.Fatalf("boris run: %v", err)
 	}
-	if _, err := taskClient(t, alice).GetRun(context.Background(),
+	if _, err := TaskClient(t, alice).GetRun(context.Background(),
 		tv1.GetRunReq{Run: borisRun}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice read boris run: %v", err)
 	}
@@ -206,58 +93,58 @@ func TestJobToAnswer(t *testing.T) {
 	if !ok {
 		t.Fatal("boris space missing")
 	}
-	cross := ownerSpace{"alice", borisSpace.(string)}
-	if _, err := spawnClient(t, cross).GetSpace(context.Background(),
+	cross := OwnerSpace{Owner: "alice", Space: borisSpace.(string)}
+	if _, err := SpawnClient(t, cross).GetSpace(context.Background(),
 		sv1.GetSpaceReq{ID: borisSpace.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice read boris space: %v", err)
 	}
-	if _, err := spawnClient(t, cross).DestroySpace(context.Background(),
+	if _, err := SpawnClient(t, cross).DestroySpace(context.Background(),
 		sv1.DestroySpaceReq{ID: borisSpace.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice destroyed boris space: %v", err)
 	}
-	if _, err := taskClient(t, cross).CreateJob(context.Background(), tv1.CreateJobReq{
+	if _, err := TaskClient(t, cross).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: borisSpace.(string), Conversation: "c2", Input: "wrong space",
-		Idem: idem("cross-space")}); herrors.CodeOf(err) != herrors.CodeNotFound {
+		Idem: Idem("cross-space")}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice created job in boris space: %v", err)
 	}
-	if _, err := taskClient(t, cross).SetHold(context.Background(), tv1.SetHoldReq{
+	if _, err := TaskClient(t, cross).SetHold(context.Background(), tv1.SetHoldReq{
 		Space: borisSpace.(string), Active: true}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("alice held boris space: %v", err)
 	}
-	if _, err := taskClient(t, alice).CreateJob(context.Background(), tv1.CreateJobReq{
+	if _, err := TaskClient(t, alice).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: borisSpace.(string), Conversation: "c2", Input: "wrong token scope",
-		Idem: idem("body-space")}); herrors.CodeOf(err) != herrors.CodeNotFound {
+		Idem: Idem("body-space")}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("body space bypassed token scope: %v", err)
 	}
 	aliceJob, ok := jobIDs.Load("alice")
 	if !ok {
 		t.Fatal("alice job missing")
 	}
-	second := ownerSpace{"alice", ensureSpace(t, "alice", idem("s", "alice", "second"))}
-	if _, err := taskClient(t, second).GetJob(context.Background(),
+	second := OwnerSpace{Owner: "alice", Space: EnsureSpace(t, "alice", Idem("s", "alice", "second"))}
+	if _, err := TaskClient(t, second).GetJob(context.Background(),
 		tv1.GetJobReq{ID: aliceJob.(string)}); herrors.CodeOf(err) != herrors.CodeNotFound {
 		t.Fatalf("cross-space job read: %v", err)
 	}
-	if _, err := taskClient(t, second).CreateJob(context.Background(), tv1.CreateJobReq{
-		Space: second.space, Conversation: "c1", Input: "replay other space",
-		Idem: idem("j", "alice", "1")}); herrors.CodeOf(err) != herrors.CodeNotFound {
-		t.Fatalf("cross-space idem replay: %v", err)
+	if _, err := TaskClient(t, second).CreateJob(context.Background(), tv1.CreateJobReq{
+		Space: second.Space, Conversation: "c1", Input: "replay other space",
+		Idem: Idem("j", "alice", "1")}); herrors.CodeOf(err) != herrors.CodeNotFound {
+		t.Fatalf("cross-space Idem replay: %v", err)
 	}
-	secondJobs, err := taskClient(t, second).ListJobs(context.Background(), tv1.ListJobsReq{})
+	secondJobs, err := TaskClient(t, second).ListJobs(context.Background(), tv1.ListJobsReq{})
 	if err != nil || len(secondJobs.Jobs) != 0 {
 		t.Fatalf("cross-space list: %+v, %v", secondJobs.Jobs, err)
 	}
-	next, err := taskClient(t, alice).CreateJob(context.Background(), tv1.CreateJobReq{
-		Space: alice.space, Conversation: "c1", Input: "second turn",
-		Idem: idem("j", "alice", "2")})
+	next, err := TaskClient(t, alice).CreateJob(context.Background(), tv1.CreateJobReq{
+		Space: alice.Space, Conversation: "c1", Input: "second turn",
+		Idem: Idem("j", "alice", "2")})
 	if err != nil {
 		t.Fatalf("second conversation turn: %v", err)
 	}
-	if got := waitJob(t, alice, next.ID, "succeeded", 3*time.Minute); got.Result != "answer: second turn" {
+	if got := WaitJob(t, alice, next.ID, "succeeded", 3*time.Minute); got.Result != "answer: second turn" {
 		t.Fatalf("second conversation result: %q", got.Result)
 	}
 	// Tenant isolation: alice's listing contains only her jobs.
-	res, err := taskClient(t, alice).ListJobs(context.Background(), tv1.ListJobsReq{})
+	res, err := TaskClient(t, alice).ListJobs(context.Background(), tv1.ListJobsReq{})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -280,30 +167,30 @@ func TestKillUncertain(t *testing.T) {
 	testkit.Req(t, "sys.kill-uncertain")
 	testkit.Req(t, "adr.task-jobs.kill-to-uncertain")
 	owner := "kira"
-	space := ensureSpace(t, owner, idem("s", owner))
-	res, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
+	space := EnsureSpace(t, owner, Idem("s", owner))
+	res, err := TaskClient(t, OwnerSpace{Owner: owner, Space: space}).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: space, Conversation: "c1",
-		Input: "slow:120000 hold this turn", Idem: idem("j", "kira", "1")})
+		Input: "slow:120000 hold this turn", Idem: Idem("j", "kira", "1")})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	waitJob(t, ownerSpace{owner, space}, res.ID, "running", 2*time.Minute)
+	WaitJob(t, OwnerSpace{Owner: owner, Space: space}, res.ID, "running", 2*time.Minute)
 	d := testkit.NewDocker(t)
-	spawnDB := adminDB(t, "spawn_controller")
+	spawnDB := AdminDB(t, "spawn_controller")
 	var container string
 	testkit.Poll(t, 30*time.Second, 200*time.Millisecond, func() bool {
-		return spawnDB.QueryRowContext(context.Background(), `SELECT container FROM runtimes
+		return spawnDB.QueryRowContext(context.Background(), `SELECT container FROM Runtimes
 			WHERE space=$1 AND container<>'' ORDER BY created DESC LIMIT 1`, space).Scan(&container) == nil
 	})
 	if err := d.Kill(context.Background(), container); err != nil {
 		t.Fatalf("kill %s: %v", container, err)
 	}
-	j := waitJob(t, ownerSpace{owner, space}, res.ID, "uncertain", 90*time.Second)
+	j := WaitJob(t, OwnerSpace{Owner: owner, Space: space}, res.ID, "uncertain", 90*time.Second)
 	// Observation: uncertain does not move to queued/running and the
 	// job keeps exactly one run — no retry.
-	db := adminDB(t, "task_engine")
+	db := AdminDB(t, "task_engine")
 	testkit.Poll(t, 10*time.Second, time.Second, func() bool {
-		st := jobState(t, db, res.ID)
+		st := JobState(t, db, res.ID)
 		return st == "uncertain"
 	})
 	var runs int
@@ -315,7 +202,7 @@ func TestKillUncertain(t *testing.T) {
 	if runs != 1 {
 		t.Fatalf("expected 1 run, got %d", runs)
 	}
-	_, retryErr := taskClient(t, ownerSpace{owner, space}).RetryJob(context.Background(), tv1.JobReq{ID: res.ID})
+	_, retryErr := TaskClient(t, OwnerSpace{Owner: owner, Space: space}).RetryJob(context.Background(), tv1.JobReq{ID: res.ID})
 	testkit.Deny(t, "sys.kill-uncertain", herrors.CodeOf(retryErr) == herrors.CodeConflict)
 	testkit.Deny(t, "adr.task-jobs.kill-to-uncertain", herrors.CodeOf(retryErr) == herrors.CodeConflict)
 	_ = j
@@ -330,15 +217,15 @@ func TestForgedToken(t *testing.T) {
 	testkit.Req(t, "sys.forged-token")
 	testkit.Req(t, "adr.service-edges.forged-rejected")
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
-	ownerTok := forge(t, key, "owner", `{"sub":"operator","owner":"alice","aud":["task-engine","spawn-controller"],"exp":9999999999}`)
-	badTask := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, ownerTok)}}
+	ownerTok := Forge(t, key, "owner", `{"sub":"operator","owner":"alice","aud":["task-engine","spawn-controller"],"exp":9999999999}`)
+	badTask := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(TaskURL, ownerTok)}}
 	_, err := badTask.GetJob(context.Background(), tv1.GetJobReq{ID: "job_none"})
 	testkit.Deny(t, "adr.service-edges.forged-rejected", herrors.CodeOf(err) == herrors.CodeUnauthorized)
 	if _, err := badTask.CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: "space_none", Conversation: "c", Input: "forged", Idem: "forged"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
 		t.Fatalf("forged task create token: %v", err)
 	}
-	badSpawn := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, ownerTok)}}
+	badSpawn := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, ownerTok)}}
 	if _, err := badSpawn.GetSpace(context.Background(), sv1.GetSpaceReq{ID: "sp_none"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
 		t.Fatalf("forged spawn owner token: %v", err)
 	}
@@ -346,15 +233,15 @@ func TestForgedToken(t *testing.T) {
 		Name: "forged", Template: "default"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
 		t.Fatalf("forged spawn create token: %v", err)
 	}
-	tok := forge(t, key, "service", `{"sub":"task-engine","aud":["spawn-controller"],"exp":9999999999,"kid":"k"}`)
-	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, tok)}}
+	tok := Forge(t, key, "service", `{"sub":"task-engine","aud":["spawn-controller"],"exp":9999999999,"kid":"k"}`)
+	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, tok)}}
 	_, err = c.EnsureRuntime(context.Background(),
 		sv1.EnsureRuntimeReq{Space: "none", Digest: "x"})
 	if err == nil {
 		t.Fatalf("forged service token accepted")
 	}
-	runTok := forge(t, key, "run", `{"sub":"r","job":"j","run":"r","space":"s","owner":"o","aud":["task-engine"],"exp":9999999999,"kid":"k"}`)
-	tc := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, runTok)}}
+	runTok := Forge(t, key, "run", `{"sub":"r","job":"j","run":"r","space":"s","owner":"o","aud":["task-engine"],"exp":9999999999,"kid":"k"}`)
+	tc := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(TaskURL, runTok)}}
 	if err := tc.ReportRun(context.Background(), tv1.ReportRunReq{
 		Run: "r", Events: []tv1.RunEvent{{Seq: 1, Kind: "final-ok", Data: "x"}},
 	}); err == nil {
@@ -362,15 +249,7 @@ func TestForgedToken(t *testing.T) {
 	}
 }
 
-// forge signs a token with a random (non-issuer) key.
-func forge(t *testing.T, key ed25519.PrivateKey, purpose, payload string) string {
-	t.Helper()
-	tok, err := auth.Sign(key, purpose, []byte(payload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tok
-}
+// Forge signs a token with a random (non-issuer) key.
 
 // TestServiceEdge proves a service op refuses a caller with no token;
 // edge-level denial is covered by identity-hub's svc unit test.
@@ -380,7 +259,7 @@ func TestServiceEdge(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.service-edge")
 	testkit.Req(t, "adr.service-edges.edge-required")
-	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}
+	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, "")}}
 	_, err := c.CreateSpace(context.Background(), sv1.CreateSpaceReq{
 		Name: "unauthenticated", Template: "default"})
 	testkit.Deny(t, "adr.service-edges.edge-required", herrors.CodeOf(err) == herrors.CodeUnauthorized)
@@ -399,15 +278,15 @@ func TestSpaceNoDB(t *testing.T) {
 	testkit.Req(t, "sys.space-no-db")
 	testkit.Req(t, "adr.spawn-runtime.space-no-db", "adr.harness-admit.config-readonly")
 	owner := "nodb"
-	space := ensureSpace(t, owner, idem("s", owner))
-	if _, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
+	space := EnsureSpace(t, owner, Idem("s", owner))
+	if _, err := TaskClient(t, OwnerSpace{Owner: owner, Space: space}).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: space, Conversation: "c1",
-		Input: "env check", Idem: idem("j", "nodb", "1")}); err != nil {
+		Input: "env check", Idem: Idem("j", "nodb", "1")}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	var rt testkit.ContainerSummary
 	testkit.Poll(t, 2*time.Minute, 500*time.Millisecond, func() bool {
-		if cs := runtimes(t); len(cs) > 0 {
+		if cs := Runtimes(t); len(cs) > 0 {
 			rt = cs[0]
 			return true
 		}
@@ -436,10 +315,10 @@ func TestSpaceNoDB(t *testing.T) {
 	if !renderRO {
 		t.Fatal("rendered config volume is absent or writable")
 	}
-	_, dberr := execDocker(rt.ID, "wget", "-q", "-T", "3",
+	_, dberr := ExecDocker(rt.ID, "wget", "-q", "-T", "3",
 		"-O", "/dev/null", "http://postgres:5432/")
 	testkit.Deny(t, "adr.spawn-runtime.space-no-db", dberr != nil)
-	_, roerr := execDocker(rt.ID, "touch", "/etc/hhub/render/probe")
+	_, roerr := ExecDocker(rt.ID, "touch", "/etc/hhub/render/probe")
 	testkit.Deny(t, "adr.harness-admit.config-readonly", roerr != nil)
 }
 
@@ -447,16 +326,16 @@ func TestSpaceNoDB(t *testing.T) {
 // intent versus Docker creation remains a deferred proof.
 func TestRuntimeIntent(t *testing.T) {
 	testkit.Req(t, "adr.spawn-runtime.intent-first")
-	owner := "intent_" + nonce
-	space := ensureSpace(t, owner, idem("intent-space"))
-	client := taskServiceSpawnClient(t, space)
+	owner := "intent_" + Nonce
+	space := EnsureSpace(t, owner, Idem("intent-space"))
+	client := TaskServiceSpawnClient(t, space)
 	var runtime string
 	testkit.Poll(t, time.Minute, 250*time.Millisecond, func() bool {
 		res, err := client.EnsureRuntime(context.Background(), sv1.EnsureRuntimeReq{Space: space})
 		runtime = res.Runtime
 		return err == nil && res.Ready && runtime != ""
 	})
-	db := adminDB(t, "spawn_controller")
+	db := AdminDB(t, "spawn_controller")
 	var n int
 	if err := db.QueryRowContext(context.Background(),
 		"SELECT count(*) FROM intents WHERE runtime=$1 AND space=$2 AND kind='runtime'",
@@ -499,20 +378,20 @@ func TestMissingConfigRefused(t *testing.T) {
 func TestStackRestart(t *testing.T) {
 	testkit.Req(t, "sys.stack-restart")
 	testkit.Req(t, "adr.task-jobs.restart-durable")
-	owner := "restart_" + nonce
-	space, code := addUser(t, owner)
-	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
-		External: owner, UpdateID: idem("link", owner), Text: "/start " + code}); err != nil {
+	owner := "restart_" + Nonce
+	space, code := AddUser(t, owner)
+	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
+		External: owner, UpdateID: Idem("link", owner), Text: "/start " + code}); err != nil {
 		t.Fatal(err)
 	}
-	cursor := waitMock(t, owner, 0, "Account linked", 10*time.Second)
-	res, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
+	cursor := WaitMock(t, owner, 0, "Account linked", 10*time.Second)
+	res, err := TaskClient(t, OwnerSpace{Owner: owner, Space: space}).CreateJob(context.Background(), tv1.CreateJobReq{
 		Space: space, Conversation: "c1",
-		Input: "restart check", Idem: idem("j", "reba", "1")})
+		Input: "restart check", Idem: Idem("j", "reba", "1")})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	waitJob(t, ownerSpace{owner, space}, res.ID, "succeeded", 3*time.Minute)
+	WaitJob(t, OwnerSpace{Owner: owner, Space: space}, res.ID, "succeeded", 3*time.Minute)
 	d := testkit.NewDocker(t)
 	for _, name := range []string{"task-engine", "spawn-controller",
 		"identity-hub", "channel-hub", "postgres"} {
@@ -521,7 +400,7 @@ func TestStackRestart(t *testing.T) {
 		}
 	}
 	// Wait for task-engine and channel-hub to answer again.
-	for _, base := range []string{taskURL, "http://channel-hub:9000"} {
+	for _, base := range []string{TaskURL, "http://channel-hub:9000"} {
 		testkit.Poll(t, 90*time.Second, time.Second, func() bool {
 			res, err := http.Get(base + "/healthz")
 			if err != nil {
@@ -531,44 +410,19 @@ func TestStackRestart(t *testing.T) {
 			return res.StatusCode == http.StatusOK
 		})
 	}
-	j := waitJob(t, ownerSpace{owner, space}, res.ID, "succeeded", time.Minute)
+	j := WaitJob(t, OwnerSpace{Owner: owner, Space: space}, res.ID, "succeeded", time.Minute)
 	if j.Result != "answer: restart check" {
 		t.Fatalf("lost result after restart: %q", j.Result)
 	}
-	_, err = taskClient(t, ownerSpace{owner, space}).CancelJob(context.Background(), tv1.JobReq{ID: res.ID})
+	_, err = TaskClient(t, OwnerSpace{Owner: owner, Space: space}).CancelJob(context.Background(), tv1.JobReq{ID: res.ID})
 	testkit.Deny(t, "sys.stack-restart", herrors.CodeOf(err) == herrors.CodeConflict)
 	testkit.Deny(t, "adr.task-jobs.restart-durable", herrors.CodeOf(err) == herrors.CodeConflict)
-	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
-		External: owner, UpdateID: idem("after", owner), Text: "after restart"}); err != nil {
+	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
+		External: owner, UpdateID: Idem("after", owner), Text: "after restart"}); err != nil {
 		t.Fatal(err)
 	}
-	waitMock(t, owner, cursor, "answer: after restart", 3*time.Minute)
+	WaitMock(t, owner, cursor, "answer: after restart", 3*time.Minute)
 }
 
-// adminDB opens the admin DSN against one service database; Postgres
+// AdminDB opens the admin DSN against one service database; Postgres
 // has no cross-database queries, so each service db is its own conn.
-func adminDB(t *testing.T, name string) *sql.DB {
-	t.Helper()
-	u, err := url.Parse(adminDSN)
-	if err != nil {
-		t.Fatalf("admin dsn parse: %v", err)
-	}
-	u.Path = "/" + name
-	db, err := sql.Open("pgx", u.String())
-	if err != nil {
-		t.Fatalf("admin db: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
-func jobState(t *testing.T, db *sql.DB, id string) string {
-	t.Helper()
-	var st string
-	if err := db.QueryRowContext(context.Background(),
-		"SELECT state FROM fsm.machines WHERE kind='job' AND id=$1",
-		id).Scan(&st); err != nil {
-		return ""
-	}
-	return st
-}

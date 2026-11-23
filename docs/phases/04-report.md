@@ -6,7 +6,7 @@
   delivery and thread machines, mock outbox, command routing and bounded
   Markdown rendering. The response limit is five text parts plus an explicit
   remainder file ([TestInjectDedupAndIsolation](../../services/channel-hub/internal/svc/intake_db_test.go),
-  [TestScriptedLongAnswer](../../test/e2e/scripted_channel_test.go)).
+  [TestScriptedLongAnswer](../../test/e2e/channel/scripted_channel_test.go)).
 - Identity-hub stores principals, single-use 24-hour link codes and channel
   bindings. It issues service, run, operator and linked-channel tokens through
   one issuer implementation. The production service no longer constructs the
@@ -34,10 +34,10 @@
   linked through `/start`, each received an answer. Tenant-scoped outbox
   reads, forged tokens and wrong-operation edges were refused. An unknown
   command returned help without creating a job
-  ([TestMockChannelThreeUsers](../../test/e2e/channel_test.go)).
+  ([TestMockChannelThreeUsers](../../test/e2e/channel/channel_test.go)).
 - The long scripted answer escaped model HTML, visibly marked truncation,
   emitted five text parts and one remainder file, and consumed the full
-  scenario ([TestScriptedLongAnswer](../../test/e2e/scripted_channel_test.go)).
+  scenario ([TestScriptedLongAnswer](../../test/e2e/channel/scripted_channel_test.go)).
 
 ## Redesign signals
 

@@ -16,13 +16,13 @@
   trufflehog scans passed after removing a leaked test fixture from all
   history; authorship was retained. AGPL-3.0-only and third-party notices
   are in the published repository.
-- The reverse [Docker orphan test](../../test/e2e/orphan_test.go) failed
+- The reverse [Docker orphan test](../../test/e2e/lifecycle/orphan_test.go) failed
   before the janitor and passed afterward. A separate
-  [deadline test](../../test/e2e/runtime_sweep_test.go) found the main
+  [deadline test](../../test/e2e/lifecycle/runtime_sweep_test.go) found the main
   cause of the 108 old containers: runtime deadlines were never swept.
   Both paths now remove containers, and e2e/load tests destroy their
   provisioned spaces. A fresh post-load inspection found zero runtimes.
-- [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
+- [Stack restart e2e](../../test/e2e/lifecycle/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
   is refused. The full e2e passed in **70.317 s** after Docker network
@@ -39,17 +39,17 @@
   the run-binding transaction. Two new 36-message runs passed with
   **0 errors** in **9.0 s** and **8.7 s**. Cleanup again left zero
   `hhub-rt-*` containers.
-- [Sweep-lag e2e](../../test/e2e/sweep_lag_test.go) held a queued job,
+- [Sweep-lag e2e](../../test/e2e/lifecycle/sweep_lag_test.go) held a queued job,
   moved its deadline one minute into the past, and received its exact
   operator alert. The threshold is 30 seconds. Task-engine records
   the alert and outbox intent in one transaction; channel-hub delivers
   it once by key. A forged operator call to the service alert endpoint
-  is refused ([contract e2e](../../test/e2e/operator_alert_test.go)).
-- [Watchdog e2e](../../test/e2e/watchdog_stale_test.go) froze the spawn
+  is refused ([contract e2e](../../test/e2e/lifecycle/operator_alert_test.go)).
+- [Watchdog e2e](../../test/e2e/lifecycle/watchdog_stale_test.go) froze the spawn
   tick: spawn-controller returned unhealthy, an unauthenticated status
   read was refused, and channel-hub sent the operator alert through its
   direct delivery outbox. A stable tick value deduplicates each incident.
-- [Exit-command e2e](../../test/e2e/wedge_unblock_test.go) applied
+- [Exit-command e2e](../../test/e2e/lifecycle/wedge_unblock_test.go) applied
   `hubctl job cancel` to a held job and `hubctl user runtime-drain` to a
   live runtime, then saw the runtime reach `absent` and its container
   disappear. DB contract scenarios cover every non-final job and

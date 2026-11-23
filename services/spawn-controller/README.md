@@ -14,7 +14,7 @@ Core zone, plus it launches space-zone containers. Called by `hubctl`
 the descriptor; no service calls out to the model — the space-zone
 network edge reaches `scripted-model` per the models passport.
 Cross-owner space reads and destroys are refused
-([TestJobToAnswer](../../test/e2e/e2e_test.go)).
+([TestJobToAnswer](../../test/e2e/lifecycle/e2e_test.go)).
 
 ## Owns
 
@@ -34,7 +34,7 @@ Implements `contracts/spawn/v1` (`CreateSpace`, `DestroySpace`,
 No jobs, no model calls, no identity issuance. Never hands the Docker
 socket or a database route to a space-zone container; never starts a
 container without an `intents` row committed first
-([`TestRuntimeIntent`](../../test/e2e/e2e_test.go),
+([`TestRuntimeIntent`](../../test/e2e/lifecycle/e2e_test.go),
 `adr.spawn-runtime.intent-first`).
 
 ## Machines
@@ -58,6 +58,6 @@ with a fresh watchdog age. If `EnsureRuntime` never reports `ready`,
 inspect `fsm.machines` for a runtime wedged in `starting` and the
 container logs of `hhub-rt-*`; check `intents` for the last action.
 `hubctl user runtime-drain <owner> <space>` requests removal without
-deleting the space ([TestHubctlUnblocksJobAndRuntime](../../test/e2e/wedge_unblock_test.go)).
+deleting the space ([TestHubctlUnblocksJobAndRuntime](../../test/e2e/lifecycle/wedge_unblock_test.go)).
 Docker inspect, removal and orphan scans are confined to this installation's
 network ([TestDockerRefusesForeignNetwork](internal/backend/docker_test.go)).

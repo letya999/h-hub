@@ -74,7 +74,7 @@ func modelDefaults() ModelsPassport {
 		Routes: []ModelRoute{
 			{Name: "scripted", URL: "http://scripted-model:9000", Model: "scripted", Vision: true},
 			{Name: "scripted-alt", URL: "http://scripted-model:9000", Model: "scripted"},
-			{Name: "devin", URL: "http://cliproxy:8317", Model: "devin/swe-2",
+			{Name: "devin", URL: "http://cliproxy:8317", Model: "devin/swe-2-flash",
 				KeyRef: "cred://builtin/platform/cliproxy-key", Vision: true},
 		},
 		DailyTokens: 1_000_000,

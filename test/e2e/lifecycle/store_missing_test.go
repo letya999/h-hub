@@ -1,21 +1,21 @@
 //go:build hhube2e
 
-package e2e
+package lifecycle
 
 import (
 	"context"
+	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/letya999/h-hub/shared/testkit"
 )
 
 func TestStoreMissingDatabaseRefusesStartup(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.store-missing")
-	db := "hhub_missing_" + nonce
+	db := "hhub_missing_" + Nonce
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "hhub",
