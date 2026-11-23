@@ -35,12 +35,8 @@ issuer_image=${RESTORE_ISSUER_IMAGE:-$(docker inspect -f '{{.Config.Image}}' ide
 docker network create "$net" >/dev/null
 docker run -d --rm --name "$pg" --network "$net" --network-alias postgres \
   -e POSTGRES_HOST_AUTH_METHOD=trust "$pg_image" >/dev/null
-ready=0
-for n in $(seq 1 30); do
-  if docker exec "$pg" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then ready=1; break; fi
-  sleep 1
-done
-test "$ready" -eq 1
+. /src/tools/backup/postgres-ready.sh
+wait_postgres "$pg"
 
 while IFS= read -r db; do
   case "$db" in
