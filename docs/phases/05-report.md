@@ -1,4 +1,4 @@
-# Phase 5 report — release blocked by frozen N-1 image
+# Phase 5 report — rollback baseline published, release validation pending
 
 ## What passed
 
@@ -70,11 +70,24 @@
   reports version **6**.
   The frozen v0.0.4 identity image was published by the
   [GHCR run](https://github.com/letya999/h-hub/actions/runs/45127280913)
-  and the smoke now pulls its pinned digest. After restoring a version-6
-  backup, that exact image exits with `migrations: invalid:
-  err.migration`. The smoke correctly fails. The v0.0.4 binary rejects
-  migration numbers above its embedded list; a phase-5 change cannot
-  alter that published binary.
+  and the first smoke pulled its pinned digest. After restoring a
+  version-6 backup, that exact image exited with `migrations: invalid:
+  err.migration`. The owner approved a forward-readable **v0.0.4.1**
+  patch baseline. Its [PR](https://github.com/letya999/h-hub/pull/6)
+  passed CI, and the [image run](https://github.com/letya999/h-hub/actions/runs/45157193310)
+  published six images. The smoke now pins identity-hub digest
+  `sha256:b3c0e0c6a549cdb9c32fcad5d096bdb431a2f5f055c7aed907a2dd9de0b4e02d`.
+  A fresh nine-database backup restored on schema 0.0.5; the published
+  v0.0.4.1 binary started, its issuer key decrypted, and a new message
+  got an answer. The local N-1 smoke passed.
+- The [invariant register](../invariants.md) lists all **47** declared IDs:
+  **27 proved** and **20 deferred**. For each proved ID, `just check`
+  now runs the named scenario without test caching and requires both a
+  passed test and an exercised `testkit.Deny` refusal. Broken-register
+  and label-only fixtures fail the gate. The full local `just check`,
+  including real-container e2e, passed. `sys.tenant-isolation` now
+  requires owner A's token to receive a refusal when reading B's
+  outbox; an empty list does not count.
 
 ## `sys.*` matrix
 
@@ -112,14 +125,14 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
 
 ## Remaining work and release decision
 
-- The rollback gate is red on the published v0.0.4 digest and version-6
-  schema. Do not substitute a locally rebuilt image or hide the migration.
-  The old task-engine binary also predates its new migration; the
-  current smoke exercises the published identity image, not a full
-  previous-version stack.
-- The trace gate still checks links, not
-  execution plus negative assertions; the invariant registry and new
-  gate are not complete.
+- The v0.0.4 image remains immutable and incompatible with migration 6.
+  The owner-approved v0.0.4.1 digest passes the local rollback smoke.
+  The smoke exercises the published identity image; it is not a full
+  previous-version stack, and the new task-engine migration is not
+  independently exercised by the old task-engine image.
+- The new register conservatively defers **12** ADR claims whose
+  existing tests still lack a refusal at the relevant boundary. Those
+  tests remain useful partial checks; they are not counted as proof.
 - The first [phase-5 PR CI](https://github.com/letya999/h-hub/actions/runs/45130542931)
   passed `just check` but stopped before the image smoke because the
   runner could not find nested `just init`. A regression test failed
@@ -127,10 +140,16 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   reached the published-image incompatibility in the
   [second CI run](https://github.com/letya999/h-hub/actions/runs/45132085394):
   `just check` passed, then the v0.0.4 identity binary rejected migration 6.
-- The [latest PR CI](https://github.com/letya999/h-hub/actions/runs/45139439017)
+- The [latest completed PR CI](https://github.com/letya999/h-hub/actions/runs/45151032918)
   also passed Ubuntu `just check` and failed only at the pinned v0.0.4
   image smoke with `migrations: invalid: err.migration`.
-- Phase 5 is **not ready for merge or `v0.0.5`**. Manual dispatch of
+- The [trace-enabled PR CI](https://github.com/letya999/h-hub/actions/runs/45155247013)
+  exposed a test race: a parallel SIGKILL scenario selected an unrelated
+  runtime and timed out. It now selects the container belonging to the
+  target space. Its focused e2e and the full local `just check` passed;
+  Ubuntu CI must confirm the fix.
+- Phase 5 is **not ready for merge or `v0.0.5`** until the new PR CI
+  passes. Manual dispatch of
   `nightly.yml` returned HTTP 404 because the workflow is not on the
   default branch. The synthetic failure-to-issue check cannot run yet.
   No skipped check is counted as passing.
@@ -142,11 +161,15 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   channel-hub **872/4,000**, harness-runtime **395/6,000**.
   No size trigger fired. Keep the four deployed product services plus
   the per-space harness runtime.
-- Mandatory e2e: **61.458 s** against 10 minutes. Local `just check`
-  passed against the 5-minute criterion. Passing three-user loads are
+- Mandatory e2e: **61.458 s** at the prior network-confinement checkpoint
+  against 10 minutes. Full local `just check` with the trace gate and
+  mandatory e2e took **249.9 s** on the first measured run, **167.3 s**
+  after rebase and **236.7 s** with the rollback-pin regression, all
+  under five minutes. Passing three-user loads are
   **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
   unexplained outlier, though runtime leakage was present then. A
   separate early-result race caused one later 311.6 s failed run;
   its focused regression and two post-fix load runs are green.
-- The release blocker is compatibility with the immutable previous
-  binary, not service size or test duration.
+- The original rollback incompatibility was resolved by the approved
+  v0.0.4.1 patch baseline. Remaining release gates are remote CI and
+  nightly validation, not service size or the measured local duration.
