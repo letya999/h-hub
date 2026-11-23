@@ -36,12 +36,22 @@ func TestRuntimeDeadlineReapsContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := testkit.NewDocker(t)
+	var containers int
+	var listErr error
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("runtime=%s state=%s containers=%d docker_error=%v", runtime, state, containers, listErr)
+		}
+	})
 	testkit.Poll(t, 10*time.Second, 250*time.Millisecond, func() bool {
-		if err := db.QueryRowContext(context.Background(),
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := db.QueryRowContext(ctx,
 			"SELECT state FROM fsm.machines WHERE kind='runtime' AND id=$1", runtime).Scan(&state); err != nil {
 			return false
 		}
-		cs, err := d.List(context.Background(), "hhub.runtime=hhub-"+runtime)
-		return err == nil && state == "absent" && len(cs) == 0
+		cs, err := d.List(ctx, "hhub.runtime=hhub-"+runtime)
+		listErr, containers = err, len(cs)
+		return err == nil && state == "absent" && containers == 0
 	})
 }
