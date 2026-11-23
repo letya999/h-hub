@@ -35,6 +35,9 @@ func TestMigrateApplyAndIdempotent(t *testing.T) {
 		"SELECT count(*) FROM schema_migrations").Scan(&n); err != nil || n != 2 {
 		t.Fatalf("applied=%d err=%v", n, err)
 	}
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO schema_migrations (num, name, sha256) VALUES (1,'dup','x')`)
+	testkit.Deny(t, "adr.store.advisory-lock", err != nil)
 }
 
 func TestMigrateRejectsTamperedBody(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
 	mv1 "github.com/letya999/h-hub/contracts/model/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
-	"github.com/letya999/h-hub/shared/herrors"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/testkit"
 )
@@ -71,6 +71,10 @@ func TestGatewayAccountsSpend(t *testing.T) {
 	if events == 0 {
 		t.Fatal("no measured spend event recorded")
 	}
+	_, cerr := modelClient(t, ownerSpace{owner, space}).Complete(context.Background(),
+		mv1.CompleteReq{Run: "r", Request: json.RawMessage(
+			`{"model":"scripted","messages":[{"role":"user","content":"hi"}]}`)})
+	testkit.Deny(t, "sys.model-usage", herrors.CodeOf(cerr) == herrors.CodeUnauthorized)
 }
 
 // TestForgedRunTokenRefused proves Complete is bound to a run token
@@ -116,9 +120,11 @@ func TestDailyQuotaRefusal(t *testing.T) {
 		t.Fatalf("create over: %v", err)
 	}
 	j := waitJob(t, ownerSpace{owner, space}, over.ID, "failed", 3*time.Minute)
-	if !strings.Contains(j.Result, "err.quota") {
+	refused := strings.Contains(j.Result, "token budget exceeded")
+	if !refused {
 		t.Fatalf("refusal is not readable: %q", j.Result)
 	}
+	testkit.Deny(t, "sys.model-quota", refused)
 }
 
 // TestModelChannelCommands drives /usage, /model list and /model
@@ -151,7 +157,10 @@ func TestModelChannelCommands(t *testing.T) {
 	inject("/model")
 	cursor = waitMock(t, owner, cursor, "scripted", 15*time.Second)
 	inject("/model no-such")
+	prev := cursor
 	cursor = waitMock(t, owner, cursor, "Unknown route", 15*time.Second)
+	testkit.Deny(t, "sys.model-route", cursor > prev)
+	testkit.Deny(t, "adr.model-gateway.spec-per-call", cursor > prev)
 	inject("/model scripted-alt")
 	cursor = waitMock(t, owner, cursor, "switched", 15*time.Second)
 	inject("still routed")
@@ -188,12 +197,15 @@ func TestSpaceReachesOnlyModelGateway(t *testing.T) {
 	if err := probe("model-gateway:9000"); err != nil {
 		t.Fatalf("runtime cannot reach model-gateway: %v", err)
 	}
+	refused := 0
 	for _, denied := range []string{"postgres:5432", "identity-hub:9000",
 		"channel-hub:9000", "cliproxy:8317"} {
 		if err := probe(denied); err == nil {
 			t.Fatalf("space runtime reached %s", denied)
 		}
+		refused++
 	}
+	testkit.Deny(t, "sys.space-egress", refused == 4)
 	waitJob(t, ownerSpace{owner, space}, res.ID, "succeeded", 2*time.Minute)
 }
 

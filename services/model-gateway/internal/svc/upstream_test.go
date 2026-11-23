@@ -46,7 +46,9 @@ func TestRouteKeyConfinedToRoutesDir(t *testing.T) {
 	testkit.Req(t, "adr.model-gateway.route-key-file")
 	dir := t.TempDir()
 	s := &Server{deps: Deps{KeysDir: dir}}
-	if _, err := s.routeKey(routeView{KeyFile: "../service.key"}); err == nil {
+	_, terr := s.routeKey(routeView{KeyFile: "../service.key"})
+	testkit.Deny(t, "adr.model-gateway.route-key-file", terr != nil)
+	if terr == nil {
 		t.Fatal("traversal key accepted")
 	}
 	if _, err := s.routeKey(routeView{KeyFile: "/abs/key"}); err == nil {

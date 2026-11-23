@@ -29,7 +29,6 @@ func TestRenderEdges(t *testing.T) {
 			t.Fatalf("missing rendered edge %v", edge)
 		}
 	}
-	if tab.Allows("task-engine", "operator", "ClaimNext") {
-		t.Fatal("removed queue claim edge returned")
-	}
+	testkit.Deny(t, "adr.service-edges.rendered-table",
+		!tab.Allows("task-engine", "operator", "ClaimNext"))
 }

@@ -436,6 +436,11 @@ func TestSpaceNoDB(t *testing.T) {
 	if !renderRO {
 		t.Fatal("rendered config volume is absent or writable")
 	}
+	_, dberr := execDocker(rt.ID, "wget", "-q", "-T", "3",
+		"-O", "/dev/null", "http://postgres:5432/")
+	testkit.Deny(t, "adr.spawn-runtime.space-no-db", dberr != nil)
+	_, roerr := execDocker(rt.ID, "touch", "/etc/hhub/render/probe")
+	testkit.Deny(t, "adr.harness-admit.config-readonly", roerr != nil)
 }
 
 // TestRuntimeIntent checks the runtime's own registry row. Ordering of
