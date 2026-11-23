@@ -205,12 +205,17 @@ func (s *Server) resolveSpec(ctx context.Context, r sv1.ResolveSpecReq) (sv1.Res
 	return sv1.ResolveSpecResp{Spec: string(spec), Digest: digest, Owner: sp.owner}, nil
 }
 
+// staleDigest reports whether a caller-pinned spec digest no longer
+// matches the space's current effective digest — the refusal condition
+// for runtime creation against a changed image.
+func staleDigest(req, current string) bool { return req != "" && req != current }
+
 func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
 	sp, err := getSpaceAny(ctx, s.db, r.Space)
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
-	if r.Digest != "" && r.Digest != sp.digest {
+	if staleDigest(r.Digest, sp.digest) {
 		stale := herrors.New(herrors.CodeStale, "err.stale").
 			With("digest", r.Digest)
 		return sv1.EnsureRuntimeResp{}, stale //nolint:wrapcheck // shared error form

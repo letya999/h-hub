@@ -158,7 +158,7 @@ func TestForbiddenWritesNothing(t *testing.T) {
 
 func TestRollbackLeavesNothing(t *testing.T) {
 	t.Parallel()
-	testkit.Req(t, "adr.fsm.outbox-same-tx", "sys.kill-uncertain")
+	testkit.Req(t, "adr.fsm.history-same-tx", "adr.fsm.outbox-same-tx", "sys.kill-uncertain")
 	conn, schema := db(t)
 	m := machine(t, schema)
 	ctx := context.Background()
@@ -190,6 +190,9 @@ func TestRollbackLeavesNothing(t *testing.T) {
 			" WHERE kind=$1 AND machine_id='m1'", m.Kind()); n != 0 {
 		t.Fatal("outbox intent survived rollback")
 	}
+	err = transition(conn, m, Request{ID: "m1", Event: "start", Actor: "owner"})
+	testkit.Deny(t, "adr.fsm.history-same-tx", err != nil)
+	testkit.Deny(t, "adr.fsm.outbox-same-tx", err != nil)
 }
 
 func TestCASRace(t *testing.T) {
@@ -260,6 +263,8 @@ func TestDeadlineSweep(t *testing.T) {
 	if got := stateOf(t, conn, m, "m1"); got != "failed" {
 		t.Fatalf("state=%s", got)
 	}
+	err = transition(conn, m, Request{ID: "m1", Event: "start", Actor: "owner"})
+	testkit.Deny(t, "adr.fsm.deadline-nonfinal", stderrors.Is(err, ErrBadTransition))
 }
 
 func TestSweepSkipsMovedOn(t *testing.T) {
@@ -280,6 +285,7 @@ func TestSweepSkipsMovedOn(t *testing.T) {
 	if done {
 		t.Fatal("sweep must not fire on a moved-on row")
 	}
+	testkit.Deny(t, "adr.fsm.sweep-reread", !done)
 	if got := stateOf(t, conn, m, "m1"); got != "active" {
 		t.Fatalf("state=%s", got)
 	}

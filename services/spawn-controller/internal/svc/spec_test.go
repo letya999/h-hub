@@ -24,6 +24,7 @@ func TestSpecDigestBindsImage(t *testing.T) {
 	if first == second {
 		t.Fatal("image change did not change effective-spec digest")
 	}
+	testkit.Deny(t, "adr.spawn-runtime.digest-pins-image", staleDigest(first, second))
 }
 
 func TestSpecSchemaVersion(t *testing.T) {

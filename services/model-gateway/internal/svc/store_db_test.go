@@ -112,6 +112,7 @@ func TestParallelReservesCannotOverflow(t *testing.T) {
 	const daily, estimate, workers = 1000, 100, 32
 	var wg sync.WaitGroup
 	var wins atomic.Int64
+	var refused atomic.Bool
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func(i int) {
@@ -120,6 +121,7 @@ func TestParallelReservesCannotOverflow(t *testing.T) {
 			for try := 0; try < 8; try++ {
 				err := reserve(ctx, db, reservation{owner: "o4", run: run, estimate: estimate, daily: daily, runLimit: 100_000})
 				if errors.Is(err, errOverBudget) {
+					refused.Store(true)
 					return
 				}
 				if err != nil {
@@ -131,6 +133,7 @@ func TestParallelReservesCannotOverflow(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	testkit.Deny(t, "adr.model-gateway.reserve-conditional", refused.Load())
 	if wins.Load() > daily {
 		t.Fatalf("reservations overflowed: %d > %d", wins.Load(), daily)
 	}
@@ -163,6 +166,9 @@ func TestEstimateChargedWhenUnmeasured(t *testing.T) {
 	if spent != 4096 {
 		t.Fatalf("estimate settle spent=%d", spent)
 	}
+	err := settle(ctx, db, settlement{owner: "o5", run: "ghost",
+		route: "scripted", reserved: 1, charged: 1, measured: false})
+	testkit.Deny(t, "adr.model-gateway.measured-or-estimate", err != nil)
 }
 
 // TestSweepConvertsStaleReservations: an abandoned reservation becomes
