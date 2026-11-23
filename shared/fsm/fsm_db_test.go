@@ -240,7 +240,7 @@ func TestCASRace(t *testing.T) {
 
 func TestDeadlineSweep(t *testing.T) {
 	t.Parallel()
-	testkit.Req(t, "adr.fsm.deadline-nonfinal", "sys.sweep-lag")
+	testkit.Req(t, "adr.fsm.deadline-nonfinal")
 	conn, schema := db(t)
 	m := machine(t, schema)
 	create(t, conn, m, "m1")
