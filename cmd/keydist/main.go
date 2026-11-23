@@ -114,7 +114,9 @@ func distributePublicKeys(conf, pubs string, f *descriptor.File) error {
 	return nil
 }
 
-var operatorPubRecipients = map[string]bool{"identity-hub": true, "channel-hub": true}
+var operatorPubRecipients = map[string]bool{
+	"identity-hub": true, "channel-hub": true, "credential-broker": true,
+}
 
 // renderEdges flattens all declared pairs to the canonical env form.
 func renderEdges(f *descriptor.File) string {

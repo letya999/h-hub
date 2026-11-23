@@ -11,7 +11,7 @@ runnet   := "docker run --rm --network hhub -e HHUB_TEST_DSN=" + dsn + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 confvol  := "hhub-conf"
 dsn      := "postgres://postgres@postgres:5432/postgres?sslmode=disable"
-hubctl   := "docker run --rm --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
+hubctl   := "docker run --rm -i --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_CONFIG_DIR=/etc/hhub -e HHUB_DESCRIPTOR=/src/deploy/descriptor.yaml -e HHUB_KEK_DIR=/run/hhub-secrets" + \
             " -v " + confvol + ":/etc/hhub -v " + src + ":/src:ro -v " + data + "/secrets:/run/hhub-secrets hhub-hubctl:local"
 
@@ -19,6 +19,7 @@ checkrun := "docker run --rm --network hhub -v /var/run/docker.sock:/var/run/doc
             "-e HHUB_TEST_DSN=" + dsn + " -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_TASK_URL=http://task-engine:9000 -e HHUB_SPAWN_URL=http://spawn-controller:9000" + \
             " -e HHUB_IDENTITY_URL=http://identity-hub:9000 -e HHUB_MODEL_URL=http://model-gateway:9000" + \
+            " -e HHUB_BROKER_URL=http://credential-broker:9000" + \
             " -v hhub-conf:/etc/hhub:ro -v " + data + "/secrets:/run/hhub-secrets:ro" + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 check_line := if os() == "windows" { "just stack && " + checkrun + img + " just _check" } else { "just _check" }
@@ -41,9 +42,9 @@ dev-image:
 # --- inner recipes, executed inside the container (Linux) ---
 
 _check:
-    go build ./...
-    golangci-lint run ./...
-    go vet -tags hhubdb ./...
+    go build -tags libsqlite3 ./...
+    golangci-lint run --build-tags libsqlite3 ./...
+    go vet -tags "hhubdb libsqlite3" ./...
     sh /src/tools/tracecheck/run.sh
     gitleaks git .
     go run ./tools/descriptor check
@@ -64,6 +65,7 @@ images:
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=model-gateway -t hhub-model-gateway:local .
+    docker build -f deploy/broker.Dockerfile -t hhub-credential-broker:local .
     docker build -f test/scripted-model/Dockerfile -t hhub-scripted-model:local .
 
 # bring the whole phase-3 stack up: postgres -> init -> services ->
@@ -83,6 +85,7 @@ e2e:
       -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
       -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
       -e HHUB_MODEL_URL=http://model-gateway:9000 \
+      -e HHUB_BROKER_URL=http://credential-broker:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
@@ -157,6 +160,10 @@ init:
 
 doctor:
     {{ hubctl }} doctor
+
+# write an installation secret into the broker; value on stdin or --from-file
+secret-set name *args:
+    {{ hubctl }} secret set {{ name }} {{ args }}
 
 # docker disk budget of the dev machine (tools/, not a second gate set)
 devenv:

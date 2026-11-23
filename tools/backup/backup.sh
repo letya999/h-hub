@@ -19,5 +19,9 @@ while IFS= read -r db; do
   docker exec postgres pg_dump -U postgres -Fc "$db" > "$dest/db/$db.dump"
 done < "$dest/databases"
 
-(cd "$dest" && sha256sum db/*.dump seal-kek globals.sql > SHA256SUMS)
+docker run --rm --network hhub -v hhub-conf:/etc/hhub:ro \
+  hhub-hubctl:local secret snapshot
+docker cp credential-broker:/data/broker-snapshot.db "$dest/broker-snapshot.db"
+
+(cd "$dest" && sha256sum db/*.dump seal-kek globals.sql broker-snapshot.db > SHA256SUMS)
 printf 'backup: %s (%s databases)\n' "$dest" "$(wc -l < "$dest/databases")"

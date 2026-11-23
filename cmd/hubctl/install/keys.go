@@ -171,3 +171,20 @@ func checkSameKEK(path string, old []byte) error {
 	}
 	return nil
 }
+
+// dbKeyName maps a sqlcipher service to its database-key file name,
+// kept with the KEK on the host outside Docker volumes.
+func dbKeyName(service string) string {
+	return dbName(service) + "-db-key"
+}
+
+// ensureHexKey writes 32 random bytes as lowercase hex — the form
+// PRAGMA key consumes — never overwriting an existing key.
+func ensureHexKey(path string) error {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return fmt.Errorf("install: rand db key: %w", err)
+	}
+	_, err := writeOnce(path, []byte(hex.EncodeToString(raw)), 0o600)
+	return err
+}

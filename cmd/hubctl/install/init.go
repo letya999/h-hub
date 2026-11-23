@@ -80,6 +80,11 @@ func provisionServiceFiles(dir, kekDir string, s descriptor.Service) error {
 			return err
 		}
 	}
+	if s.Database == "sqlcipher" {
+		if err := ensureHexKey(filepath.Join(kekDir, dbKeyName(s.Name))); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

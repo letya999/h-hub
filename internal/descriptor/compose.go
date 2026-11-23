@@ -183,7 +183,9 @@ func (s Service) netList(spaceTarget bool) string {
 	if spaceTarget {
 		list += ", hhub-space"
 	}
-	if s.Zone == "egress" {
+	// The egress and edge zones both reach out: egress faces model
+	// providers, edge polls channel providers (Telegram).
+	if s.Zone == "egress" || s.Zone == "edge" {
 		list += ", hhub-egress"
 	}
 	return list
@@ -201,7 +203,7 @@ func (s Service) mounts() []string {
 	if s.Name == "spawn-controller" {
 		mounts = append(mounts, "/var/run/docker.sock:/var/run/docker.sock")
 	}
-	if s.Name == "identity-hub" {
+	if s.Name == "identity-hub" || s.Name == "credential-broker" {
 		mounts = append(mounts, "./../../h-hub-data/secrets:/run/hhub-secrets")
 	}
 	return mounts
@@ -221,6 +223,8 @@ var envFixed = map[string]string{
 	"HHUB_CHANNEL_URL":   "http://channel-hub:9000",
 	"HHUB_TASK_URL":      "http://task-engine:9000",
 	"HHUB_MODEL_URL":     "http://model-gateway:9000",
+	"HHUB_BROKER_URL":    "http://credential-broker:9000",
+	"HHUB_DB_PATH":       "/data/broker.db",
 	// Compose prefixes volume names with the project name "hhub".
 	"HHUB_RENDER_VOL": "hhub_hhub-render",
 	"HHUB_RENDER_DIR": "/render",
@@ -235,6 +239,9 @@ func (s Service) envValue(e string) (string, error) {
 	if e == "HHUB_DSN" {
 		db := dbIdent(s.Name)
 		return "postgres://" + db + "@postgres:5432/" + db + "?sslmode=disable", nil
+	}
+	if e == "HHUB_DB_KEY" {
+		return "/run/hhub-secrets/" + dbIdent(s.Name) + "-db-key", nil
 	}
 	if v, ok := envFixed[e]; ok {
 		return v, nil

@@ -10,6 +10,7 @@ import (
 	"github.com/letya999/h-hub/cmd/hubctl/chat"
 	"github.com/letya999/h-hub/cmd/hubctl/install"
 	"github.com/letya999/h-hub/cmd/hubctl/job"
+	"github.com/letya999/h-hub/cmd/hubctl/secret"
 	"github.com/letya999/h-hub/cmd/hubctl/user"
 )
 
@@ -23,7 +24,7 @@ func stderr(a ...any) {
 
 func run(args []string) int {
 	if len(args) < 2 {
-		stderr("usage: hubctl init|doctor|job|user|chat ...")
+		stderr("usage: hubctl init|doctor|job|user|chat|secret ...")
 		return 2
 	}
 	ctx := context.Background()
@@ -37,8 +38,10 @@ func run(args []string) int {
 		err = user.Run(ctx, args[2:], os.Stdout)
 	case "chat":
 		err = chat.Run(ctx, args[2:], os.Stdout)
+	case "secret":
+		err = secret.Run(ctx, args[2:], os.Stdin, os.Stdout)
 	default:
-		stderr("usage: hubctl init|doctor|job|user|chat ...")
+		stderr("usage: hubctl init|doctor|job|user|chat|secret ...")
 		return 2
 	}
 	if err != nil {
