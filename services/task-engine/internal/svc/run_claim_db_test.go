@@ -18,6 +18,7 @@ import (
 
 func TestRunClaimUnique(t *testing.T) {
 	t.Parallel()
+	testkit.Req(t, "adr.task-jobs.run-unique")
 	ctx := context.Background()
 	db, schema := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {

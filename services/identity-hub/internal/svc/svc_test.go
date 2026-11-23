@@ -14,6 +14,7 @@ import (
 	"github.com/letya999/h-hub/shared/edges"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/testkit"
 )
 
 type memNoncer struct{ seen map[string]bool }
@@ -75,6 +76,7 @@ func TestIssueVerifies(t *testing.T) {
 
 func TestMintNeedsEdge(t *testing.T) {
 	t.Parallel()
+	testkit.Req(t, "adr.service-edges.edge-required")
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

@@ -1,5 +1,7 @@
 # spawn-runtime: intent-first Docker launch behind one spec digest
 
+Status: accepted (owner decision, 2026-11-23).
+
 ## Context
 
 Space containers must be traceable: what was asked, what was compiled,
@@ -18,6 +20,11 @@ are operator exits). Launch hardening: pinned digest, `cap-drop ALL`,
 read-only rootfs, non-root uid, limits, tmpfs, network per descriptor
 edges only. Space-zone containers get no Postgres route and no
 connection env.
+The current tuning values are warm TTL 15 minutes to reuse a started
+container, busy deadline 11 minutes to bound a stuck turn, starting
+deadline 90 seconds for image/start latency, and draining deadline 60
+seconds for cleanup. These are adjustable policy values, not proof
+thresholds; phase 3 carries the owner-ratified defaults in code.
 
 ## Rejected
 
@@ -30,5 +37,4 @@ connection env.
 
 - adr.spawn-runtime.intent-first — `TestWorkerIntent` (e2e)
 - adr.spawn-runtime.space-no-db — `TestSpaceNoDB` (e2e)
-- adr.spawn-runtime.digest-pins-image — effective-spec digest over the
-  resolved image sha (checked in `svc` compile path)
+- adr.spawn-runtime.digest-pins-image — `TestSpecDigestBindsImage`

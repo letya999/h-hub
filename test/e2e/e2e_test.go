@@ -137,6 +137,7 @@ func runtimes(t *testing.T) []testkit.ContainerSummary {
 func TestJobToAnswer(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.tenant-isolation")
+	testkit.Req(t, "adr.task-jobs.tenant-isolation")
 	owners := []string{"alice", "boris", "cy"}
 	var wg sync.WaitGroup
 	var jobIDs, spaceIDs sync.Map
@@ -264,6 +265,7 @@ func TestJobToAnswer(t *testing.T) {
 func TestKillUncertain(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.kill-uncertain")
+	testkit.Req(t, "adr.task-jobs.kill-to-uncertain")
 	owner := "kira"
 	space := ensureSpace(t, owner, idem("s", owner))
 	res, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
@@ -312,6 +314,7 @@ func TestKillUncertain(t *testing.T) {
 func TestForgedToken(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.forged-token")
+	testkit.Req(t, "adr.service-edges.forged-rejected")
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
 	ownerTok := forge(t, key, "owner", `{"sub":"operator","owner":"alice","aud":["task-engine","spawn-controller"],"exp":9999999999}`)
 	badTask := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(taskURL, ownerTok)}}
@@ -363,6 +366,7 @@ func forge(t *testing.T, key ed25519.PrivateKey, purpose, payload string) string
 func TestServiceEdge(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.service-edge")
+	testkit.Req(t, "adr.service-edges.edge-required")
 	c := &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}
 	if _, err := c.CreateSpace(context.Background(), sv1.CreateSpaceReq{
 		Name: "unauthenticated", Template: "default"}); herrors.CodeOf(err) != herrors.CodeUnauthorized {
@@ -381,6 +385,7 @@ func TestServiceEdge(t *testing.T) {
 // req: sys.space-no-db
 func TestSpaceNoDB(t *testing.T) {
 	testkit.Req(t, "sys.space-no-db")
+	testkit.Req(t, "adr.spawn-runtime.space-no-db", "adr.harness-admit.config-readonly")
 	owner := "nodb"
 	space := ensureSpace(t, owner, idem("s", owner))
 	if _, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{
@@ -406,11 +411,18 @@ func TestSpaceNoDB(t *testing.T) {
 			t.Fatalf("database env in space container: %s", e)
 		}
 	}
+	renderRO := false
 	for _, m := range insp.Mounts {
+		if m.Destination == "/etc/hhub/render" && !m.RW {
+			renderRO = true
+		}
 		if strings.Contains(m.Destination, "docker.sock") ||
 			strings.Contains(m.Destination, "postgres") {
 			t.Fatalf("forbidden mount in space container: %v", m)
 		}
+	}
+	if !renderRO {
+		t.Fatal("rendered config volume is absent or writable")
 	}
 }
 
@@ -420,6 +432,7 @@ func TestSpaceNoDB(t *testing.T) {
 // req: sys.worker-intent
 func TestWorkerIntent(t *testing.T) {
 	testkit.Req(t, "sys.worker-intent")
+	testkit.Req(t, "adr.spawn-runtime.intent-first")
 	db := adminDB(t, "spawn_controller")
 	var n int
 	if err := db.QueryRowContext(context.Background(),
@@ -464,6 +477,7 @@ func TestStoreMissing(t *testing.T) {
 // req: sys.stack-restart
 func TestStackRestart(t *testing.T) {
 	testkit.Req(t, "sys.stack-restart")
+	testkit.Req(t, "adr.task-jobs.restart-durable")
 	owner := "reba"
 	space := ensureSpace(t, owner, idem("s", owner))
 	res, err := taskClient(t, ownerSpace{owner, space}).CreateJob(context.Background(), tv1.CreateJobReq{

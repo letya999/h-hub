@@ -23,6 +23,7 @@ import (
 
 func TestActAsBindsAndAudits(t *testing.T) {
 	t.Parallel()
+	testkit.Req(t, "adr.service-edges.operator-audited")
 	ctx := context.Background()
 	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
