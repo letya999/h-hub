@@ -46,14 +46,16 @@ type ModelsPassport struct {
 	Reserve     int64        `json:"reserve"`
 }
 
-// ModelRoute is one named upstream the gateway may relay to. KeyFile
-// names a credential file in the gateway's keys volume — never a
-// value in the spec itself.
+// ModelRoute is one named upstream the gateway may relay to. KeyRef
+// names a credential-broker object the gateway leases per call —
+// never a value in the spec itself. Vision declares the upstream
+// accepts image content parts; channels gate photo intake on it.
 type ModelRoute struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Model   string `json:"model"`
-	KeyFile string `json:"key_file,omitempty"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Model  string `json:"model"`
+	KeyRef string `json:"key_ref,omitempty"`
+	Vision bool   `json:"vision,omitempty"`
 }
 
 // Limits are the space-zone resource ceilings from the descriptor.
@@ -70,10 +72,10 @@ func modelDefaults() ModelsPassport {
 	return ModelsPassport{
 		Default: "scripted",
 		Routes: []ModelRoute{
-			{Name: "scripted", URL: "http://scripted-model:9000", Model: "scripted"},
+			{Name: "scripted", URL: "http://scripted-model:9000", Model: "scripted", Vision: true},
 			{Name: "scripted-alt", URL: "http://scripted-model:9000", Model: "scripted"},
 			{Name: "devin", URL: "http://cliproxy:8317", Model: "devin/swe-2",
-				KeyFile: "cliproxy.key"},
+				KeyRef: "cred://builtin/platform/cliproxy-key", Vision: true},
 		},
 		DailyTokens: 1_000_000,
 		RunTokens:   250_000,

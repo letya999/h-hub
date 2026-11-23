@@ -67,7 +67,7 @@ func run(ctx context.Context, l *log.L) error {
 	s := svc.New(cfg.Sub, db, svc.Deps{
 		IdentityURL: cfg.IdentityURL,
 		SpawnURL:    cfg.SpawnURL,
-		KeysDir:     cfg.Keys,
+		BrokerURL:   cfg.BrokerURL,
 		Issuer:      issuer,
 		SelfKey:     key,
 		EdgeTab:     tab.For(cfg.Sub),

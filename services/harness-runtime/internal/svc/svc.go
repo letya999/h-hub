@@ -35,13 +35,14 @@ type Runner interface {
 // Admission is the in-memory admit row: created only by SubmitRun,
 // keyed by run id, never persisted (space zone has no database).
 type Admission struct {
-	Run   string
-	Job   string
-	Space string
-	Input string
-	Token string // the run token, reused for report-back
-	ctx   context.Context
-	stop  context.CancelFunc
+	Run         string
+	Job         string
+	Space       string
+	Input       string
+	Attachments []hv1.Attachment
+	Token       string // the run token, reused for report-back
+	ctx         context.Context
+	stop        context.CancelFunc
 }
 
 // Server owns the operation table and the admission registry.
@@ -119,7 +120,8 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 	rctx, stop := context.WithCancel(context.Background())
 	s.admit[r.Run] = &Admission{
 		Run: r.Run, Job: r.Job, Space: r.Space, Input: r.Input,
-		Token: tok, ctx: rctx, stop: stop}
+		Attachments: r.Attachments,
+		Token:       tok, ctx: rctx, stop: stop}
 	s.mu.Unlock()
 	go s.deps.Runner.Run(s.admit[r.Run].ctx, *s.admit[r.Run])
 	return hv1.SubmitRunResp{Accepted: true}, nil

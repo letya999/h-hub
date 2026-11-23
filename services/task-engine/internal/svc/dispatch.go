@@ -3,6 +3,7 @@ package svc
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -76,8 +77,13 @@ func (d *dispatcher) dispatchInner(ctx context.Context, l *log.L, jobID string) 
 		return err
 	}
 	hc := d.s.harnessClient(rt.Endpoint, tok.Token)
-	ack, err := hc.SubmitRun(ctx, hv1.SubmitRunReq{
-		Run: runID, Job: j.id, Space: j.space, Input: j.input})
+	req := hv1.SubmitRunReq{Run: runID, Job: j.id, Space: j.space, Input: j.input}
+	if j.attach != "" {
+		if err := json.Unmarshal([]byte(j.attach), &req.Attachments); err != nil {
+			return fmt.Errorf("job attachments: %w", err)
+		}
+	}
+	ack, err := hc.SubmitRun(ctx, req)
 	if err != nil || !ack.Accepted {
 		return fmt.Errorf("submit refused")
 	}
@@ -182,8 +188,8 @@ func (d *dispatcher) withJobTx(ctx context.Context, jobID, event, actor string,
 func getJobByID(ctx context.Context, db *sql.DB, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result FROM jobs WHERE id=$1`, id).Scan(
-		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result)
+		input, idem, result, COALESCE(attachments::text,'') FROM jobs WHERE id=$1`, id).Scan(
+		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.attach)
 	if err != nil {
 		return j, fmt.Errorf("get job %s: %w", id, err)
 	}

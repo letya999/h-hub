@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -52,14 +53,11 @@ func taskScope(ctx context.Context, requested string) (idv1.OwnerClaims, error) 
 }
 
 func (o *jobOps) createJob(ctx context.Context, r tv1.CreateJobReq) (tv1.CreateJobResp, error) {
-	if r.Space == "" {
-		return tv1.CreateJobResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
-	}
 	scope, err := taskScope(ctx, r.Space)
 	if err != nil {
 		return tv1.CreateJobResp{}, fmt.Errorf("scope: %w", err)
 	}
-	for _, v := range []string{r.Conversation, r.Input, r.Idem} {
+	for _, v := range []string{r.Space, r.Conversation, r.Input, r.Idem} {
 		if v == "" {
 			return tv1.CreateJobResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
 		}
@@ -78,6 +76,11 @@ func (o *jobOps) createJob(ctx context.Context, r tv1.CreateJobReq) (tv1.CreateJ
 	defer tx.Rollback() //nolint:errcheck // best-effort close
 	j := jobRow{id: id, owner: scope.Owner, space: scope.Space,
 		conv: r.Conversation, input: r.Input, idem: r.Idem}
+	attach, err := attachField(r.Attachments)
+	if err != nil {
+		return tv1.CreateJobResp{}, err
+	}
+	j.attach = attach
 	if err := createJob(ctx, tx, j); err != nil {
 		return tv1.CreateJobResp{}, err
 	}
@@ -89,6 +92,19 @@ func (o *jobOps) createJob(ctx context.Context, r tv1.CreateJobReq) (tv1.CreateJ
 		return tv1.CreateJobResp{}, fmt.Errorf("commit: %w", err)
 	}
 	return tv1.CreateJobResp{ID: id, State: "queued"}, nil
+}
+
+// attachField serializes job attachments into the stored JSON
+// column; malformed input is a refusal, not a silent drop.
+func attachField(a []tv1.Attachment) (string, error) {
+	if len(a) == 0 {
+		return "", nil
+	}
+	raw, err := json.Marshal(a)
+	if err != nil {
+		return "", herrors.New(herrors.CodeInvalid, "err.invalid-arg").With("field", "attachments") //nolint:wrapcheck // shared error form
+	}
+	return string(raw), nil
 }
 
 func (o *jobOps) spaceOwner(ctx context.Context, space, owner string) error {
