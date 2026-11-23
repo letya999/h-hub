@@ -521,6 +521,10 @@ func TestStackRestart(t *testing.T) {
 	if j.Result != "answer: restart check" {
 		t.Fatalf("lost result after restart: %q", j.Result)
 	}
+	if _, err := taskClient(t, ownerSpace{owner, space}).CancelJob(context.Background(),
+		tv1.JobReq{ID: res.ID}); herrors.CodeOf(err) != herrors.CodeConflict {
+		t.Fatalf("settled job accepted cancellation after restart: %v", err)
+	}
 	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{
 		External: owner, UpdateID: idem("after", owner), Text: "after restart"}); err != nil {
 		t.Fatal(err)
