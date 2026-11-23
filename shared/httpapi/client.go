@@ -22,10 +22,16 @@ type Client struct {
 
 // NewClient builds a client with the shared default timeout.
 func NewClient(base, token string) *Client {
+	return NewClientTimeout(base, token, 5*time.Second)
+}
+
+// NewClientTimeout is NewClient with a caller-chosen timeout — model
+// calls can legitimately take minutes, unlike contract ops.
+func NewClientTimeout(base, token string, d time.Duration) *Client {
 	return &Client{
 		base:  base,
 		token: token,
-		hc:    &http.Client{Timeout: 5 * time.Second},
+		hc:    &http.Client{Timeout: d},
 	}
 }
 

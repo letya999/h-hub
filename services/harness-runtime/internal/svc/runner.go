@@ -1,17 +1,18 @@
 package svc
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	mv1 "github.com/letya999/h-hub/contracts/model/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/services/harness-runtime/internal/config"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -61,7 +62,7 @@ func (r *HermesRunner) Run(ctx context.Context, a Admission) {
 			}
 		}
 	}()
-	text, err := r.turn(ctx, a.Input)
+	text, err := r.turn(ctx, a)
 	close(stop)
 
 	var final tv1.RunEvent
@@ -88,33 +89,26 @@ func (r *HermesRunner) reportBest(a Admission, e tv1.RunEvent) {
 	}
 }
 
-// turn is the one scripted-model call. The request is stripped to
-// exactly the OpenAI fields — no caller headers ever propagate.
-func (r *HermesRunner) turn(ctx context.Context, input string) (string, error) {
+// turn is the one model call through the gateway's Complete op: the
+// request is stripped to exactly the OpenAI fields, the run token is
+// the only credential, and no other caller headers ever propagate.
+func (r *HermesRunner) turn(ctx context.Context, a Admission) (string, error) {
 	body, err := json.Marshal(map[string]any{
 		"model":    "scripted",
-		"messages": []map[string]string{{"role": "user", "content": input}},
+		"messages": []map[string]string{{"role": "user", "content": a.Input}},
 	})
 	if err != nil {
 		return "", fmt.Errorf("model request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		r.cfg.ModelURL+"/v1/chat/completions", bytes.NewReader(body))
+	mc := &mv1.Client{T: mv1.HTTP{C: httpapi.NewClientTimeout(
+		r.cfg.ModelURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
+	res, err := mc.Complete(ctx, mv1.CompleteReq{Run: a.Run, Request: body})
 	if err != nil {
-		return "", fmt.Errorf("model request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := r.hc.Do(req)
-	if err != nil {
+		var he *herrors.Error
+		if errors.As(err, &he) {
+			return "", errors.New(he.Error())
+		}
 		return "", fmt.Errorf("model call: %w", err)
-	}
-	defer res.Body.Close() //nolint:errcheck // best-effort close
-	data, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil {
-		return "", fmt.Errorf("model read: %w", err)
-	}
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("model status %d", res.StatusCode)
 	}
 	var out struct {
 		Choices []struct {
@@ -123,7 +117,7 @@ func (r *HermesRunner) turn(ctx context.Context, input string) (string, error) {
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal(data, &out); err != nil {
+	if err := json.Unmarshal(res.Response, &out); err != nil {
 		return "", fmt.Errorf("model decode: %w", err)
 	}
 	if len(out.Choices) == 0 {
