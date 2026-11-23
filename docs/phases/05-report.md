@@ -1,124 +1,104 @@
-# Phase 5 report — foundation fault matrix (release blocked)
+# Phase 5 report — release blocked by frozen N-1 image
 
-## Delivered and observed
+## What passed
 
-- A late run receipt is retained after settlement without reopening the job.
-  The database regression failed before the fix and passes now
-  ([test](../../services/task-engine/internal/svc/late_receipt_db_test.go)).
-- Runtime creation can replay after Docker created the named container but
-  before the database recorded its ID. A mismatched image is refused. The
-  Docker API test failed before the fix and passes now
-  ([test](../../services/spawn-controller/internal/backend/docker_test.go)).
-- New effective specs carry schema version 1; the reader accepts previous
-  unversioned specs and refuses unknown future versions. The shared store
-  accepts an additive newer migration prefix while still checking known
-  hashes and gaps ([spec test](../../services/spawn-controller/internal/svc/spec_test.go),
-  [store test](../../shared/store/store_db_test.go)).
-- The seal test proves the stored issuer key opens with the host KEK, while
-  the link code and signing seed are absent from the identity database dump,
-  selected container logs and inspect output, and the mock answer
-  ([test](../../test/e2e/seal_test.go)).
-- `just backup` captured the host KEK, installation config, globals and all
-  **9** non-template databases with checksums outside git. `just
-  restore-drill` restored them into an isolated Postgres and started all
-  four deployed services, including identity-hub with the backed-up KEK.
-  `just nminus1-smoke` built the local `v0.0.4` identity source and started
-  those services against that restored backup. Both drills passed on the
-  latest backup.
-- The latest `just load` passed: **36 messages**, **3 users**, **0 observed
-  failures**, **26.9 s** from send to all answers (30.5 s test runtime).
-  A prior run took 8.2 s for the same 36 messages
-  ([test](../../test/e2e/load_test.go)).
-- Local `just check` passed in about **119 s** (<5 min). Rebuilt-stack
-  `just e2e` passed in **61.401 s** (<10 min), including a new
-  missing-database startup refusal
-  ([test](../../test/e2e/store_missing_test.go)). The separate nightly workflow
-  runs check, stack, e2e, load, backup, restore and N-1 smoke, and attempts
-  to create a GitHub issue when a run fails. It has not run remotely.
+- Published `main` and tags `v0.0.1`–`v0.0.4` at
+  [letya999/h-hub](https://github.com/letya999/h-hub). The first green
+  [CI run](https://github.com/letya999/h-hub/actions/runs/45123645133)
+  preceded branch protection. `main` now requires a green `check` status,
+  a PR and linear history; force pushes are disabled.
+- Removed **108** `hhub-rt-*` containers: 95 running and 13 stopped when
+  cleanup ran. Their writable layers accounted for **1,769,472 bytes**;
+  Docker's container total dropped from 1.888 MB to 118.8 kB. No image
+  or volume was exclusively held by them, so none was removed.
+- Host backups and installation secrets are outside the repository at
+  `C:/Users/User/a_projects/h-hub-data`. Full-history gitleaks and
+  trufflehog scans passed after removing a leaked test fixture from all
+  history; authorship was retained. AGPL-3.0-only and third-party notices
+  are in the published repository.
+- The reverse [Docker orphan test](../../test/e2e/orphan_test.go) failed
+  before the janitor and passed afterward. A separate
+  [deadline test](../../test/e2e/runtime_sweep_test.go) found the main
+  cause of the 108 old containers: runtime deadlines were never swept.
+  Both paths now remove containers, and e2e/load tests destroy their
+  provisioned spaces. A fresh post-load inspection found zero runtimes.
+- [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
+  `channel-hub` and completes a new mock message-to-answer path after
+  all four services and Postgres restart. The full e2e passed in
+  **64.751 s**; local `just check` passed. The three-user load passed
+  twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
+  **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
+  not proof that orphan containers alone caused the outlier.
+- Phase 5 adds the additive identity-hub migration
+  `0006_link_codes_expiry.sql`. The live database reports version **6**.
+  The frozen v0.0.4 identity image was published by the
+  [GHCR run](https://github.com/letya999/h-hub/actions/runs/45127280913)
+  and the smoke now pulls its pinned digest. After restoring a version-6
+  backup, that exact image exits with `migrations: invalid:
+  err.migration`. The smoke correctly fails. The v0.0.4 binary rejects
+  migration numbers above its embedded list; a phase-5 change cannot
+  alter that published binary.
 
-## Required `sys.*` matrix
+## `sys.*` matrix
 
-| ID | Local evidence | Status |
+`Proved` means the cited scenario ran and checks the stated boundary.
+`Deferred` identifies an absent owner and destination phase. `Blocked`
+means a phase-5 owner exists but the required proof is still missing;
+it does **not** count as a passing status.
+
+| ID | Status | Owner / evidence or missing proof |
 | --- | --- | --- |
-| `tenant-isolation` | Three-owner mock channel and job e2e | Passed |
-| `forged-token` | Wrong-key and cross-owner e2e | Passed |
-| `secret-leak` | Dump, log, inspect, answer checks | Passed |
-| `kill-uncertain` | SIGKILL between FSM commit and effect; runtime kill e2e | Passed |
-| `store-missing` | Missing database startup refusal e2e | Passed |
-| `stack-restart` | Postgres and three services restarted; channel not checked | Partial |
-| `late-receipt` | Settled job database regression | Passed |
-| `seam-onesided` | Seam owner absent | Unproved |
-| `sweep-lag` | Deadline sweep works; lag alert not tested | Unproved |
-| `wedge-unblock` | No executed fault scenario | Unproved |
-| `schema-version` | Effective spec reader and migration prefix tests only | Partial |
-| `worker-intent` | Worker janitor owner absent; runtime intent is a separate invariant | Unproved |
-| `space-no-db` | Runtime inspect passed; worker owner absent | Partial |
-| `seal-at-rest` | Signing seed sealed; secret values owner absent | Partial |
-| `watchdog-stale` | Tick age exists; no stale alert scenario | Unproved |
-| `service-edge` | Wrong operation and missing token e2e | Passed |
-| `worker-tenant` | Worker owner absent | Unproved |
-| `worker-stop-confirmed` | Worker owner absent | Unproved |
-| `package-build` | Package owner absent | Unproved |
-| `recipe-hosts` | Recipe owner absent | Unproved |
+| `tenant-isolation` | Proved | Task/channel/spawn e2e refuses owner A reading B's data. |
+| `forged-token` | Proved | Cross-owner and wrong-key e2e return an error. |
+| `secret-leak` | Proved | Dump, log, inspect and answer checks refuse plaintext exposure. |
+| `kill-uncertain` | Proved | SIGKILL/outbox scenarios keep uncertain work from blind retry. |
+| `store-missing` | Proved | Missing database refuses service startup. |
+| `stack-restart` | Proved | Four services plus Postgres restart; fresh message gets an answer. |
+| `late-receipt` | Proved | Settled job remains settled after a late receipt. |
+| `seam-onesided` | Deferred to phases 10/18 | Channel adapter and tool seam owners do not exist. |
+| `sweep-lag` | Blocked | Task-engine: no operator alert on excessive lag yet. |
+| `wedge-unblock` | Blocked | Job/runtime owners: no hubctl exit for every nonfinal state. |
+| `schema-version` | Proved | Future spec version is refused; additive migration is checked. |
+| `worker-intent` | Deferred to phase 13 | Spawn-controller runtime orphan scenario passes; worker owner is absent. |
+| `space-no-db` | Proved for runtime | Runtime inspect has no DB credential/socket; worker part awaits phase 13. |
+| `seal-at-rest` | Deferred to phase 7 | Issuer seed is sealed; credential-broker secret-value owner is absent. |
+| `watchdog-stale` | Blocked | Spawn-controller healthz detects stale ticks; channel alert bypass is missing. |
+| `service-edge` | Proved | Wrong operation or absent token is refused. |
+| `worker-tenant` | Deferred to phase 13 | Worker owner is absent. |
+| `worker-stop-confirmed` | Deferred to phase 13 | Worker owner is absent. |
+| `package-build` | Deferred to phase 17 | Package owner is absent. |
+| `recipe-hosts` | Deferred to phase 17 | Recipe owner is absent. |
 
-The mock channel writes its send row and `ack` transition in one database
-transaction. It has no external send/ack gap to kill; the Telegram adapter
-will introduce that boundary. The actual Docker process-kill boundary is
-still untested despite the replay test. No exception or gate threshold was
-lowered to cover these gaps.
+The `space-no-db` row is limited to the runtime in this phase. A phase-13
+worker scenario must complete the broader claim before release of that
+worker. The `seal-at-rest` row remains deferred for the same reason.
 
-Three earlier trace links overstated coverage: missing config as
-`sys.store-missing`, deadline sweep as `sys.sweep-lag`, and runtime intent
-as `sys.worker-intent`. Their labels were removed. A new missing-database
-test proves the first; the latter two remain unproved.
-The current trace gate checks whether a linked ID is declared; it does not
-verify that the linked test exercises the invariant. The audit found these
-false proofs despite green gates. Strengthening that gate needs a separate
-owner decision because several future owners have no runnable scenario yet.
+## Remaining work and release decision
 
-## Rollback and restore limits
+- The rollback gate is red on the published v0.0.4 digest and version-6
+  schema. Do not substitute a locally rebuilt image or hide the migration.
+- The restore drill starts four services and decrypts the backed-up
+  issuer key, but does not yet prove message-to-answer. Its isolated
+  spawn-controller has no Docker socket, so it cannot start a runtime;
+  attaching the live socket would let the restored janitor affect live
+  containers. This needs an isolated Docker engine for a safe end-to-end
+  recovery drill.
+- `sweep-lag`, `watchdog-stale` and `wedge-unblock` need the scenarios
+  described in the matrix. The trace gate still checks links, not
+  execution plus negative assertions; the invariant registry and new
+  gate are not complete.
+- Phase 5 is **not ready for merge or `v0.0.5`**. A green phase-5 CI,
+  manual nightly run, and synthetic failure-to-issue check therefore
+  have no valid result yet. No skipped check is counted as passing.
 
-- The N-1 smoke used a locally built tag, not a published v0.0.4 image
-  digest. Phase 5 adds no database migration, so this run does not prove
-  that the frozen v0.0.4 binary reads a genuinely expanded v0.0.5 schema.
-  The local tag is not on the remote while pushes are prohibited.
-- Restore checks four service health endpoints and issuer decryption.
-  Spawn's Docker socket is disabled in the isolated drill to prevent it
-  from modifying containers of the live installation. A restored
-  message-to-answer path remains untested.
-- Remote CI and the nightly failure alert have not been observed. The owner
-  will judge a week of live nightlies separately.
+## Redesign signals
 
-## Redesign signals and recommendation
-
-- Phase 5 changed production code in **2** service directories and no
-  `contracts/*/v1` files. No feature crossed the three-service signal, and
-  no service-pair contract changed in two consecutive phases.
-- Production Go lines, excluding tests: spawn-controller **1,343/8,000**,
-  identity-hub **798/3,000**, task-engine **1,510/4,000**,
-  channel-hub **795/4,000**, harness-runtime **395/6,000**. None reaches
-  70% of its blueprint budget. The phase added **0** contract or fake
-  lines, so contract wrapping is below half of added code.
-- Mandatory e2e **61.401 s** and local `just check` about **119 s** are
-  below the 10- and 5-minute signals. CI timings are unavailable without
-  a push. The phase-17 MCP template signal does not yet apply.
-- The current running core is four product service binaries
-  (identity-hub, channel-hub, task-engine, spawn-controller) plus the
-  per-space harness runtime. The descriptor provisions 12 service roles;
-  most later owners are not deployed. Keep this count for the next slice;
-  add only an owner required by a proved end-to-end need. No service split
-  is justified by the measured check and e2e times.
-- A local `docker ps` after repeated acceptance runs showed over 60
-  `hhub-rt-*` runtime containers. Tests provision new home spaces and do not
-  clean them up. This can consume host resources and may explain the load
-  variation; causality was not measured. Preserve these containers until
-  their owning space lifecycle is reviewed.
-- Existing spaces still pin runtime image IDs that may disappear after a
-  rebuild. The restore drill needs a message-to-answer continuation test.
-
-## Release decision
-
-The phase 5 readiness matrix is **not green**. The branch remains
-`phase-05`; no merge to protected `main` and no `v0.0.5` tag were made.
-All completed work is committed locally. A remote PR and CI run require a
-push, which the owner explicitly excluded from this overnight task.
+- Current production Go size stays below the blueprint budgets;
+  no measured service-count trigger fired. Keep the four deployed
+  product services plus the per-space harness runtime.
+- Mandatory e2e: **64.751 s** against 10 minutes. Local `just check`
+  passed against the 5-minute criterion. Three-user load is now
+  **7.6–8.5 s** for 36 messages; the earlier **26.9 s** remains an
+  unexplained outlier, though runtime leakage was present then.
+- The release blocker is compatibility with the immutable previous
+  binary, not service size or test duration.
