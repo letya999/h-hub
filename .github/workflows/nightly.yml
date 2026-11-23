@@ -1,0 +1,51 @@
+name: nightly fault matrix
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build pinned dev tools
+        run: |
+          docker build -f deploy/dev.Dockerfile -t hhub-dev:ci .
+          id=$(docker create hhub-dev:ci)
+          mkdir -p "$RUNNER_TEMP/bin"
+          docker cp "$id:/usr/local/bin/just" "$RUNNER_TEMP/bin/just"
+          docker rm "$id"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          docker images -q --no-trunc hhub-dev:ci > deploy/dev-image.ref
+          docker tag hhub-dev:ci hhub-dev:0.0.1
+      - name: Check
+        run: |
+          docker compose -f deploy/compose.yaml up -d --wait postgres
+          docker run --rm --network hhub \
+            -e 'HHUB_TEST_DSN=postgres://postgres@postgres:5432/postgres?sslmode=disable' \
+            -v "$PWD:/src:ro" -v hhub-gocache:/go -v hhub-cache:/root/.cache \
+            hhub-dev:ci just check
+      - name: Build stack and run fault scenarios
+        run: |
+          just stack
+          just e2e
+          just load
+          just backup
+          just restore-drill
+          just nminus1-smoke
+      - name: Alert on failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title 'Nightly fault matrix failed' \
+            --body "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
