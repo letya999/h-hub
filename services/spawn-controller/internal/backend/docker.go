@@ -22,13 +22,14 @@ import (
 
 // Docker is a minimal Engine API client over the unix socket.
 type Docker struct {
-	hc   *http.Client
-	sock string
+	hc      *http.Client
+	sock    string
+	network string
 }
 
 // New connects to the engine socket.
-func New(sock string) *Docker {
-	return &Docker{sock: sock, hc: &http.Client{
+func New(sock, network string) *Docker {
+	return &Docker{sock: sock, network: network, hc: &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -84,6 +85,9 @@ type mount struct {
 // CreateAndStart creates the container with the hardened spec and
 // starts it. The caller must have written the intent row first.
 func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
+	if l.Network == "" || l.Network != d.network {
+		return "", fmt.Errorf("docker launch outside network %q", d.network)
+	}
 	id, running, err := d.existingLaunch(ctx, l)
 	if err != nil {
 		return "", err
@@ -134,17 +138,20 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 }
 
 // existingLaunch recovers a container created before the intent was acknowledged.
-func (d *Docker) existingLaunch(ctx context.Context, l Launch) (string, bool, error) {
-	var out struct {
-		ID     string `json:"Id"`
-		Config struct {
-			Image  string
-			User   string
-			Env    []string
-			Labels map[string]string
-		}
-		State struct{ Running bool }
+type containerInspect struct {
+	ID     string `json:"Id"`
+	Config struct {
+		Image  string
+		User   string
+		Env    []string
+		Labels map[string]string
 	}
+	State           struct{ Running bool }
+	NetworkSettings struct{ Networks map[string]json.RawMessage }
+}
+
+func (d *Docker) existingLaunch(ctx context.Context, l Launch) (string, bool, error) {
+	var out containerInspect
 	err := d.req(ctx, http.MethodGet, "/containers/"+l.Name+"/json", nil, &out)
 	if isNotFound(err) {
 		return "", false, nil
@@ -155,7 +162,7 @@ func (d *Docker) existingLaunch(ctx context.Context, l Launch) (string, bool, er
 	if out.ID == "" || out.Config.Image != l.Image || out.Config.User != l.UID ||
 		len(out.Config.Env) < len(l.Env) || !slices.Equal(out.Config.Env[:len(l.Env)], l.Env) ||
 		out.Config.Labels["hhub.managed"] != "true" ||
-		out.Config.Labels["hhub.runtime"] != l.Name {
+		out.Config.Labels["hhub.runtime"] != l.Name || !d.onNetwork(out.NetworkSettings.Networks) {
 		return "", false, fmt.Errorf("docker container %s does not match runtime intent", l.Name)
 	}
 	return out.ID, out.State.Running, nil
@@ -175,9 +182,7 @@ func (d *Docker) ImageID(ctx context.Context, ref string) (string, error) {
 
 // Inspect returns (exists, running) for a container id or name.
 func (d *Docker) Inspect(ctx context.Context, id string) (exists, running bool, err error) {
-	var out struct {
-		State struct{ Running bool }
-	}
+	var out containerInspect
 	err = d.req(ctx, http.MethodGet, "/containers/"+id+"/json", nil, &out)
 	if err != nil {
 		if isNotFound(err) {
@@ -185,7 +190,15 @@ func (d *Docker) Inspect(ctx context.Context, id string) (exists, running bool, 
 		}
 		return false, false, err
 	}
+	if !d.onNetwork(out.NetworkSettings.Networks) {
+		return false, false, fmt.Errorf("docker container %s outside network %s", id, d.network)
+	}
 	return true, out.State.Running, nil
+}
+
+func (d *Docker) onNetwork(networks map[string]json.RawMessage) bool {
+	_, ok := networks[d.network]
+	return d.network != "" && ok
 }
 
 // ManagedContainer identifies a container owned by one runtime.
@@ -194,9 +207,10 @@ type ManagedContainer struct{ ID, Runtime string }
 // ManagedContainers lists runtime containers, including stopped ones.
 func (d *Docker) ManagedContainers(ctx context.Context) ([]ManagedContainer, error) {
 	var rows []struct {
-		ID     string            `json:"Id"`
-		Names  []string          `json:"Names"`
-		Labels map[string]string `json:"Labels"`
+		ID              string            `json:"Id"`
+		Names           []string          `json:"Names"`
+		Labels          map[string]string `json:"Labels"`
+		NetworkSettings struct{ Networks map[string]json.RawMessage }
 	}
 	filter := url.QueryEscape(`{"label":["hhub.managed=true"]}`)
 	if err := d.req(ctx, http.MethodGet, "/containers/json?all=1&filters="+filter, nil, &rows); err != nil {
@@ -205,7 +219,8 @@ func (d *Docker) ManagedContainers(ctx context.Context) ([]ManagedContainer, err
 	var out []ManagedContainer
 	for _, row := range rows {
 		name := row.Labels["hhub.runtime"]
-		if strings.HasPrefix(name, "hhub-rt-") && slices.Contains(row.Names, "/"+name) {
+		if strings.HasPrefix(name, "hhub-rt-") && slices.Contains(row.Names, "/"+name) &&
+			d.onNetwork(row.NetworkSettings.Networks) {
 			out = append(out, ManagedContainer{row.ID, name})
 		}
 	}
@@ -214,7 +229,11 @@ func (d *Docker) ManagedContainers(ctx context.Context) ([]ManagedContainer, err
 
 // Remove force-removes a container; a missing container is already done.
 func (d *Docker) Remove(ctx context.Context, id string) error {
-	err := d.req(ctx, http.MethodDelete,
+	exists, _, err := d.Inspect(ctx, id)
+	if err != nil || !exists {
+		return err
+	}
+	err = d.req(ctx, http.MethodDelete,
 		"/containers/"+id+"?force=true", nil, nil)
 	if err != nil && !isNotFound(err) {
 		return err

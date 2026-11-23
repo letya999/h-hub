@@ -306,6 +306,9 @@ func (s *Server) reconcileOne(ctx context.Context, rt runtimeRow) error {
 	if err != nil {
 		return fmt.Errorf("runtime state: %w", err)
 	}
+	if st == "starting" && rt.container == "" {
+		return nil
+	}
 	exists, running, err := s.deps.Docker.Inspect(ctx, rt.container)
 	if err != nil {
 		return fmt.Errorf("inspect: %w", err)

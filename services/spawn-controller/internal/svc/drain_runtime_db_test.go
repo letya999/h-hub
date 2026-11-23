@@ -13,6 +13,7 @@ import (
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	"github.com/letya999/h-hub/services/spawn-controller/internal/backend"
 	"github.com/letya999/h-hub/shared/auth"
 	"github.com/letya999/h-hub/shared/edges"
 	herrors "github.com/letya999/h-hub/shared/errors"
@@ -70,6 +71,26 @@ func TestRuntimeDrainExitsEveryState(t *testing.T) {
 				t.Fatalf("%s removal intents=%d", state, effects)
 			}
 		})
+	}
+}
+
+func TestPendingRuntimeCreateIsNotMarkedMissing(t *testing.T) {
+	ctx := context.Background()
+	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
+	if err := fsm.EnsureSchema(ctx, db, "fsm"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
+		t.Fatal(err)
+	}
+	s := New("spawn-controller", db, Deps{Docker: backend.New("/tmp/absent.sock", "hhub"), Now: time.Now})
+	space, runtime := newID("space"), newID("rt")
+	seedRuntimeState(t, ctx, s, space, runtime, "starting")
+	if err := s.reconcileOne(ctx, runtimeRow{id: runtime, space: space}); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := s.runM.State(ctx, db, runtime); err != nil || state != "starting" {
+		t.Fatalf("pending create lost before Docker effect: %s %v", state, err)
 	}
 }
 

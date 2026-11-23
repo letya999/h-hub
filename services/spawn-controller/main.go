@@ -62,7 +62,7 @@ func run(ctx context.Context, l *log.L) error {
 		return fmt.Errorf("edges: %w", err)
 	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
-		Docker:    backend.New(cfg.DockerSock),
+		Docker:    backend.New(cfg.DockerSock, cfg.NetworkName),
 		Image:     cfg.RuntimeImg,
 		ModelURL:  cfg.ModelURL,
 		TaskURL:   cfg.TaskURL,

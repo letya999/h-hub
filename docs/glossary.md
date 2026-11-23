@@ -35,6 +35,9 @@ version, history and outbox in the same transaction.
 **install id** — a random id written once into every service database
 by `hubctl init`; proves all databases belong to one installation.
 
+**installation network** — the Docker network assigned to one stack;
+spawn-controller inspects and removes only containers attached to it.
+
 **KEK** — the 32-byte key-encryption key stored outside Docker volumes;
 an explicit installation backup includes it for restore.
 
