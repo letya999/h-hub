@@ -92,6 +92,16 @@ type ReleaseRuntimeResp struct {
 	OK bool `json:"ok"`
 }
 
+// DrainRuntimeReq asks to stop the runtime of one owned space.
+type DrainRuntimeReq struct {
+	Space string `json:"space"`
+}
+
+// DrainRuntimeResp reports the state requested by the operator.
+type DrainRuntimeResp struct {
+	State string `json:"state"`
+}
+
 // WatchdogStatusReq reads the spawn watchdog without changing it.
 type WatchdogStatusReq struct{}
 
@@ -109,6 +119,7 @@ type Handlers struct {
 	EnsureRuntime  func(context.Context, EnsureRuntimeReq) (EnsureRuntimeResp, error)
 	ResolveSpec    func(context.Context, ResolveSpecReq) (ResolveSpecResp, error)
 	ReleaseRuntime func(context.Context, ReleaseRuntimeReq) (ReleaseRuntimeResp, error)
+	DrainRuntime   func(context.Context, DrainRuntimeReq) (DrainRuntimeResp, error)
 	WatchdogStatus func(context.Context, WatchdogStatusReq) (WatchdogStatusResp, error)
 }
 
@@ -121,6 +132,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"EnsureRuntime":  op(h.EnsureRuntime),
 		"ResolveSpec":    op(h.ResolveSpec),
 		"ReleaseRuntime": op(h.ReleaseRuntime),
+		"DrainRuntime":   op(h.DrainRuntime),
 		"WatchdogStatus": op(h.WatchdogStatus),
 	}
 }

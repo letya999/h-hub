@@ -57,3 +57,5 @@ Starts with `just stack`; needs the Docker socket. Healthy = `/healthz`
 with a fresh watchdog age. If `EnsureRuntime` never reports `ready`,
 inspect `fsm.machines` for a runtime wedged in `starting` and the
 container logs of `hhub-rt-*`; check `intents` for the last action.
+`hubctl user runtime-drain <owner> <space>` requests removal without
+deleting the space ([TestHubctlUnblocksJobAndRuntime](../../test/e2e/wedge_unblock_test.go)).

@@ -64,6 +64,10 @@ identity.
 through channel-hub's normal durable delivery path, with a stable key
 to prevent duplicate sends.
 
+**runtime drain** — an operator request that moves one owned runtime to
+`draining` and records Docker removal in the same FSM transaction;
+the space remains available for a later runtime claim.
+
 **phase** — a checkpointed slice of the blueprint ending in a tag
 (`v0.0.x`) and a report under `docs/phases/`.
 

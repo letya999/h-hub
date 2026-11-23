@@ -70,6 +70,13 @@ func (c *Client) ReleaseRuntime(ctx context.Context, r ReleaseRuntimeReq) (Relea
 	return out, err
 }
 
+// DrainRuntime requests removal of one owned space's runtime.
+func (c *Client) DrainRuntime(ctx context.Context, r DrainRuntimeReq) (DrainRuntimeResp, error) {
+	var out DrainRuntimeResp
+	err := c.call(ctx, "DrainRuntime", r, &out)
+	return out, err
+}
+
 // WatchdogStatus reads the last spawn watchdog tick.
 func (c *Client) WatchdogStatus(ctx context.Context, r WatchdogStatusReq) (WatchdogStatusResp, error) {
 	var out WatchdogStatusResp
