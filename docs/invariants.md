@@ -27,11 +27,15 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.worker-stop-confirmed` | deferred:13 | worker absent | — | A stop request must not report success before worker exit. |
 | `sys.package-build` | deferred:17 | package builder absent | — | An unapproved package must not build. |
 | `sys.recipe-hosts` | deferred:17 | recipe host owner absent | — | A recipe must not access an undeclared host. |
+| `sys.model-usage` | proved | model-gateway | [TestGatewayAccountsSpend](../test/e2e/model_test.go#TestGatewayAccountsSpend) | A turn that leaves no measured spend row must be refused. |
+| `sys.model-quota` | proved | model-gateway | [TestDailyQuotaRefusal](../test/e2e/model_test.go#TestDailyQuotaRefusal) | A request over the daily ceiling must be refused, not served. |
+| `sys.model-route` | proved | model-gateway and spawn-controller | [TestModelChannelCommands](../test/e2e/model_test.go#TestModelChannelCommands) | A route outside the passport's declared routes must be refused; a declared one applies without restart. |
+| `sys.space-egress` | proved | spawn-controller | [TestSpaceReachesOnlyModelGateway](../test/e2e/model_test.go#TestSpaceReachesOnlyModelGateway) | A space runtime reaching anything but declared edges must be refused. |
 | `adr.fsm.cas-version` | proved | shared/fsm | [TestCASRace](../shared/fsm/fsm_db_test.go#TestCASRace) | A transition with a stale version must be refused. |
-| `adr.fsm.history-same-tx` | deferred:6 | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no history. |
-| `adr.fsm.outbox-same-tx` | deferred:6 | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no outbox effect. |
-| `adr.fsm.deadline-nonfinal` | deferred:6 | shared/fsm | [TestDeadlineSweep](../shared/fsm/fsm_db_test.go#TestDeadlineSweep) | A final state must refuse a deadline transition. |
-| `adr.fsm.sweep-reread` | deferred:6 | shared/fsm | [TestSweepSkipsMovedOn](../shared/fsm/fsm_db_test.go#TestSweepSkipsMovedOn) | A stale sweep candidate must be refused after state change. |
+| `adr.fsm.history-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no history. |
+| `adr.fsm.outbox-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A rolled-back transition must leave no outbox effect. |
+| `adr.fsm.deadline-nonfinal` | proved | shared/fsm | [TestDeadlineSweep](../shared/fsm/fsm_db_test.go#TestDeadlineSweep) | A final state must refuse a deadline transition. |
+| `adr.fsm.sweep-reread` | proved | shared/fsm | [TestSweepSkipsMovedOn](../shared/fsm/fsm_db_test.go#TestSweepSkipsMovedOn) | A stale sweep candidate must be refused after state change. |
 | `adr.fsm.lease-atomic` | proved | shared/fsm | [TestLeaseContention](../shared/fsm/fsm_db_test.go#TestLeaseContention) | A competing lease holder must be refused. |
 | `adr.fsm.single-sweeper` | proved | shared/fsm | [TestLeaseContention](../shared/fsm/fsm_db_test.go#TestLeaseContention) | A second sweeper must not claim the same lease. |
 | `adr.secrets-at-rest.gcm-aad` | proved | shared/seal | [TestWrongPurposeOrKidFails](../shared/seal/seal_test.go#TestWrongPurposeOrKidFails) | A ciphertext opened with wrong purpose or key ID must fail. |
@@ -39,18 +43,23 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `adr.secrets-at-rest.kek-file` | proved | shared/seal | [TestLoadRejectsBadLen](../shared/seal/seal_test.go#TestLoadRejectsBadLen) | A malformed KEK file must be refused. |
 | `adr.store.single-driver` | deferred:6 | shared/store | — | A second SQL driver import must fail the dependency gate. |
 | `adr.store.numbered-sql` | proved | shared/store | [TestReadMigrationsRejects](../shared/store/migrate_test.go#TestReadMigrationsRejects) | Duplicate or malformed migration numbers must be refused. |
-| `adr.store.advisory-lock` | deferred:6 | shared/store | [TestMigrateApplyAndIdempotent](../shared/store/store_db_test.go#TestMigrateApplyAndIdempotent) | Competing migration writers must not both apply. |
+| `adr.store.advisory-lock` | proved | shared/store | [TestMigrateApplyAndIdempotent](../shared/store/store_db_test.go#TestMigrateApplyAndIdempotent) | Competing migration writers must not both apply. |
 | `adr.store.n-minus-one` | deferred:5 | shared/store | [TestMigrateReadsNewerDatabase](../shared/store/store_db_test.go#TestMigrateReadsNewerDatabase) | The published previous binary must not reject an additive next schema. |
 | `adr.harness-admit.unknown-run-refused` | proved | harness-runtime | [TestCancelUnknownRun](../services/harness-runtime/internal/svc/svc_test.go#TestCancelUnknownRun) | Cancellation of an unknown run must be refused. |
-| `adr.harness-admit.config-readonly` | deferred:6 | harness-runtime | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A runtime must not write the mounted config. |
+| `adr.harness-admit.config-readonly` | proved | harness-runtime | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | A runtime must not write the mounted config. |
 | `adr.service-edges.forged-rejected` | proved | identity-hub | [TestForgedToken](../test/e2e/e2e_test.go#TestForgedToken) | A forged token must be refused. |
 | `adr.service-edges.edge-required` | proved | identity-hub | [TestServiceEdge](../test/e2e/e2e_test.go#TestServiceEdge) | An undeclared service operation must be refused. |
-| `adr.service-edges.rendered-table` | deferred:6 | keydist | [TestRenderEdges](../cmd/keydist/main_test.go#TestRenderEdges) | An absent descriptor edge must not render a grant. |
+| `adr.service-edges.rendered-table` | proved | keydist | [TestRenderEdges](../cmd/keydist/main_test.go#TestRenderEdges) | An absent descriptor edge must not render a grant. |
 | `adr.service-edges.operator-audited` | proved | identity-hub | [TestActAsBindsAndAudits](../services/identity-hub/internal/svc/act_as_db_test.go#TestActAsBindsAndAudits) | An operator acting as a foreign owner must be refused. |
-| `adr.spawn-runtime.intent-first` | deferred:6 | spawn-controller | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
-| `adr.spawn-runtime.space-no-db` | deferred:6 | spawn-controller | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
-| `adr.spawn-runtime.digest-pins-image` | deferred:6 | spawn-controller | [TestSpecDigestBindsImage](../services/spawn-controller/internal/svc/spec_test.go#TestSpecDigestBindsImage) | Runtime creation with a changed image must be refused. |
+| `adr.spawn-runtime.intent-first` | deferred:13 | spawn-controller | [TestRuntimeIntent](../test/e2e/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
+| `adr.spawn-runtime.space-no-db` | proved | spawn-controller | [TestSpaceNoDB](../test/e2e/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
+| `adr.spawn-runtime.digest-pins-image` | proved | spawn-controller | [TestSpecDigestBindsImage](../services/spawn-controller/internal/svc/spec_test.go#TestSpecDigestBindsImage) | Runtime creation with a changed image must be refused. |
 | `adr.task-jobs.kill-to-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/e2e_test.go#TestKillUncertain) | Killed work must refuse automatic retry. |
 | `adr.task-jobs.tenant-isolation` | proved | task-engine | [TestJobToAnswer](../test/e2e/e2e_test.go#TestJobToAnswer) | Owner A must be refused when reading owner B's job. |
 | `adr.task-jobs.restart-durable` | proved | task-engine | [TestStackRestart](../test/e2e/e2e_test.go#TestStackRestart) | A settled job must refuse a second cancellation after restart. |
 | `adr.task-jobs.run-unique` | proved | task-engine | [TestRunClaimUnique](../services/task-engine/internal/svc/run_claim_db_test.go#TestRunClaimUnique) | A second claim of the same run must be refused. |
+| `adr.model-gateway.reserve-conditional` | proved | model-gateway | [TestParallelReservesCannotOverflow](../services/model-gateway/internal/svc/store_db_test.go#TestParallelReservesCannotOverflow) | A reservation over a ceiling, raced or not, must be refused. |
+| `adr.model-gateway.measured-or-estimate` | proved | model-gateway | [TestEstimateChargedWhenUnmeasured](../services/model-gateway/internal/svc/store_db_test.go#TestEstimateChargedWhenUnmeasured) | A response without measured usage must settle at the estimate. |
+| `adr.model-gateway.route-key-file` | proved | model-gateway | [TestRouteKeyConfinedToRoutesDir](../services/model-gateway/internal/svc/upstream_test.go#TestRouteKeyConfinedToRoutesDir) | A route key outside the keys volume, or in env or spec, must be refused. |
+| `adr.model-gateway.spec-per-call` | proved | model-gateway | [TestModelChannelCommands](../test/e2e/model_test.go#TestModelChannelCommands) | A model switch needing a runtime restart must be refused. |
+| `adr.model-gateway.run-token-bound` | proved | model-gateway | [TestForgedRunTokenRefused](../test/e2e/model_test.go#TestForgedRunTokenRefused) | A Complete call without a valid run token must be refused. |
