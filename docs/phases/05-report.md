@@ -25,9 +25,9 @@
 - [Stack restart e2e](../../test/e2e/e2e_test.go) now includes
   `channel-hub` and completes a new mock message-to-answer path after
   all four services and Postgres restart; cancelling the settled job
-  is refused. The full e2e passed in **61.826 s** after the runtime
-  exit command was added, with this negative
-  check; local `just check` passed. The three-user load passed
+  is refused. The full e2e passed in **61.458 s** after Docker network
+  confinement, with this negative check; local `just check` passed.
+  The three-user load passed
   twice after cleanup: **36 messages**, **0 errors**, **7.6 s** and
   **8.5 s**, against the prior **26.9 s** outlier. This is correlation,
   not proof that orphan containers alone caused the outlier.
@@ -56,6 +56,14 @@
   runtime state and refuse a foreign owner's request
   ([job](../../services/task-engine/internal/svc/wedge_db_test.go),
   [runtime](../../services/spawn-controller/internal/svc/drain_runtime_db_test.go)).
+- The [restore drill](../../tools/backup/restore-drill.sh) restored nine
+  databases, decrypted the backed-up issuer key, created and linked a
+  fresh user, and returned the scripted answer to a new message. Its
+  databases, network and volumes were isolated. The restored
+  spawn-controller shared the Docker Engine but could inspect and
+  remove containers only on its own network
+  ([boundary test](../../services/spawn-controller/internal/backend/docker_test.go)).
+  No restored containers, volumes or runtime containers remained.
 - Phase 5 adds the additive identity-hub migration
   `0006_link_codes_expiry.sql` and task-engine alert-intent table
   migration `0003_operator_alerts.sql`. The live identity database
@@ -109,12 +117,6 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   The old task-engine binary also predates its new migration; the
   current smoke exercises the published identity image, not a full
   previous-version stack.
-- The restore drill starts four services and decrypts the backed-up
-  issuer key, but does not yet prove message-to-answer. Its isolated
-  spawn-controller has no Docker socket, so it cannot start a runtime;
-  attaching the live socket would let the restored janitor affect live
-  containers. This needs an isolated Docker engine for a safe end-to-end
-  recovery drill.
 - The trace gate still checks links, not
   execution plus negative assertions; the invariant registry and new
   gate are not complete.
@@ -140,7 +142,7 @@ worker. The `seal-at-rest` row remains deferred for the same reason.
   channel-hub **872/4,000**, harness-runtime **395/6,000**.
   No size trigger fired. Keep the four deployed product services plus
   the per-space harness runtime.
-- Mandatory e2e: **61.826 s** against 10 minutes. Local `just check`
+- Mandatory e2e: **61.458 s** against 10 minutes. Local `just check`
   passed against the 5-minute criterion. Passing three-user loads are
   **7.6–9.0 s** for 36 messages; the earlier **26.9 s** remains an
   unexplained outlier, though runtime leakage was present then. A
