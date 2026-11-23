@@ -18,7 +18,7 @@ hubctl   := "docker run --rm --network hhub -e HHUB_ADMIN_DSN=" + dsn + \
 checkrun := "docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock " + \
             "-e HHUB_TEST_DSN=" + dsn + " -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_TASK_URL=http://task-engine:9000 -e HHUB_SPAWN_URL=http://spawn-controller:9000" + \
-            " -e HHUB_IDENTITY_URL=http://identity-hub:9000" + \
+            " -e HHUB_IDENTITY_URL=http://identity-hub:9000 -e HHUB_MODEL_URL=http://model-gateway:9000" + \
             " -v hhub-conf:/etc/hhub:ro -v " + data + "/secrets:/run/hhub-secrets:ro" + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 check_line := if os() == "windows" { "just stack && " + checkrun + img + " just _check" } else { "just _check" }
@@ -63,6 +63,7 @@ images:
     docker build -f deploy/svc.Dockerfile --build-arg SVC=task-engine -t hhub-task-engine:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=model-gateway -t hhub-model-gateway:local .
     docker build -f test/scripted-model/Dockerfile -t hhub-scripted-model:local .
 
 # bring the whole phase-3 stack up: postgres -> init -> services ->
@@ -81,6 +82,7 @@ e2e:
       -e HHUB_TASK_URL=http://task-engine:9000 \
       -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
       -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+      -e HHUB_MODEL_URL=http://model-gateway:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
@@ -112,6 +114,24 @@ restore-drill:
       -v {{ src }}:/src:ro -v {{ data }}/backups:/backup \
       -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} sh /src/tools/backup/restore-drill.sh
+
+# --- real provider path (manual only; checks and CI never reach it) ---
+
+# materialize the cliproxy client key + config into the two volumes
+cliproxy-init:
+    sh tools/cliproxy/init.sh
+
+# OAuth sign-in for the Devin account (interactive, on the host)
+models-login:
+    sh tools/cliproxy/login.sh
+
+# start the pinned cliproxy upstream on the egress-only network
+cliproxy-up:
+    sh tools/cliproxy/up.sh
+
+# one real conversation through hubctl chat on the devin route
+chat-real user='manual' msg='say hello in one short sentence':
+    sh tools/cliproxy/chat-real.sh {{ user }} "{{ msg }}"
 
 # locally smoke the frozen 0.0.4 identity image on the restored 0.0.5 backup
 nminus1-smoke:
