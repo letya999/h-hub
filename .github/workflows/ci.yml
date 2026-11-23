@@ -42,6 +42,7 @@ jobs:
             -e HHUB_TASK_URL=http://task-engine:9000 \
             -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
             -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+            -e HHUB_MODEL_URL=http://model-gateway:9000 \
             -v "$PWD:/src:ro" \
             -v hhub-conf:/etc/hhub:ro \
             -v "$PWD/../h-hub-data/secrets:/run/hhub-secrets:ro" \

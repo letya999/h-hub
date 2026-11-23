@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [identity-hub, channel-hub, task-engine, spawn-controller, harness-runtime, hubctl]
+        service: [identity-hub, channel-hub, task-engine, spawn-controller, harness-runtime, model-gateway, hubctl]
     steps:
       - uses: actions/checkout@v4
         with:

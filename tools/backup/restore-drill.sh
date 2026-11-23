@@ -12,14 +12,16 @@ task="hhub-restore-task-$id"
 channel="hhub-restore-channel-$id"
 spawn="hhub-restore-spawn-$id"
 model="hhub-restore-model-$id"
+gateway="hhub-restore-gateway-$id"
 render="hhub-restore-render-$id"
 operator_conf="hhub-restore-conf-$id"
+services="identity-hub task-engine channel-hub spawn-controller model-gateway"
 cleanup() {
-  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$pg" >/dev/null 2>&1 || true
+  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$pg" >/dev/null 2>&1 || true
   for runtime in $(docker ps -aq --filter "network=$net" --filter label=hhub.managed=true); do
     docker rm -f "$runtime" >/dev/null 2>&1 || true
   done
-  for service in identity-hub task-engine channel-hub spawn-controller; do
+  for service in $services; do
     docker rm -f "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
     docker volume rm "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
   done
@@ -53,6 +55,15 @@ while IFS= read -r db; do
     < "$dir/db/$db.dump" >/dev/null
 done < "$dir/databases"
 
+# A database introduced after the backup (phase 6: model_gateway)
+# starts empty and migrates itself on service boot.
+for db in model_gateway; do
+  if ! grep -qx "$db" "$dir/databases"; then
+    docker exec "$pg" psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE $db LOGIN" >/dev/null
+    docker exec "$pg" createdb -U postgres -O "$db" "$db" >/dev/null
+  fi
+done
+
 if test -n "${REQUIRE_IDENTITY_MIGRATION:-}"; then
   version=$(docker exec "$pg" psql -U postgres -d identity_hub -tAc \
     'SELECT max(num) FROM schema_migrations')
@@ -60,14 +71,16 @@ if test -n "${REQUIRE_IDENTITY_MIGRATION:-}"; then
 fi
 
 go run ./cmd/keydist --conf "$dir/conf" --keys "$dir/keys" --descriptor /src/deploy/descriptor.yaml
-for service in identity-hub task-engine channel-hub spawn-controller; do
+for service in $services; do
   vol="hhub-restore-keys-$service-$id"
   holder="$vol"
   image="hhub-$service:local"
   if test "$service" = identity-hub; then image="$issuer_image"; fi
   docker volume create "$vol" >/dev/null
   docker create --name "$holder" -v "$vol:/etc/hhub" --entrypoint /bin/true "$image" >/dev/null
-  docker cp "$dir/keys/keys-$service/." "$holder:/etc/hhub/"
+  if test -d "$dir/keys/keys-$service"; then
+    docker cp "$dir/keys/keys-$service/." "$holder:/etc/hhub/"
+  fi
   docker rm "$holder" >/dev/null
 done
 docker volume create "$render" >/dev/null
@@ -95,18 +108,24 @@ docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hu
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_TASK_URL=http://task-engine:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -e HHUB_MODEL_URL=http://model-gateway:9000 \
   -v "hhub-restore-keys-channel-hub-$id:/etc/hhub:ro" hhub-channel-hub:local >/dev/null
+docker run -d --rm --name "$gateway" --network "$net" --network-alias model-gateway \
+  -e HHUB_SUB=model-gateway -e 'HHUB_DSN=postgres://model_gateway@postgres:5432/model_gateway?sslmode=disable' \
+  -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+  -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -v "hhub-restore-keys-model-gateway-$id:/etc/hhub:ro" hhub-model-gateway:local >/dev/null
 # The backend confines Docker inspect, remove and orphan scans to this network.
 docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-controller \
   -e HHUB_SUB=spawn-controller -e 'HHUB_DSN=postgres://spawn_controller@postgres:5432/spawn_controller?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_RUNTIME_IMAGE=hhub-harness-runtime:local \
   -e HHUB_DOCKER_SOCK=/var/run/docker.sock -e HHUB_TASK_URL=http://task-engine:9000 \
-  -e HHUB_MODEL_URL=http://scripted-model:9000 -e "HHUB_RENDER_VOL=$render" \
+  -e HHUB_MODEL_URL=http://model-gateway:9000 -e "HHUB_RENDER_VOL=$render" \
   -e HHUB_RENDER_DIR=/render -e "HHUB_NETWORK=$net" \
   -v "hhub-restore-keys-spawn-controller-$id:/etc/hhub:ro" -v "$render:/render" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   hhub-spawn-controller:local >/dev/null
-for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn"; do
+for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn" "model-gateway:$gateway"; do
   host=${pair%%:*}
   container=${pair#*:}
   ready=0
