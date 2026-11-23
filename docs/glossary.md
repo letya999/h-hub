@@ -35,8 +35,8 @@ version, history and outbox in the same transaction.
 **install id** — a random id written once into every service database
 by `hubctl init`; proves all databases belong to one installation.
 
-**KEK** — the 32-byte key-encryption key stored as a file outside
-volumes and backups; used by `shared/seal`.
+**KEK** — the 32-byte key-encryption key stored outside Docker volumes;
+an explicit installation backup includes it for restore.
 
 **principal** — an active or disabled human owner stored by identity-hub;
 it names one provisioned home space.
@@ -65,6 +65,9 @@ identity.
 
 **seal** — AES-256-GCM encryption at rest via `shared/seal`; AAD binds
 each value to `purpose + kid`.
+
+**schema version** — a durable document's decoding version; new space
+specs write version 1 and the reader accepts earlier unversioned specs.
 
 **shared** — infrastructure-only packages under `shared/`; may not
 import services or domain code.
