@@ -426,12 +426,10 @@ func TestSpaceNoDB(t *testing.T) {
 	}
 }
 
-// TestWorkerIntent proves the intent registry has rows for launched
+// TestRuntimeIntent proves the intent registry has rows for launched
 // runtimes: intent precedes docker create.
 //
-// req: sys.worker-intent
-func TestWorkerIntent(t *testing.T) {
-	testkit.Req(t, "sys.worker-intent")
+func TestRuntimeIntent(t *testing.T) {
 	testkit.Req(t, "adr.spawn-runtime.intent-first")
 	db := adminDB(t, "spawn_controller")
 	var n int
@@ -444,12 +442,9 @@ func TestWorkerIntent(t *testing.T) {
 	}
 }
 
-// TestStoreMissing proves a service refuses to start without its
+// TestMissingConfigRefused proves a service refuses to start without its
 // declared env (missing input is a refusal, not a quiet mode).
-//
-// req: sys.store-missing
-func TestStoreMissing(t *testing.T) {
-	testkit.Req(t, "sys.store-missing")
+func TestMissingConfigRefused(t *testing.T) {
 	d := testkit.NewDocker(t)
 	id, err := d.CreateRun(context.Background(), testkit.CreateSpec{
 		Image:    "hhub-task-engine:local",

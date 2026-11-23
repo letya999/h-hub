@@ -52,7 +52,7 @@
 - `test/e2e` (`hhube2e` tag, real containers): `TestJobToAnswer` (3
   parallel owners, tenant isolation), `TestKillUncertain`,
   `TestForgedToken`, `TestServiceEdge`, `TestSpaceNoDB`,
-  `TestWorkerIntent`, `TestStoreMissing`, `TestStackRestart`.
+  `TestRuntimeIntent`, `TestMissingConfigRefused`, `TestStackRestart`.
 - Docs: 4 service READMEs on the enforced template; ADR drafts
   `2026-11-23-{service-edges,spawn-runtime,task-jobs,harness-admit}`.
 
@@ -95,9 +95,11 @@ Windows workstation, full check incl. postgres and `hhubdb` tests:
   resumes (`sys.stack-restart`).
 - forged service token -> refusal (`sys.forged-token`); op outside
   the declared edge -> refusal (`sys.service-edge`).
-- runtime container has no DB env/route (`sys.space-no-db`); intent
-  row precedes `docker create` (`sys.worker-intent`); missing store
-  -> start refusal (`sys.store-missing`).
+- runtime container has no DB env/route (runtime half of
+  `sys.space-no-db`); runtime intent row precedes `docker create`
+  (`adr.spawn-runtime.intent-first`); missing config -> start refusal.
+  The phase-5 audit found that this had not tested a missing database
+  or the worker janitor ([phase 5 report](05-report.md)).
 
 ## Design notes (within-brief decisions)
 

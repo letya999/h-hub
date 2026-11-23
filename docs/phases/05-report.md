@@ -28,7 +28,9 @@
   A prior run took 8.2 s for the same 36 messages
   ([test](../../test/e2e/load_test.go)).
 - Local `just check` passed in about **119 s** (<5 min). Rebuilt-stack
-  `just e2e` passed in **55.279 s** (<10 min). The separate nightly workflow
+  `just e2e` passed in **61.401 s** (<10 min), including a new
+  missing-database startup refusal
+  ([test](../../test/e2e/store_missing_test.go)). The separate nightly workflow
   runs check, stack, e2e, load, backup, restore and N-1 smoke, and attempts
   to create a GitHub issue when a run fails. It has not run remotely.
 
@@ -40,16 +42,16 @@
 | `forged-token` | Wrong-key and cross-owner e2e | Passed |
 | `secret-leak` | Dump, log, inspect, answer checks | Passed |
 | `kill-uncertain` | SIGKILL between FSM commit and effect; runtime kill e2e | Passed |
-| `store-missing` | Startup refusal e2e | Passed |
-| `stack-restart` | Durable restart e2e | Passed |
+| `store-missing` | Missing database startup refusal e2e | Passed |
+| `stack-restart` | Postgres and three services restarted; channel not checked | Partial |
 | `late-receipt` | Settled job database regression | Passed |
 | `seam-onesided` | Seam owner absent | Unproved |
-| `sweep-lag` | FSM deadline sweep database test | Passed |
+| `sweep-lag` | Deadline sweep works; lag alert not tested | Unproved |
 | `wedge-unblock` | No executed fault scenario | Unproved |
-| `schema-version` | Spec reader and migration prefix tests | Passed |
-| `worker-intent` | Live intent e2e; Docker replay API test | Partial: no real process kill at create boundary |
-| `space-no-db` | Runtime container inspect e2e | Passed |
-| `seal-at-rest` | Stored issuer decrypt and dump test | Passed |
+| `schema-version` | Effective spec reader and migration prefix tests only | Partial |
+| `worker-intent` | Worker janitor owner absent; runtime intent is a separate invariant | Unproved |
+| `space-no-db` | Runtime inspect passed; worker owner absent | Partial |
+| `seal-at-rest` | Signing seed sealed; secret values owner absent | Partial |
 | `watchdog-stale` | Tick age exists; no stale alert scenario | Unproved |
 | `service-edge` | Wrong operation and missing token e2e | Passed |
 | `worker-tenant` | Worker owner absent | Unproved |
@@ -62,6 +64,15 @@ transaction. It has no external send/ack gap to kill; the Telegram adapter
 will introduce that boundary. The actual Docker process-kill boundary is
 still untested despite the replay test. No exception or gate threshold was
 lowered to cover these gaps.
+
+Three earlier trace links overstated coverage: missing config as
+`sys.store-missing`, deadline sweep as `sys.sweep-lag`, and runtime intent
+as `sys.worker-intent`. Their labels were removed. A new missing-database
+test proves the first; the latter two remain unproved.
+The current trace gate checks whether a linked ID is declared; it does not
+verify that the linked test exercises the invariant. The audit found these
+false proofs despite green gates. Strengthening that gate needs a separate
+owner decision because several future owners have no runnable scenario yet.
 
 ## Rollback and restore limits
 
@@ -77,6 +88,17 @@ lowered to cover these gaps.
 
 ## Redesign signals and recommendation
 
+- Phase 5 changed production code in **2** service directories and no
+  `contracts/*/v1` files. No feature crossed the three-service signal, and
+  no service-pair contract changed in two consecutive phases.
+- Production Go lines, excluding tests: spawn-controller **1,343/8,000**,
+  identity-hub **798/3,000**, task-engine **1,510/4,000**,
+  channel-hub **795/4,000**, harness-runtime **395/6,000**. None reaches
+  70% of its blueprint budget. The phase added **0** contract or fake
+  lines, so contract wrapping is below half of added code.
+- Mandatory e2e **61.401 s** and local `just check` about **119 s** are
+  below the 10- and 5-minute signals. CI timings are unavailable without
+  a push. The phase-17 MCP template signal does not yet apply.
 - The current running core is four product service binaries
   (identity-hub, channel-hub, task-engine, spawn-controller) plus the
   per-space harness runtime. The descriptor provisions 12 service roles;

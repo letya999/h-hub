@@ -35,6 +35,6 @@ thresholds; phase 3 carries the owner-ratified defaults in code.
 
 ## Invariants
 
-- adr.spawn-runtime.intent-first — `TestWorkerIntent` (e2e)
+- adr.spawn-runtime.intent-first — `TestRuntimeIntent` (e2e)
 - adr.spawn-runtime.space-no-db — `TestSpaceNoDB` (e2e)
 - adr.spawn-runtime.digest-pins-image — `TestSpecDigestBindsImage`

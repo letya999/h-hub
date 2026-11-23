@@ -34,7 +34,8 @@ Implements `contracts/spawn/v1` (`CreateSpace`, `DestroySpace`,
 No jobs, no model calls, no identity issuance. Never hands the Docker
 socket or a database route to a space-zone container; never starts a
 container without an `intents` row committed first
-(`sys.worker-intent`).
+([`TestRuntimeIntent`](../../test/e2e/e2e_test.go),
+`adr.spawn-runtime.intent-first`).
 
 ## Machines
 
