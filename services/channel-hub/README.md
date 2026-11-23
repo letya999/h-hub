@@ -36,7 +36,7 @@ changes on `/new` ([TestInjectDedupAndIsolation](internal/svc/intake_db_test.go)
 
 ## Config
 
-`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`, `HHUB_TASK_URL`;
+`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`, `HHUB_TASK_URL`, `HHUB_SPAWN_URL`;
 loaded once in `internal/config`.
 
 ## Runbook
@@ -45,5 +45,7 @@ Run `just stack` and use `hubctl chat <user>`. `/healthz` checks the database.
 Inspect the service log, FSM outbox and `mock_outbox` when a delivery stalls.
 Service alerts use the same delivery path and accept only declared service
 edges ([TestOperatorAlert](../../test/e2e/operator_alert_test.go)).
+The channel checks the spawn watchdog and sends a direct operator alert
+for each stale tick ([TestStaleSpawnTickRefusesHealth](../../test/e2e/watchdog_stale_test.go)).
 Long answers become five text parts plus a remainder file
 ([TestScriptedLongAnswer](../../test/e2e/scripted_channel_test.go)).

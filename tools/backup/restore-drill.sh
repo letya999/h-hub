@@ -84,6 +84,7 @@ docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hu
   -e HHUB_SUB=channel-hub -e 'HHUB_DSN=postgres://channel_hub@postgres:5432/channel_hub?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_TASK_URL=http://task-engine:9000 \
+  -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -v "hhub-restore-keys-channel-hub-$id:/etc/hhub:ro" hhub-channel-hub:local >/dev/null
 # The drill must not control live host containers before cutover.
 docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-controller \

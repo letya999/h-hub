@@ -82,6 +82,6 @@ func loadDeps(cfg config.C) (svc.Deps, error) {
 	if err != nil {
 		return svc.Deps{}, fmt.Errorf("edge table: %w", err)
 	}
-	return svc.Deps{IdentityURL: cfg.IdentityURL, TaskURL: cfg.TaskURL, Issuer: issuer,
+	return svc.Deps{IdentityURL: cfg.IdentityURL, TaskURL: cfg.TaskURL, SpawnURL: cfg.SpawnURL, Issuer: issuer,
 		OperatorPub: opPub, SelfKey: key, Edges: tab.For(cfg.Sub), Now: time.Now}, nil
 }

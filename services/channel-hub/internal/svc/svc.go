@@ -21,11 +21,11 @@ var migrations embed.FS
 func Migrations() fs.FS { return migrations }
 
 type Deps struct {
-	IdentityURL, TaskURL string
-	Issuer, OperatorPub  ed25519.PublicKey
-	SelfKey              ed25519.PrivateKey
-	Edges                edges.Table
-	Now                  func() time.Time
+	IdentityURL, TaskURL, SpawnURL string
+	Issuer, OperatorPub            ed25519.PublicKey
+	SelfKey                        ed25519.PrivateKey
+	Edges                          edges.Table
+	Now                            func() time.Time
 }
 type Server struct {
 	sub      string
