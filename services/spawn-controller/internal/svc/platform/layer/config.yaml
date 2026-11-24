@@ -1,2 +1,3 @@
 sub: harness-runtime
 timeout_ms: 300000
+tool_url: http://tool-hub:9000

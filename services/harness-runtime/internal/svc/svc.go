@@ -38,6 +38,7 @@ type Admission struct {
 	Run         string
 	Job         string
 	Space       string
+	Digest      string // the spec digest the run was admitted under
 	Input       string
 	Attachments []hv1.Attachment
 	Token       string // the run token, reused for report-back
@@ -119,9 +120,9 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 	}
 	rctx, stop := context.WithCancel(context.Background())
 	s.admit[r.Run] = &Admission{
-		Run: r.Run, Job: r.Job, Space: r.Space, Input: r.Input,
-		Attachments: r.Attachments,
-		Token:       tok, ctx: rctx, stop: stop}
+		Run: r.Run, Job: r.Job, Space: r.Space, Digest: c.Digest,
+		Input: r.Input, Attachments: r.Attachments,
+		Token: tok, ctx: rctx, stop: stop}
 	s.mu.Unlock()
 	go s.deps.Runner.Run(s.admit[r.Run].ctx, *s.admit[r.Run])
 	return hv1.SubmitRunResp{Accepted: true}, nil

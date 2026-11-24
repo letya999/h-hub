@@ -14,6 +14,7 @@ leaves:
   - {path: config.sub, class: invariant, consumer: harness-runtime, effect: respawn}
   - {path: config.task_url, class: invariant, consumer: harness-runtime, effect: respawn}
   - {path: config.model_url, class: invariant, consumer: harness-runtime, effect: respawn}
+  - {path: config.tool_url, class: invariant, consumer: harness-runtime, effect: respawn}
   - {path: config.timeout_ms, class: narrow, consumer: harness-runtime, effect: respawn}
   - {path: models.default, class: choice, consumer: model-gateway, effect: live, proven: true}
   - {path: models.routes, class: narrow, consumer: model-gateway, effect: live, proven: true}

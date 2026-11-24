@@ -25,6 +25,7 @@ type Rendered struct {
 	Sub       string `json:"sub"`
 	TaskURL   string `json:"task_url"`
 	ModelURL  string `json:"model_url"`
+	ToolURL   string `json:"tool_url"`
 	TimeoutMS int    `json:"timeout_ms"`
 }
 
@@ -52,8 +53,8 @@ func (c C) Load() (Rendered, error) {
 	if err := json.Unmarshal(data, &r); err != nil {
 		return Rendered{}, fmt.Errorf("config: %w", err)
 	}
-	if r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
-		return Rendered{}, fmt.Errorf("config: task_url, model_url and timeout_ms are required")
+	if r.TaskURL == "" || r.ModelURL == "" || r.ToolURL == "" || r.TimeoutMS <= 0 {
+		return Rendered{}, fmt.Errorf("config: task_url, model_url, tool_url and timeout_ms are required")
 	}
 	return r, nil
 }
