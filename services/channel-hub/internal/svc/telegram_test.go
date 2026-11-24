@@ -54,6 +54,8 @@ func TestNormalizeUpdateKinds(t *testing.T) {
 	if sec.Kind != "secret" {
 		t.Fatalf("secret kind=%q", sec.Kind)
 	}
+	testkit.Deny(t, "sys.secret-leak",
+		sec.Kind == "secret" && !strings.Contains(sec.Text, "abcd1234efgh"))
 	if got := normalizeUpdate(rawText(3, 7, 42, "key=value")); got.Kind == "secret" {
 		t.Fatal("lowercase key intercepted")
 	}
