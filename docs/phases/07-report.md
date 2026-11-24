@@ -180,6 +180,12 @@ Defects found by the live cases and fixed (PRs #16, #17):
 - `config.timeout_ms` 120 s is one non-streamed model call; slow real
   generations exceeded it — raised to 300 s everywhere (layer + live
   revisions on the three spaces).
+- spawn-controller's `Loops` multiplexed outbox, reconcile and tick on
+  one select; a deep outbox pass (real Docker calls) starved the 2 s
+  reconcile tick that drives deadline sweeps — warm runtimes sat past
+  their deadline under load (CI e2e flake, reproduced three times).
+  Each loop now has its own goroutine, the same split task-engine
+  already documents for its dispatcher.
 
 Operational notes for the record: one Telegram update was lost in a
 channel-hub restart window (poller down, Telegram did not redeliver);
