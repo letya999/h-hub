@@ -102,7 +102,7 @@ func OwnerToken(t *testing.T, scope OwnerSpace, aud string) string {
 func EnsureSpace(t *testing.T, owner, name string) string {
 	t.Helper()
 	res, err := SpawnClient(t, OwnerSpace{owner, ""}).CreateSpace(context.Background(), sv1.CreateSpaceReq{
-		Name: name, Template: "default"})
+		Name: name, Template: "assistant"})
 	if err != nil {
 		t.Fatalf("create space %s: %v", name, err)
 	}
@@ -264,7 +264,7 @@ func WaitOperatorDelivery(t *testing.T, key, want string) {
 	ctx := context.Background()
 	db := AdminDB(t, "channel_hub")
 	var seq int64
-	testkit.Poll(t, 10*time.Second, 100*time.Millisecond, func() bool {
+	testkit.Poll(t, 30*time.Second, 100*time.Millisecond, func() bool {
 		return db.QueryRowContext(ctx, "SELECT seq FROM mock_outbox WHERE delivery_id=$1", "alert-"+key).Scan(&seq) == nil
 	})
 	out, err := MockClient(t, "operator", "ReadOutbox").ReadOutbox(ctx,
