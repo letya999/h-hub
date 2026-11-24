@@ -43,7 +43,10 @@ func TestRuntimeDeadlineReapsContainer(t *testing.T) {
 			t.Logf("runtime=%s state=%s containers=%d docker_error=%v", runtime, state, containers, listErr)
 		}
 	})
-	testkit.Poll(t, 10*time.Second, 250*time.Millisecond, func() bool {
+	// deadline -> draining -> docker-rm -> reaped crosses the real
+	// daemon: under parallel e2e load one slow Remove alone eats the
+	// old 10s window.
+	testkit.Poll(t, 30*time.Second, 250*time.Millisecond, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		if err := db.QueryRowContext(ctx,
