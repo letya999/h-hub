@@ -1,7 +1,8 @@
 # Invariant proof register
 
 `proved` names one scenario that must run and reject the forbidden path.
-`deferred:N` means the full claim waits for phase N. A partial test does not
+`deferred:N` means the full claim waits for phase N; `deferred, consumer not
+planned yet` means no phase builds the consumer. A partial test does not
 make a deferred claim proved. Scenario links point to tests; the trace gate
 checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 
@@ -39,18 +40,18 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.passport-rollback` | proved | spawn-controller | [TestPassportRollbackRestoresDigest](../test/e2e/lifecycle/passport_test.go#TestPassportRollbackRestoresDigest) | Rollback to a digest that fails revalidation must be refused. |
 | `sys.passport-explain` | proved | spawn-controller | [TestPassportLiveAppliesWithoutRestart](../test/e2e/lifecycle/passport_test.go#TestPassportLiveAppliesWithoutRestart) | A leaf without layer attribution must not appear in explain. |
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
-| `cap.tools.configure` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.configure grant must be refused and the tool absent from the projection. |
-| `cap.config.edit_own` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.persona.edit_own` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.models.select` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the models.select grant must be refused and the tool absent from the projection. |
-| `cap.agents.restart_self` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the agents.restart_self grant must be refused and the tool absent from the projection. |
-| `cap.observability.read_own_logs` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the observability.read_own_logs grant must be refused and the tool absent from the projection. |
-| `cap.grants.read_own` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the grants.read_own grant must be refused and the tool absent from the projection. |
-| `cap.workspace.read` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the workspace.read grant must be refused and the tool absent from the projection. |
-| `cap.workspace.write` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the workspace.write grant must be refused and the tool absent from the projection. |
-| `cap.memory.capture` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the memory.capture grant must be refused and the tool absent from the projection. |
-| `cap.memory.search` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the memory.search grant must be refused and the tool absent from the projection. |
-| `cap.memory.propose` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the memory.propose grant must be refused and the tool absent from the projection. |
+| `cap.tools.configure` | deferred, consumer not planned yet | tool-hub | — | A call without the tools.configure grant must be refused and the tool absent from the projection. |
+| `cap.config.edit_own` | deferred:11 | tool-hub | — | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.persona.edit_own` | deferred:12 | tool-hub | — | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.models.select` | deferred, consumer not planned yet | tool-hub | — | A call without the models.select grant must be refused and the tool absent from the projection. |
+| `cap.agents.restart_self` | deferred, consumer not planned yet | tool-hub | — | A call without the agents.restart_self grant must be refused and the tool absent from the projection. |
+| `cap.observability.read_own_logs` | deferred, consumer not planned yet | tool-hub | — | A call without the observability.read_own_logs grant must be refused and the tool absent from the projection. |
+| `cap.grants.read_own` | deferred, consumer not planned yet | tool-hub | — | A call without the grants.read_own grant must be refused and the tool absent from the projection. |
+| `cap.workspace.read` | deferred:11 | tool-hub | — | A call without the workspace.read grant must be refused and the tool absent from the projection. |
+| `cap.workspace.write` | deferred:11 | tool-hub | — | A call without the workspace.write grant must be refused and the tool absent from the projection. |
+| `cap.memory.capture` | deferred:16 | tool-hub | — | A call without the memory.capture grant must be refused and the tool absent from the projection. |
+| `cap.memory.search` | deferred:16 | tool-hub | — | A call without the memory.search grant must be refused and the tool absent from the projection. |
+| `cap.memory.propose` | deferred:16 | tool-hub | — | A call without the memory.propose grant must be refused and the tool absent from the projection. |
 | `adr.fsm.cas-version` | proved | shared/fsm | [TestCASRace](../shared/fsm/fsm_db_test.go#TestCASRace) | A transition with a stale version must be refused. |
 | `adr.fsm.history-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
 | `adr.fsm.outbox-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
