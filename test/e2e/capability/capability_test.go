@@ -293,3 +293,55 @@ func TestCapabilityTriples(t *testing.T) {
 	testkit.Deny(t, "cap.tools.use",
 		ferr != nil && herrors.CodeOf(ferr) == herrors.CodeUnauthorized)
 }
+
+// TestGrantRevocation proves revocation is live: on one warm runtime
+// a granted call passes, the grant is then removed, and without a
+// runtime restart the next call is refused and the tool leaves the
+// projection. The runtime container id before and after is the same.
+func TestGrantRevocation(t *testing.T) {
+	owner, space := "caprevoke", EnsureSpace(t, "caprevoke", Idem("revoke"))
+	scope := OwnerSpace{Owner: owner, Space: space}
+	caps := catalogCaps(t)
+
+	sc := SpawnClient(t, scope)
+	all, err := json.Marshal(caps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sc.SubmitLayers(context.Background(), sv1.SubmitLayersReq{
+		Space: space, Role: "platform",
+		Docs: json.RawMessage(`{"grants":{"allow":` + string(all) + `}}`)}); err != nil {
+		t.Fatalf("platform grants: %v", err)
+	}
+
+	warmRuntime(t, scope)
+	testkit.Req(t, "sys.grant-revocation")
+
+	// Granted: probe_echo passes end to end on this runtime.
+	setGrants(t, scope, caps)
+	job := toolJob(t, scope, "probe_echo", "revoke-grant")
+	if !receiptAllowed(t, job.ID, "job", "probe_echo") {
+		t.Fatal("granted call recorded a denial")
+	}
+	before := currentRuntime(t, space)
+
+	// Revoked: the very next call on the same runtime is refused and
+	// the tool is gone from the projection.
+	denyDigest := setGrants(t, scope, without(caps, "tools.use"))
+	run := Idem("run", "revoke")
+	tc := runToken(t, scope, denyDigest, run)
+	p, err := tc.Projection(context.Background(), thv1.ProjectionReq{
+		Run: run, Digest: denyDigest})
+	absent := err != nil || !hasTool(p, "probe_echo")
+	_, invErr := tc.Invoke(context.Background(), thv1.InvokeReq{
+		Run: run, Digest: denyDigest, Toolset: "probe", Tool: "probe_echo",
+		Arguments: json.RawMessage(`{"text":"ping"}`)})
+	refused := herrors.CodeOf(invErr) == herrors.CodeForbidden
+	if receiptAllowed(t, run, "run", "probe_echo") {
+		t.Fatal("call on a revoked grant recorded an allow")
+	}
+	if after := currentRuntime(t, space); after != before {
+		t.Fatalf("runtime restarted: %s -> %s", before, after)
+	}
+	testkit.Deny(t, "sys.grant-revocation", absent && refused)
+}

@@ -39,6 +39,7 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.passport-recreate` | proved | spawn-controller | [TestPassportRecreateRebuildsWorld](../test/e2e/lifecycle/passport_test.go#TestPassportRecreateRebuildsWorld) | A recreate leaf must rebuild the space world. |
 | `sys.passport-rollback` | proved | spawn-controller | [TestPassportRollbackRestoresDigest](../test/e2e/lifecycle/passport_test.go#TestPassportRollbackRestoresDigest) | Rollback to a digest that fails revalidation must be refused. |
 | `sys.passport-explain` | proved | spawn-controller | [TestPassportLiveAppliesWithoutRestart](../test/e2e/lifecycle/passport_test.go#TestPassportLiveAppliesWithoutRestart) | A leaf without layer attribution must not appear in explain. |
+| `sys.grant-revocation` | proved | tool-hub | [TestGrantRevocation](../test/e2e/capability/capability_test.go#TestGrantRevocation) | A call on a revoked grant must be refused on the next call. |
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
 | `cap.tools.configure` | deferred, consumer not planned yet | tool-hub | — | A call without the tools.configure grant must be refused and the tool absent from the projection. |
 | `cap.config.edit_own` | deferred:11 | tool-hub | — | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
