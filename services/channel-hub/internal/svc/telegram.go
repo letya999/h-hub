@@ -149,7 +149,7 @@ func normalizeUpdate(u tgRawUpdate) tgUpdate {
 		}
 		out.Kind, out.FileID, out.FileSize, out.Text = "photo", big.FileID, big.FileSize, m.Caption
 	case m.Text != "" && secretRe.MatchString(m.Text):
-		out.Kind, out.Text = "secret", m.Text
+		out.Kind = "secret"
 	case m.Text != "":
 		out.Kind, out.Text = "text", m.Text
 	}
