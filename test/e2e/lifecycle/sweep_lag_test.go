@@ -33,7 +33,10 @@ func TestSweepLagOperatorAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := AdminDB(t, "task_engine")
-	result, err := db.ExecContext(ctx, `UPDATE fsm.machines SET deadline_at=now()-interval '1 minute'
+	// Backdate far enough that this job is always the oldest pending
+	// deadline: the sweeper alerts on the oldest row only, and other
+	// tests' overdue machines must not outrank it.
+	result, err := db.ExecContext(ctx, `UPDATE fsm.machines SET deadline_at=now()-interval '1 day'
 		WHERE kind='job' AND id=$1 AND state='queued'`, job.ID)
 	if err != nil {
 		t.Fatal(err)
