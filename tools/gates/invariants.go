@@ -61,12 +61,13 @@ func parseInvariantRow(line string) (string, invariantRow, error) {
 	return id, row, nil
 }
 
-func checkRegister(root string, rows map[string]invariantRow, adrs map[string]map[string]bool) error {
-	if err := checkDeclared(rows, adrs); err != nil {
+func checkRegister(root string, rows map[string]invariantRow,
+	adrs map[string]map[string]bool, caps map[string]bool) error {
+	if err := checkDeclared(rows, adrs, caps); err != nil {
 		return err
 	}
 	for id, row := range rows {
-		if err := checkID(id, adrs); err != nil {
+		if err := checkID(id, adrs, caps); err != nil {
 			return err
 		}
 		if row.test != "" {
@@ -78,17 +79,30 @@ func checkRegister(root string, rows map[string]invariantRow, adrs map[string]ma
 	return nil
 }
 
-func checkDeclared(rows map[string]invariantRow, adrs map[string]map[string]bool) error {
-	for slug := range sysIDs {
-		if _, ok := rows["sys."+slug]; !ok {
-			return fmt.Errorf("trace: unregistered sys.%s", slug)
-		}
+func checkDeclared(rows map[string]invariantRow, adrs map[string]map[string]bool,
+	caps map[string]bool) error {
+	if err := checkDeclaredSys(rows); err != nil {
+		return err
 	}
 	for slug, invs := range adrs {
 		for inv := range invs {
 			if _, ok := rows["adr."+slug+"."+inv]; !ok {
 				return fmt.Errorf("trace: unregistered adr.%s.%s", slug, inv)
 			}
+		}
+	}
+	for name := range caps {
+		if _, ok := rows["cap."+name]; !ok {
+			return fmt.Errorf("trace: unregistered cap.%s", name)
+		}
+	}
+	return nil
+}
+
+func checkDeclaredSys(rows map[string]invariantRow) error {
+	for slug := range sysIDs {
+		if _, ok := rows["sys."+slug]; !ok {
+			return fmt.Errorf("trace: unregistered sys.%s", slug)
 		}
 	}
 	return nil
