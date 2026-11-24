@@ -66,6 +66,7 @@ images:
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=model-gateway -t hhub-model-gateway:local .
+    docker build -f deploy/svc.Dockerfile --build-arg SVC=tool-hub -t hhub-tool-hub:local .
     docker build -f deploy/broker.Dockerfile --build-arg SQLCIPHER_BASE={{ sqlciph }} -t hhub-credential-broker:local .
     docker build -f test/scripted-model/Dockerfile -t hhub-scripted-model:local .
 
