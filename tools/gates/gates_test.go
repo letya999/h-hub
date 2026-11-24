@@ -31,20 +31,21 @@ func TestRepo(t *testing.T) {
 // broken is the gate -> fixture-dir map. Every gate has a minimal
 // violation under testdata/broken/<gate> that must fail it.
 var broken = map[string][]string{
-	"json-state":     {"json-state"},
-	"banned-words":   {"banned-words"},
-	"windows-paths":  {"windows-paths"},
-	"msys-dirs":      {"msys-dirs"},
-	"env-declared":   {"env-declared", "env-environ"},
-	"env-no-secrets": {"env-secrets-compose", "env-secrets-file"},
-	"docs":           {"docs-agents", "docs-testlink"},
-	"trace":          {"trace", "trace-invariant"},
-	"miglint":        {"miglint-drop", "miglint-state"},
-	"sql-eol":        {"sql-eol"},
-	"module-ban":     {"module-ban"},
-	"blob-size":      {"blob-size"},
-	"fix-needs-test": {"fix-needs-test"},
-	"cron-alert":     {"cron-alert"},
+	"json-state":      {"json-state"},
+	"banned-words":    {"banned-words"},
+	"windows-paths":   {"windows-paths"},
+	"msys-dirs":       {"msys-dirs"},
+	"env-declared":    {"env-declared", "env-environ"},
+	"env-no-secrets":  {"env-secrets-compose", "env-secrets-file"},
+	"passport-schema": {"passport-schema"},
+	"docs":            {"docs-agents", "docs-testlink"},
+	"trace":           {"trace", "trace-invariant"},
+	"miglint":         {"miglint-drop", "miglint-state"},
+	"sql-eol":         {"sql-eol"},
+	"module-ban":      {"module-ban"},
+	"blob-size":       {"blob-size"},
+	"fix-needs-test":  {"fix-needs-test"},
+	"cron-alert":      {"cron-alert"},
 }
 
 // TestBroken proves each gate by running it on its broken example.

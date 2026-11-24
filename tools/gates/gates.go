@@ -26,6 +26,7 @@ var All = []Gate{
 	{"msys-dirs", NoMSYSDirs},
 	{"env-declared", EnvDeclared},
 	{"env-no-secrets", NoEnvSecrets},
+	{"passport-schema", PassportSchema},
 	{"docs", Docs},
 	{"trace", Trace},
 	{"miglint", MigLint},

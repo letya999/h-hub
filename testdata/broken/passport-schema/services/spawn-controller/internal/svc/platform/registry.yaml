@@ -1,0 +1,3 @@
+chain: [platform, user]
+leaves:
+  - {path: config.timeout_ms, class: narrow, consumer: harness-runtime, effect: respawn}
