@@ -38,7 +38,9 @@ func modelExists(sp spaceRow, modelURL, name string) error {
 	if err != nil {
 		return err
 	}
-	p.normalize(modelURL)
+	if _, err := p.normalize(modelURL); err != nil {
+		return err
+	}
 	for _, rt := range p.Models.Routes {
 		if rt.Name == name {
 			return nil

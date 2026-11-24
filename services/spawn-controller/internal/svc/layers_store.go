@@ -185,7 +185,9 @@ func ensureLayers(s *Server, ctx context.Context, sp spaceRow) error {
 	if err != nil {
 		return err
 	}
-	p.normalize(s.deps.ModelURL)
+	if _, err := p.normalize(s.deps.ModelURL); err != nil {
+		return err
+	}
 	docs, err := specToDocs(p)
 	if err != nil {
 		return err
