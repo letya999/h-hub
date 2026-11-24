@@ -1,0 +1,23 @@
+toolsets:
+  - name: probe
+    executor: toolhub
+    provider: builtin
+    tools:
+      - name: probe_echo
+        description: Return the given string unchanged.
+        capability: tools.use
+        parameters:
+          type: object
+          properties:
+            text:
+              type: string
+          required: [text]
+      - name: probe_ghost
+        description: Cites a capability the catalog does not have.
+        capability: ghost.nope
+        parameters:
+          type: object
+          properties:
+            text:
+              type: string
+          required: [text]

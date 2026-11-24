@@ -1,0 +1,4 @@
+capabilities:
+  - name: tools.use
+    summary: Invoke the tools the effective spec projects.
+    why: Tool calls are the agent's actuators.
