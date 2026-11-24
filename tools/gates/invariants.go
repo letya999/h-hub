@@ -17,7 +17,7 @@ type invariantRow struct {
 }
 
 var scenarioRe = regexp.MustCompile(`\]\(\.\./([^)#]+_test\.go)#(Test[A-Za-z0-9_]+)\)`)
-var deferredRe = regexp.MustCompile(`^deferred:[0-9]+(,[0-9]+)*$`)
+var deferredRe = regexp.MustCompile(`^deferred(:[0-9]+(,[0-9]+)*|, consumer not planned yet)$`)
 
 func invariantRows(root string) (map[string]invariantRow, error) {
 	data, err := os.ReadFile(filepath.Join(root, "docs", "invariants.md"))
