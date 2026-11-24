@@ -383,9 +383,9 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 			Digest: sp.digest, Ready: true}, nil
 	case "busy":
 		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
-	case "missing", "failed":
-		// A lost container is re-claimed in place; the machine edge
-		// carries it absent->starting equivalent.
+	case "absent", "missing", "failed":
+		// A reaped or lost container is re-claimed in place; the
+		// machine edge carries it to starting.
 		if err := s.runM.Transition(ctx, tx, fsm.Request{
 			ID: rt.id, Event: "claim", Actor: "api", At: s.deps.Now(),
 			Effects: []fsm.Effect{{Topic: "docker-create",
@@ -393,10 +393,12 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 			return sv1.EnsureRuntimeResp{}, fmt.Errorf("re-claim: %w", err)
 		}
 		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
-	case "starting":
+	case "starting", "draining":
+		// Transient states: the caller polls until the machine lands
+		// somewhere claimable (draining expires to missing).
 		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
 	default:
-		// draining / quarantined: nothing to give the caller.
+		// quarantined: an operator must release it, no silent wait.
 		conflict := herrors.New(herrors.CodeConflict, "err.machine-state").
 			With("state", st)
 		return sv1.EnsureRuntimeResp{}, conflict //nolint:wrapcheck // shared error form
