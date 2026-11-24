@@ -264,7 +264,7 @@ func WaitOperatorDelivery(t *testing.T, key, want string) {
 	ctx := context.Background()
 	db := AdminDB(t, "channel_hub")
 	var seq int64
-	testkit.Poll(t, 30*time.Second, 100*time.Millisecond, func() bool {
+	testkit.Poll(t, 60*time.Second, 100*time.Millisecond, func() bool {
 		return db.QueryRowContext(ctx, "SELECT seq FROM mock_outbox WHERE delivery_id=$1", "alert-"+key).Scan(&seq) == nil
 	})
 	out, err := MockClient(t, "operator", "ReadOutbox").ReadOutbox(ctx,

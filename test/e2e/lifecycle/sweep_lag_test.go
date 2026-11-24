@@ -10,6 +10,7 @@ import (
 	"github.com/letya999/h-hub/shared/testkit"
 	. "github.com/letya999/h-hub/test/e2e/harness"
 	"testing"
+	"time"
 )
 
 func TestSweepLagOperatorAlert(t *testing.T) {
@@ -44,12 +45,15 @@ func TestSweepLagOperatorAlert(t *testing.T) {
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
 		t.Fatalf("held job not queued: rows=%d err=%v", n, err)
 	}
+	// The durable intent lands first; the cross-service delivery
+	// follows through the task outbox and channel outbox.
+	testkit.Poll(t, 30*time.Second, 100*time.Millisecond, func() bool {
+		var count int
+		err := db.QueryRowContext(ctx, "SELECT count(*) FROM operator_alerts WHERE key=$1",
+			"sweep-lag-"+job.ID).Scan(&count)
+		return err == nil && count == 1
+	})
 	WaitOperatorDelivery(t, "sweep-lag-"+job.ID, "Job deadlines are overdue")
-	var count int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM operator_alerts WHERE key=$1",
-		"sweep-lag-"+job.ID).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("lag alert intent: count=%d err=%v", count, err)
-	}
 	_, err = MockClient(t, "operator", "ReadOutbox").Alert(ctx,
 		cv1.AlertReq{Key: "denied-" + job.ID, Code: "sweep-lag"})
 	testkit.Deny(t, "sys.sweep-lag", herrors.CodeOf(err) == herrors.CodeUnauthorized)
