@@ -46,6 +46,21 @@ func TestSpecSchemaVersion(t *testing.T) {
 	testkit.Deny(t, "sys.schema-version", err != nil)
 }
 
+// TestGrantNamesResolveToCatalog pins the catalog rule: a grant may
+// hold only names the capability catalog declares — an unknown name
+// fails validation, it never sits inert in the spec.
+func TestGrantNamesResolveToCatalog(t *testing.T) {
+	t.Parallel()
+	p := Passports{Grants: GrantsPassport{Allow: []string{"tools.use", "bogus.cap"}}}
+	if err := validateSpec(p); err == nil {
+		t.Fatal("unknown grant name accepted")
+	}
+	p.Grants.Allow = []string{"tools.use", "memory.search"}
+	if err := validateGrants(p.Grants); err != nil {
+		t.Fatalf("catalog names refused: %v", err)
+	}
+}
+
 // route finds one named route in the passport table.
 func route(m ModelsPassport, name string) ModelRoute {
 	for _, rt := range m.Routes {

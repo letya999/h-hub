@@ -81,10 +81,13 @@ func walkDocs(root, dir string, check func(rel string, doc map[string]any) error
 }
 
 // isPassportDoc selects the layer documents under dir — yaml files
-// other than the registry itself.
+// other than the registry itself and the capability catalog, which
+// is platform data, not a passport document.
 func isPassportDoc(rel, dir string, d fs.DirEntry) bool {
+	base := filepath.Base(rel)
 	return !d.IsDir() && strings.HasPrefix(rel, dir+"/") &&
-		strings.HasSuffix(rel, ".yaml") && filepath.Base(rel) != "registry.yaml"
+		strings.HasSuffix(rel, ".yaml") &&
+		base != "registry.yaml" && base != "capabilities.yaml"
 }
 
 // checkDocLeaves flattens the document into dotted paths; each must

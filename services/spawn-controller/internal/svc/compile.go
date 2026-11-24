@@ -97,6 +97,9 @@ func validateSpec(p Passports) error {
 	if err := validateModels(p.Models); err != nil {
 		return err
 	}
+	if err := validateGrants(p.Grants); err != nil {
+		return err
+	}
 	for f := range p.Workspace.Files {
 		if f == "" || strings.Contains(f, "..") || strings.HasPrefix(f, "/") {
 			return herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
