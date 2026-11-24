@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,12 +112,10 @@ func taskStub(t *testing.T, got *tv1.CreateJobReq) *httptest.Server {
 	return srv
 }
 
-// TestTelegramPhotoCreatesJob replays the live wedge: a photo update
-// must reach CreateJob with the intake id as its idempotency key and
-// land the intake in waiting — the empty Idem the effect used to send
-// is refused by the engine as missing-input.
-func TestTelegramPhotoCreatesJob(t *testing.T) {
-	t.Parallel()
+// schemaDB provisions the migrated schema and a signing key shared by
+// the live-path tests below.
+func schemaDB(t *testing.T) (*sql.DB, ed25519.PrivateKey) {
+	t.Helper()
 	ctx := context.Background()
 	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
 	if err := fsm.EnsureSchema(ctx, db, "fsm"); err != nil {
@@ -125,11 +124,22 @@ func TestTelegramPhotoCreatesJob(t *testing.T) {
 	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
 		t.Fatal(err)
 	}
-	var got tv1.CreateJobReq
 	_, selfKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return db, selfKey
+}
+
+// TestTelegramPhotoCreatesJob replays the live wedge: a photo update
+// must reach CreateJob with the intake id as its idempotency key and
+// land the intake in waiting — the empty Idem the effect used to send
+// is refused by the engine as missing-input.
+func TestTelegramPhotoCreatesJob(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, selfKey := schemaDB(t)
+	var got tv1.CreateJobReq
 	s := New("channel-hub", db, Deps{
 		IdentityURL: idStub(t).URL,
 		BrokerURL:   credStub(t).URL,
@@ -195,24 +205,35 @@ func modelStub(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// taskStubDone takes the job, then reports one terminal state —
+// failed runs carry the raw error in Result, which must not surface.
+func taskStubDone(t *testing.T, job tv1.JobInfo) *httptest.Server {
+	t.Helper()
+	ops := tv1.Ops(tv1.Handlers{
+		CreateJob: func(context.Context, tv1.CreateJobReq) (tv1.CreateJobResp, error) {
+			return tv1.CreateJobResp{ID: job.ID, State: "queued"}, nil
+		},
+		GetJob: func(context.Context, tv1.GetJobReq) (tv1.GetJobResp, error) {
+			return tv1.GetJobResp{Job: job}, nil
+		},
+	})
+	mux := http.NewServeMux()
+	for op, h := range ops {
+		mux.Handle("/v1/"+op, httpapi.Handle("link-tk", h))
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // TestTelegramPhotoNoVisionRefused pins the live finding: a photo on a
 // no-vision route answers with the localized refusal and the status
 // phase "Refused." — a refusal is not a failure.
 func TestTelegramPhotoNoVisionRefused(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
-	if err := fsm.EnsureSchema(ctx, db, "fsm"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
-		t.Fatal(err)
-	}
+	db, selfKey := schemaDB(t)
 	var got tv1.CreateJobReq
-	_, selfKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	s := New("channel-hub", db, Deps{
 		IdentityURL: idStub(t).URL,
 		BrokerURL:   credStub(t).URL,
@@ -276,5 +297,48 @@ func TestTelegramPhotoNoVisionRefused(t *testing.T) {
 	}
 	if got.Space != "" {
 		t.Fatalf("provider reached: %+v", got)
+	}
+}
+
+// TestTelegramFailedJobLocalizedAnswer pins the live finding: a run
+// that ends failed carries the raw error ("unavailable: ...") in
+// Result; the user-facing answer must be the localized job-failed
+// string, not the internal error code.
+func TestTelegramFailedJobLocalizedAnswer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, selfKey := schemaDB(t)
+	s := New("channel-hub", db, Deps{
+		IdentityURL: idStub(t).URL,
+		BrokerURL:   credStub(t).URL,
+		TaskURL: taskStubDone(t, tv1.JobInfo{ID: "job-f1", Done: true,
+			State: "failed", Result: "unavailable: err.unavailable"}).URL,
+		TG:      NewTGAPI(tgStub(t).URL),
+		SelfKey: selfKey,
+		Now:     time.Now,
+	})
+	up := normalizeUpdate(rawText(9004, 480637186, 480637186, "hello"))
+	if err := s.tg.admitUpdate(ctx, up); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	var id string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id FROM inbound_updates WHERE update_id='9004'`).Scan(&id); err != nil {
+		t.Fatalf("intake id: %v", err)
+	}
+	if err := s.dispatch(ctx, id); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	done, err := s.pollJob(ctx, id)
+	if err != nil || !done {
+		t.Fatalf("poll: done=%v err=%v", done, err)
+	}
+	var body string
+	if err := db.QueryRowContext(ctx,
+		`SELECT body FROM deliveries WHERE intake_id=$1 AND kind='text'`, id).Scan(&body); err != nil {
+		t.Fatalf("delivery: %v", err)
+	}
+	if strings.Contains(body, "unavailable") || !strings.Contains(body, "failed") {
+		t.Fatalf("answer body: %q", body)
 	}
 }

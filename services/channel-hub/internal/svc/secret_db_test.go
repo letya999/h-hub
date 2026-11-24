@@ -4,15 +4,11 @@ package svc
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/letya999/h-hub/shared/fsm"
-	"github.com/letya999/h-hub/shared/store"
 	"github.com/letya999/h-hub/shared/testkit"
 )
 
@@ -23,17 +19,7 @@ func TestTelegramSecretBodyNotStored(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.secret-leak")
 	ctx := context.Background()
-	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
-	if err := fsm.EnsureSchema(ctx, db, "fsm"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
-		t.Fatal(err)
-	}
-	_, selfKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, selfKey := schemaDB(t)
 	s := New("channel-hub", db, Deps{SelfKey: selfKey, Now: time.Now})
 
 	up := normalizeUpdate(rawText(9003, 480637186, 480637186,
@@ -50,7 +36,4 @@ func TestTelegramSecretBodyNotStored(t *testing.T) {
 		t.Fatalf("intake: %v", err)
 	}
 	testkit.Deny(t, "sys.secret-leak", !strings.Contains(body, "canary-otter-77"))
-	if strings.Contains(body, "canary-otter-77") {
-		t.Fatalf("secret persisted in intake body: %q", body)
-	}
 }
