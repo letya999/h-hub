@@ -14,7 +14,7 @@ harness-runtime (`ReportRun`). Calls identity-hub (`MintRunToken`,
 `IssueServiceToken`), spawn-controller (`ResolveSpec`, `EnsureRuntime`,
 `ReleaseRuntime`) and harness-runtime (`SubmitRun`, `CancelRun`).
 Owner scope is verified before reads and writes; space ownership is
-checked through `ResolveSpec` ([TestJobToAnswer](../../test/e2e/e2e_test.go)).
+checked through `ResolveSpec` ([TestJobToAnswer](../../test/e2e/lifecycle/e2e_test.go)).
 
 ## Owns
 
@@ -61,4 +61,4 @@ The exit command for every job state is checked at the contract boundary
 ([TestJobExitCommandsCoverEveryNonfinalState](internal/svc/wedge_db_test.go)).
 If a deadline is over 30 seconds late, the sweeper records an operator
 alert and delivers it through channel-hub
-([TestSweepLagOperatorAlert](../../test/e2e/sweep_lag_test.go)).
+([TestSweepLagOperatorAlert](../../test/e2e/lifecycle/sweep_lag_test.go)).

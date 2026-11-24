@@ -1,38 +1,38 @@
 //go:build hhube2e
 
-package e2e
+package channel
 
 import (
 	"context"
 	"fmt"
+	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
+	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
-	"github.com/letya999/h-hub/shared/testkit"
 )
 
 func TestScriptedLongAnswer(t *testing.T) {
 	t.Parallel()
-	id := "long_" + nonce
-	owner := "scripted_" + nonce
-	_, code := addUser(t, owner)
-	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{External: owner, UpdateID: idem("link", owner), Text: "/start " + code}); err != nil {
+	id := "long_" + Nonce
+	owner := "scripted_" + Nonce
+	_, code := AddUser(t, owner)
+	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{External: owner, UpdateID: Idem("link", owner), Text: "/start " + code}); err != nil {
 		t.Fatal(err)
 	}
-	cursor := waitMock(t, owner, 0, "Account linked", 10*time.Second)
+	cursor := WaitMock(t, owner, 0, "Account linked", 10*time.Second)
 	response := "<script>alert(1)</script>" + strings.Repeat("Ж", 21000)
 	script := fmt.Sprintf("id: %s\nsteps:\n  - expect: %s\n    respond: %s\n", id, strconv.Quote("scenario:"+id+" long"), strconv.Quote(response))
-	postScenario(t, script, http.StatusCreated)
-	if _, err := mockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{External: owner, UpdateID: idem("long", owner), Text: "scenario:" + id + " long"}); err != nil {
+	PostScenario(t, script, http.StatusCreated)
+	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{External: owner, UpdateID: Idem("long", owner), Text: "scenario:" + id + " long"}); err != nil {
 		t.Fatal(err)
 	}
 	var messages []cv1.OutMessage
 	testkit.Poll(t, 3*time.Minute, 250*time.Millisecond, func() bool {
-		res, err := mockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owner, After: cursor})
+		res, err := MockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(), cv1.ReadOutboxReq{External: owner, After: cursor})
 		if err != nil {
 			return false
 		}
@@ -63,17 +63,5 @@ func TestScriptedLongAnswer(t *testing.T) {
 	defer res.Body.Close() //nolint:errcheck // test response close
 	if res.StatusCode != http.StatusNoContent {
 		t.Fatalf("unused script steps: %s", res.Status)
-	}
-}
-
-func postScenario(t *testing.T, body string, want int) {
-	t.Helper()
-	res, err := http.Post("http://scripted-model:9000/v1/scenarios", "application/yaml", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close() //nolint:errcheck // test response close
-	if res.StatusCode != want {
-		t.Fatalf("load scenario: %s", res.Status)
 	}
 }

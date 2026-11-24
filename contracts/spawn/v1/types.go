@@ -6,6 +6,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -123,6 +124,81 @@ type SetModelResp struct {
 	Digest string `json:"digest"`
 }
 
+// SubmitLayersReq stores one immutable layer revision. Role is a
+// name from the registry chain; Docs is the layer's passport
+// documents as a JSON object keyed by section.
+type SubmitLayersReq struct {
+	Space string          `json:"space"`
+	Role  string          `json:"role"`
+	Docs  json.RawMessage `json:"docs"`
+}
+
+// SubmitLayersResp acknowledges the stored revision.
+type SubmitLayersResp struct {
+	Revision string `json:"revision"`
+	Seq      int    `json:"seq"`
+}
+
+// PreviewReq compiles the current candidate set without effects.
+type PreviewReq struct {
+	Space string `json:"space"`
+}
+
+// LeafDiff is one leaf changed between the base and the candidate.
+type LeafDiff struct {
+	Path   string `json:"path"`
+	Class  string `json:"class"`
+	Effect string `json:"effect"`
+	Layer  string `json:"layer"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+}
+
+// PreviewResp is the dry-run result activate must be pointed at.
+type PreviewResp struct {
+	Base      string     `json:"base"`
+	Candidate string     `json:"candidate"`
+	Effect    string     `json:"effect"`
+	Diff      []LeafDiff `json:"diff"`
+}
+
+// ActivateReq CAS-activates the exact candidate preview showed.
+type ActivateReq struct {
+	Space     string `json:"space"`
+	Base      string `json:"base"`
+	Candidate string `json:"candidate"`
+}
+
+// ActivateResp reports the new effective digest and applied effect.
+type ActivateResp struct {
+	Digest string `json:"digest"`
+	Effect string `json:"effect"`
+}
+
+// RollbackReq re-activates a previously applied digest; the stored
+// revision set re-passes the same compile checks.
+type RollbackReq struct {
+	Space  string `json:"space"`
+	Digest string `json:"digest"`
+}
+
+// RollbackResp reports the restored digest and applied effect.
+type RollbackResp struct {
+	Digest string `json:"digest"`
+	Effect string `json:"effect"`
+}
+
+// ExplainReq asks which layer supplied each leaf of the live spec.
+type ExplainReq struct {
+	Space string `json:"space"`
+}
+
+// ExplainResp is the persisted attribution of the active digest.
+type ExplainResp struct {
+	Digest string            `json:"digest"`
+	Layers map[string]string `json:"layers"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateSpace    func(context.Context, CreateSpaceReq) (CreateSpaceResp, error)
@@ -134,6 +210,11 @@ type Handlers struct {
 	DrainRuntime   func(context.Context, DrainRuntimeReq) (DrainRuntimeResp, error)
 	WatchdogStatus func(context.Context, WatchdogStatusReq) (WatchdogStatusResp, error)
 	SetModel       func(context.Context, SetModelReq) (SetModelResp, error)
+	SubmitLayers   func(context.Context, SubmitLayersReq) (SubmitLayersResp, error)
+	Preview        func(context.Context, PreviewReq) (PreviewResp, error)
+	Activate       func(context.Context, ActivateReq) (ActivateResp, error)
+	Rollback       func(context.Context, RollbackReq) (RollbackResp, error)
+	Explain        func(context.Context, ExplainReq) (ExplainResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -148,6 +229,11 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"DrainRuntime":   op(h.DrainRuntime),
 		"WatchdogStatus": op(h.WatchdogStatus),
 		"SetModel":       op(h.SetModel),
+		"SubmitLayers":   op(h.SubmitLayers),
+		"Preview":        op(h.Preview),
+		"Activate":       op(h.Activate),
+		"Rollback":       op(h.Rollback),
+		"Explain":        op(h.Explain),
 	}
 }
 

@@ -1,0 +1,9 @@
+default: scripted
+routes:
+  - {name: scripted, url: "http://scripted-model:9000", model: scripted, vision: true}
+  - {name: scripted-alt, url: "http://scripted-model:9000", model: scripted}
+  - {name: devin, url: "http://cliproxy:8317", model: devin/swe-2-flash,
+     key_ref: "cred://builtin/platform/cliproxy-key", vision: true}
+daily_tokens: 1000000
+run_tokens: 250000
+reserve: 4096

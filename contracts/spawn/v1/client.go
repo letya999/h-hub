@@ -91,6 +91,41 @@ func (c *Client) SetModel(ctx context.Context, r SetModelReq) (SetModelResp, err
 	return out, err
 }
 
+// SubmitLayers stores one layer revision for the space.
+func (c *Client) SubmitLayers(ctx context.Context, r SubmitLayersReq) (SubmitLayersResp, error) {
+	var out SubmitLayersResp
+	err := c.call(ctx, "SubmitLayers", r, &out)
+	return out, err
+}
+
+// Preview compiles the candidate layer set without effects.
+func (c *Client) Preview(ctx context.Context, r PreviewReq) (PreviewResp, error) {
+	var out PreviewResp
+	err := c.call(ctx, "Preview", r, &out)
+	return out, err
+}
+
+// Activate CAS-activates the exact candidate a preview returned.
+func (c *Client) Activate(ctx context.Context, r ActivateReq) (ActivateResp, error) {
+	var out ActivateResp
+	err := c.call(ctx, "Activate", r, &out)
+	return out, err
+}
+
+// Rollback re-activates a previously applied digest.
+func (c *Client) Rollback(ctx context.Context, r RollbackReq) (RollbackResp, error) {
+	var out RollbackResp
+	err := c.call(ctx, "Rollback", r, &out)
+	return out, err
+}
+
+// Explain returns the stored per-leaf layer attribution.
+func (c *Client) Explain(ctx context.Context, r ExplainReq) (ExplainResp, error) {
+	var out ExplainResp
+	err := c.call(ctx, "Explain", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

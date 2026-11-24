@@ -1,32 +1,32 @@
 //go:build hhube2e
 
-package e2e
+package lifecycle
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
+	"testing"
+	"time"
 )
 
 func TestRuntimeDeadlineReapsContainer(t *testing.T) {
 	t.Parallel()
-	owner := "sweep_" + nonce
-	space := ensureSpace(t, owner, idem("sweep-space"))
-	scope := ownerSpace{owner, space}
-	job, err := taskClient(t, scope).CreateJob(context.Background(), tv1.CreateJobReq{
-		Space: space, Conversation: "c1", Input: "idle sweep", Idem: idem("sweep-job"),
+	owner := "sweep_" + Nonce
+	space := EnsureSpace(t, owner, Idem("sweep-space"))
+	scope := OwnerSpace{Owner: owner, Space: space}
+	job, err := TaskClient(t, scope).CreateJob(context.Background(), tv1.CreateJobReq{
+		Space: space, Conversation: "c1", Input: "idle sweep", Idem: Idem("sweep-job"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitJob(t, scope, job.ID, "succeeded", 3*time.Minute)
-	db := adminDB(t, "spawn_controller")
+	WaitJob(t, scope, job.ID, "succeeded", 3*time.Minute)
+	db := AdminDB(t, "spawn_controller")
 	var runtime, state string
 	testkit.Poll(t, 20*time.Second, 250*time.Millisecond, func() bool {
-		err := db.QueryRowContext(context.Background(), `SELECT r.id,m.state FROM runtimes r
+		err := db.QueryRowContext(context.Background(), `SELECT r.id,m.state FROM Runtimes r
 			JOIN fsm.machines m ON m.kind='runtime' AND m.id=r.id
 			WHERE r.space=$1 ORDER BY r.created DESC LIMIT 1`, space).Scan(&runtime, &state)
 		return err == nil && state == "warm"

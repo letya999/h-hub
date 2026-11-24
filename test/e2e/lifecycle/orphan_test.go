@@ -1,19 +1,19 @@
 //go:build hhube2e
 
-package e2e
+package lifecycle
 
 import (
 	"context"
+	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
 	"testing"
 	"time"
-
-	"github.com/letya999/h-hub/shared/testkit"
 )
 
 func TestOrphanRuntimeRemoved(t *testing.T) {
 	t.Parallel()
 	d := testkit.NewDocker(t)
-	name := "hhub-rt-orphan-" + nonce
+	name := "hhub-rt-orphan-" + Nonce
 	id, err := d.CreateRun(context.Background(), testkit.CreateSpec{
 		Image: "hhub-task-engine:local", Name: name,
 		Labels:   map[string]string{"hhub.managed": "true", "hhub.runtime": name},

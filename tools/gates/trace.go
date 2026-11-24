@@ -18,7 +18,11 @@ var sysIDs = map[string]bool{
 	"service-edge": true, "worker-tenant": true,
 	"worker-stop-confirmed": true, "package-build": true, "recipe-hosts": true,
 	"model-usage": true, "model-quota": true, "model-route": true,
-	"space-egress": true,
+	"space-egress":    true,
+	"passport-narrow": true, "passport-activate": true,
+	"passport-live": true, "passport-respawn": true,
+	"passport-recreate": true, "passport-rollback": true,
+	"passport-explain": true,
 }
 
 var (

@@ -97,6 +97,15 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 			return fmt.Errorf("rm payload: %w", err)
 		}
 		return s.dockerRemove(ctx, e)
+	case "render-reset":
+		var e resetEffect
+		if err := json.Unmarshal(f.Payload, &e); err != nil {
+			return fmt.Errorf("reset payload: %w", err)
+		}
+		if err := os.RemoveAll(filepath.Join(s.deps.RenderDir, e.Space)); err != nil {
+			return fmt.Errorf("render reset: %w", err)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown topic %q", f.Topic)
 	}
@@ -176,6 +185,17 @@ func renderConfig(renderDir string, issuer ed25519.PublicKey, space string, p Pa
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub})
 	if err := os.WriteFile(filepath.Join(dir, "issuer.pub"), pemBytes, 0o644); err != nil {
 		return fmt.Errorf("issuer pub: %w", err)
+	}
+	// Workspace files from the workspace passport land under files/;
+	// the runtime sees them read-only at /etc/hhub/render/<space>/files.
+	for name, body := range p.Workspace.Files {
+		target := filepath.Join(dir, "files", filepath.Clean(name))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("workspace dir: %w", err)
+		}
+		if err := os.WriteFile(target, []byte(body), 0o644); err != nil {
+			return fmt.Errorf("workspace file %s: %w", name, err)
+		}
 	}
 	return nil
 }

@@ -4,6 +4,7 @@
 set windows-shell := ["pwsh.exe", "-NoProfile", "-Command"]
 
 img      := "hhub-dev@" + `cat deploy/dev-image.ref`
+sqlciph  := `cat deploy/sqlcipher-base.ref`
 src      := justfile_directory()
 data     := src + "/../h-hub-data"
 run      := "docker run --rm -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
@@ -35,7 +36,7 @@ check-fast:
 
 # build the pinned dev image and record its digest
 dev-image:
-    docker build -f deploy/dev.Dockerfile -t hhub-dev:build .
+    docker build -f deploy/dev.Dockerfile --build-arg SQLCIPHER_BASE={{ sqlciph }} -t hhub-dev:build .
     docker images -q --no-trunc hhub-dev:build > deploy/dev-image.ref
     docker tag hhub-dev:build hhub-dev:0.0.1
 
@@ -65,7 +66,7 @@ images:
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=model-gateway -t hhub-model-gateway:local .
-    docker build -f deploy/broker.Dockerfile -t hhub-credential-broker:local .
+    docker build -f deploy/broker.Dockerfile --build-arg SQLCIPHER_BASE={{ sqlciph }} -t hhub-credential-broker:local .
     docker build -f test/scripted-model/Dockerfile -t hhub-scripted-model:local .
 
 # bring the whole phase-3 stack up: postgres -> init -> services ->
@@ -90,7 +91,9 @@ e2e:
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} go test -tags hhube2e -count=1 -timeout 10m ./test/e2e
+      {{ img }} sh -c 'go test -tags hhube2e -count=1 -timeout 10m \
+        ./test/e2e/channel ./test/e2e/lifecycle && \
+        go test -tags hhube2e -count=1 -timeout 10m ./test/e2e/disrupt'
 
 # optional three-user load measurement, separate from mandatory e2e
 load:
@@ -101,7 +104,7 @@ load:
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e
+      {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e/channel
 
 # capture all databases, installation config and host KEK outside git
 backup:

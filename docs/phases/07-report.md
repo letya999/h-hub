@@ -125,23 +125,31 @@ secrets live in credential-broker, no secrets remain in the environment.
   them concurrently inside tracecheck — saves roughly a minute —
   or accept the 6-minute floor and revisit when phase-9 e2e lands.
 
-## Live Telegram — remaining work after the bot token
+## Live Telegram — observed state and remaining work
 
-No bot token was supplied during the phase. Per the boundary rule the
-token must be installed by the owner with `hubctl secret set
-telegram-bot-token`; nothing live was simulated. Once installed:
+The owner installed `telegram-bot-token` after the report was written
+(broker `ListConnections` shows it alongside `cliproxy-key`). Verified
+live during the phase-8 wrap-up:
 
-1. `just stack` (running) picks the credential up on the next lease
-   cycle — the adapter activates without restart or code change.
-2. Three live users hold a conversation through the bot (the e2e
-   three-user scenario replayed against the real edge).
-3. Photo message on the devin (vision) route answered with image
-   understanding; same photo on a non-vision route refused localized.
-4. `KEY=value` message deleted from the chat and answered with the
-   safe-path hint.
-5. Status message edits observed at ≤ 1/5 s cadence.
-6. Re-run the leak canary set including the real bot token and the
-   live cliproxy key.
+1. **Adapter activation on lease — proved.** The running stack picked
+   the token up without restart or code change: polling works, intake
+   admitted, answers delivered.
+2. **Live conversation — partially proved.** One real Telegram user
+   linked via `/start` + code, switched `/model devin` and held a real
+   conversation (delivered answers observed in `tg_status`). The
+   three-user variant still needs two more humans on the bot.
+3. **Photo / vision route — deferred.** No photo updates have been
+   sent by a human yet; nothing was simulated.
+4. **`KEY=value` deletion — deferred.** No secret-looking live message
+   observed; the interception is covered by unit tests, the live path
+   awaits a real message.
+5. **Status-edit cadence — deferred.** `tg_status` shows Working…/Done
+   rows; ≤ 1/5 s cadence needs a human conversation to observe.
+6. **Leak canary with live secrets — proved.** A probe leased both
+   real credentials (`telegram-bot-token`, `cliproxy-key`) through the
+   production service-token path and grepped 24 readable surfaces
+   (service logs, inspect output, pg_dump of every database, rendered
+   configs): **0 hits**. Values were never printed.
 
 ## Out of scope (per brief)
 

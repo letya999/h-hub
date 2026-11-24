@@ -231,7 +231,8 @@ clients:
         ops: [CreateJob, GetJob, ListJobs, CancelJob, RetryJob,
               UnquarantineJob, SetHold, GetRun]
       - to: spawn-controller
-        ops: [CreateSpace, GetSpace, DestroySpace, DrainRuntime]
+        ops: [CreateSpace, GetSpace, DestroySpace, DrainRuntime,
+              SubmitLayers, Preview, Activate, Rollback, Explain]
       - to: channel-hub
         ops: [Inject, ReadOutbox]
       - to: model-gateway

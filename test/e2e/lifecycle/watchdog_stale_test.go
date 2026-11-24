@@ -1,22 +1,22 @@
 //go:build hhube2e
 
-package e2e
+package lifecycle
 
 import (
 	"context"
-	"net/http"
-	"testing"
-	"time"
-
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/testkit"
+	. "github.com/letya999/h-hub/test/e2e/harness"
+	"net/http"
+	"testing"
+	"time"
 )
 
 func TestStaleSpawnTickRefusesHealth(t *testing.T) {
 	testkit.Req(t, "sys.watchdog-stale")
-	db := adminDB(t, "spawn_controller")
+	db := AdminDB(t, "spawn_controller")
 	ctx := context.Background()
 	_, err := db.ExecContext(ctx, `CREATE FUNCTION fsm.freeze_spawn_tick() RETURNS trigger
 		LANGUAGE plpgsql AS $$ BEGIN IF NEW.name='spawn-controller' THEN
@@ -47,14 +47,14 @@ func TestStaleSpawnTickRefusesHealth(t *testing.T) {
 		t.Fatalf("spawn tick missing: rows=%d err=%v", n, err)
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
-	res, err := client.Get(spawnURL + "/healthz")
+	res, err := client.Get(SpawnURL + "/healthz")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer res.Body.Close() //nolint:errcheck // best-effort close
 	testkit.Deny(t, "sys.watchdog-stale", res.StatusCode == http.StatusServiceUnavailable)
-	_, err = (&sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(spawnURL, "")}}).WatchdogStatus(ctx,
+	_, err = (&sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, "")}}).WatchdogStatus(ctx,
 		sv1.WatchdogStatusReq{})
 	testkit.Deny(t, "sys.watchdog-stale", herrors.CodeOf(err) == herrors.CodeUnauthorized)
-	waitOperatorDelivery(t, "spawn-watchdog-2020-01-01T00:00:00Z", "Spawn controller watchdog is stale")
+	WaitOperatorDelivery(t, "spawn-watchdog-2020-01-01T00:00:00Z", "Spawn controller watchdog is stale")
 }

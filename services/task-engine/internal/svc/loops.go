@@ -23,12 +23,28 @@ const (
 	tickName      = "task-engine"
 )
 
-// Loops runs the dispatcher, sweeps, outbox executor and watchdog
-// ticks until ctx ends. Each iteration is one pass, never a sleep on
-// work — timers pace polling only.
+// Loops runs the dispatcher and the maintenance side — sweeps,
+// outbox and watchdog ticks — until ctx ends. A dispatch can wait on
+// a runtime for tens of seconds, so maintenance runs on its own
+// goroutine: a busy dispatcher must never starve deadlines. The
+// lease still guarantees one active sweeper.
 func (lp *loopRunner) Loops(ctx context.Context, l *log.L) {
 	t := time.NewTicker(dispatchEvery)
 	defer t.Stop()
+	go lp.maintenance(ctx, l)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			lp.dispatchPass(ctx, l)
+		}
+	}
+}
+
+// maintenance paces sweep, outbox and tick passes on their own
+// tickers. Each iteration is one pass, never a sleep on work.
+func (lp *loopRunner) maintenance(ctx context.Context, l *log.L) {
 	swp := time.NewTicker(sweepEvery)
 	defer swp.Stop()
 	out := time.NewTicker(outboxEvery)
@@ -39,8 +55,6 @@ func (lp *loopRunner) Loops(ctx context.Context, l *log.L) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-			lp.dispatchPass(ctx, l)
 		case <-swp.C:
 			lp.sweepPass(ctx, l)
 		case <-out.C:

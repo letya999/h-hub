@@ -33,17 +33,17 @@
   reach only `model-gateway`; e2e probes from inside a live runtime
   reach the gateway and are refused at `postgres`, `identity-hub`,
   `channel-hub` and `cliproxy`
-  ([test](../../test/e2e/model_test.go)). CLIProxyAPI itself lives on
+  ([test](../../test/e2e/channel/model_test.go)). CLIProxyAPI itself lives on
   `hhub-egress`, reachable from the gateway only.
 - Channel commands: `/usage` reports spent/reserved against both
   ceilings; `/model` lists routes and `/model <route>` writes
   `models.default` through `SetModel` on spawn-controller — the new
   route answers on the same warm runtime with no restart
-  ([e2e](../../test/e2e/model_test.go)).
+  ([e2e](../../test/e2e/channel/model_test.go)).
 - `sys.secret-leak` now covers the provider secrets: canary bytes
   planted in the cliproxy client-key file and the OAuth session volume
   appear in no service log, env, `docker inspect` output, database
-  dump or channel answer ([e2e](../../test/e2e/model_test.go)).
+  dump or channel answer ([e2e](../../test/e2e/channel/model_test.go)).
 - Operator tooling for the real provider is manual-only and never in
   CI: `just cliproxy-init` materializes the client key and config into
   the two volumes without argv/env/inspect exposure,

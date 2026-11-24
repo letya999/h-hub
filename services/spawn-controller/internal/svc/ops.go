@@ -21,12 +21,24 @@ import (
 // handlers implements the contract's operation table.
 func (s *Server) handlers() sv1.Handlers {
 	return sv1.Handlers{
-		CreateSpace:    s.createSpace,
-		GetSpace:       s.getSpace,
-		DestroySpace:   s.destroySpace,
-		EnsureRuntime:  s.ensureRuntime,
-		ResolveSpec:    s.resolveSpec,
-		ReleaseRuntime: s.releaseRuntime,
+		CreateSpace: func(ctx context.Context, r sv1.CreateSpaceReq) (sv1.CreateSpaceResp, error) {
+			return createSpaceOp(s, ctx, r)
+		},
+		GetSpace: func(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceResp, error) {
+			return getSpaceOp(s, ctx, r)
+		},
+		DestroySpace: func(ctx context.Context, r sv1.DestroySpaceReq) (sv1.DestroySpaceResp, error) {
+			return destroySpaceOp(s, ctx, r)
+		},
+		EnsureRuntime: func(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
+			return ensureRuntimeOp(s, ctx, r)
+		},
+		ResolveSpec: func(ctx context.Context, r sv1.ResolveSpecReq) (sv1.ResolveSpecResp, error) {
+			return resolveSpecOp(s, ctx, r)
+		},
+		ReleaseRuntime: func(ctx context.Context, r sv1.ReleaseRuntimeReq) (sv1.ReleaseRuntimeResp, error) {
+			return releaseRuntimeOp(s, ctx, r)
+		},
 		DrainRuntime: func(ctx context.Context, r sv1.DrainRuntimeReq) (sv1.DrainRuntimeResp, error) {
 			return drainRuntimeOp(s, ctx, r)
 		},
@@ -35,6 +47,21 @@ func (s *Server) handlers() sv1.Handlers {
 		},
 		SetModel: func(ctx context.Context, r sv1.SetModelReq) (sv1.SetModelResp, error) {
 			return setModelOp(s, ctx, r)
+		},
+		SubmitLayers: func(ctx context.Context, r sv1.SubmitLayersReq) (sv1.SubmitLayersResp, error) {
+			return submitLayersOp(s, ctx, r)
+		},
+		Preview: func(ctx context.Context, r sv1.PreviewReq) (sv1.PreviewResp, error) {
+			return previewOp(s, ctx, r)
+		},
+		Activate: func(ctx context.Context, r sv1.ActivateReq) (sv1.ActivateResp, error) {
+			return activateOp(s, ctx, r)
+		},
+		Rollback: func(ctx context.Context, r sv1.RollbackReq) (sv1.RollbackResp, error) {
+			return rollbackOp(s, ctx, r)
+		},
+		Explain: func(ctx context.Context, r sv1.ExplainReq) (sv1.ExplainResp, error) {
+			return explainOp(s, ctx, r)
 		},
 	}
 }
@@ -51,16 +78,13 @@ type clock struct{ f func() time.Time }
 
 func (c clock) Now() time.Time { return c.f() }
 
-func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.CreateSpaceResp, error) {
+func createSpaceOp(s *Server, ctx context.Context, r sv1.CreateSpaceReq) (sv1.CreateSpaceResp, error) {
 	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
 		return sv1.CreateSpaceResp{}, fmt.Errorf("scope: %w", err)
 	}
-	if scope.Space != "" {
-		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
-	}
-	if r.Name == "" || r.Template != "default" {
-		return sv1.CreateSpaceResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
+	if err := createArgs(scope, r); err != nil {
+		return sv1.CreateSpaceResp{}, err
 	}
 	owner := scope.Owner
 	// The passport pins the image by digest: the configured tag
@@ -77,9 +101,14 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 	} else if sp.id != "" {
 		return sv1.CreateSpaceResp{ID: sp.id, Digest: sp.digest}, nil
 	}
-	spec, digest, err := compile(defaultPassports(
-		image, s.deps.ModelURL, s.deps.TaskURL,
-		Limits{Mem: "256m", CPU: "1.0", Pids: 256}))
+	// The space's layers: the shipped platform layer plus per-space
+	// facts, then the template folder as the user layer. The first
+	// activation compiles them into the effective spec.
+	chain, err := spaceLayers(s, owner, image, r.Template)
+	if err != nil {
+		return sv1.CreateSpaceResp{}, err
+	}
+	cand, err := compileSet(chain)
 	if err != nil {
 		return sv1.CreateSpaceResp{}, err
 	}
@@ -89,18 +118,77 @@ func (s *Server) createSpace(ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cre
 		return sv1.CreateSpaceResp{}, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
-	if err := insertSpace(ctx, tx, spaceRow{
+	err = insertNewSpace(s, ctx, tx, spaceRow{
 		id: id, owner: owner, name: r.Name,
-		template: r.Template, spec: spec, digest: digest}); err != nil {
+		template: r.Template}, specApply{
+		chain: chain, spec: cand.spec, digest: cand.digest,
+		explain: cand.explain, effect: "live", author: "create"})
+	if err != nil {
 		return sv1.CreateSpaceResp{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return sv1.CreateSpaceResp{}, fmt.Errorf("commit: %w", err)
 	}
-	return sv1.CreateSpaceResp{ID: id, Digest: digest}, nil
+	return sv1.CreateSpaceResp{ID: id, Digest: cand.digest}, nil
 }
 
-func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceResp, error) {
+// createArgs enforces the request contract: only an unscoped owner
+// may create, and both fields are required.
+func createArgs(scope idv1.OwnerClaims, r sv1.CreateSpaceReq) error {
+	if scope.Space != "" {
+		return herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	if r.Name == "" || r.Template == "" {
+		return herrors.New(herrors.CodeInvalid, "err.missing-input")
+	}
+	return nil
+}
+
+// spaceLayers assembles the creation-time layer chain: the shipped
+// platform layer plus per-space facts, then the template folder.
+func spaceLayers(s *Server, owner, image, template string) (layerSet, error) {
+	platDocs, err := platformLayer(s, owner, image)
+	if err != nil {
+		return nil, err
+	}
+	userDocs, err := templateLayer(template)
+	if err != nil {
+		return nil, err
+	}
+	return layerSet{
+		{role: "platform", docs: platDocs},
+		{role: "user", docs: userDocs},
+	}, nil
+}
+
+// insertNewSpace persists the space row, both creation revisions and
+// the first activation — the whole birth in one transaction.
+func insertNewSpace(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
+	a specApply) error {
+	specRaw, err := json.Marshal(a.spec)
+	if err != nil {
+		return fmt.Errorf("spec marshal: %w", err)
+	}
+	sp.spec, sp.digest = specRaw, a.digest
+	if err := insertSpace(ctx, tx, sp); err != nil {
+		return err
+	}
+	at := s.deps.Now()
+	for _, l := range a.chain {
+		if _, _, err := insertRevision(ctx, tx, revRow{
+			space: sp.id, role: l.role, docs: l.docs,
+			author: a.author, at: at}); err != nil {
+			return err
+		}
+	}
+	a.chain, err = candidateChain(ctx, tx, sp.id)
+	if err != nil {
+		return err
+	}
+	return applySpecTx(s, ctx, tx, sp, a)
+}
+
+func getSpaceOp(s *Server, ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceResp, error) {
 	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
 		return sv1.GetSpaceResp{}, fmt.Errorf("scope: %w", err)
@@ -130,7 +218,7 @@ func (s *Server) getSpace(ctx context.Context, r sv1.GetSpaceReq) (sv1.GetSpaceR
 
 // destroySpace drains the runtime and removes the domain rows; the
 // docker removal rides the outbox in the same transaction.
-func (s *Server) destroySpace(ctx context.Context, r sv1.DestroySpaceReq) (sv1.DestroySpaceResp, error) {
+func destroySpaceOp(s *Server, ctx context.Context, r sv1.DestroySpaceReq) (sv1.DestroySpaceResp, error) {
 	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
 		return sv1.DestroySpaceResp{}, fmt.Errorf("scope: %w", err)
@@ -150,7 +238,7 @@ func (s *Server) destroySpace(ctx context.Context, r sv1.DestroySpaceReq) (sv1.D
 	if rt, ok, err := runtimeForSpace(ctx, tx, sp.id); err != nil {
 		return sv1.DestroySpaceResp{}, err
 	} else if ok {
-		if err := s.drainRuntime(ctx, tx, rt); err != nil {
+		if err := drainRuntime(s, ctx, tx, rt); err != nil {
 			return sv1.DestroySpaceResp{}, err
 		}
 	}
@@ -165,7 +253,7 @@ func (s *Server) destroySpace(ctx context.Context, r sv1.DestroySpaceReq) (sv1.D
 
 // drainRuntime moves an active runtime to draining with a docker-rm
 // effect; already-idle states are left to their own deadlines.
-func (s *Server) drainRuntime(ctx context.Context, tx *sql.Tx, rt runtimeRow) error {
+func drainRuntime(s *Server, ctx context.Context, tx *sql.Tx, rt runtimeRow) error {
 	payload := mustJSON(rmEffect{Runtime: rt.id, Container: rt.container})
 	err := s.runM.Transition(ctx, tx, fsm.Request{
 		ID: rt.id, Event: "drain", Actor: "api", At: s.deps.Now(),
@@ -182,7 +270,7 @@ func (s *Server) drainRuntime(ctx context.Context, tx *sql.Tx, rt runtimeRow) er
 // resolveSpec reads the persisted effective spec, upgrading a
 // phase-5 document to the phase-6 models shape once so the digest
 // keeps binding real stored bytes.
-func (s *Server) resolveSpec(ctx context.Context, r sv1.ResolveSpecReq) (sv1.ResolveSpecResp, error) {
+func resolveSpecOp(s *Server, ctx context.Context, r sv1.ResolveSpecReq) (sv1.ResolveSpecResp, error) {
 	sp, err := getSpaceAny(ctx, s.db, r.Space)
 	if err != nil {
 		return sv1.ResolveSpecResp{}, err
@@ -210,7 +298,7 @@ func (s *Server) resolveSpec(ctx context.Context, r sv1.ResolveSpecReq) (sv1.Res
 // for runtime creation against a changed image.
 func staleDigest(req, current string) bool { return req != "" && req != current }
 
-func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
+func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
 	sp, err := getSpaceAny(ctx, s.db, r.Space)
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
@@ -230,7 +318,7 @@ func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1
 		return sv1.EnsureRuntimeResp{}, err
 	}
 	if !ok {
-		if err := s.claimRuntime(ctx, tx, sp); err != nil {
+		if err := claimRuntime(s, ctx, tx, sp); err != nil {
 			return sv1.EnsureRuntimeResp{}, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -242,7 +330,7 @@ func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, fmt.Errorf("runtime state: %w", err)
 	}
-	out, err := s.ensureByState(ctx, tx, sp, rt, st)
+	out, err := ensureByState(s, ctx, tx, sp, rtState{row: rt, state: st})
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
@@ -254,7 +342,7 @@ func (s *Server) ensureRuntime(ctx context.Context, r sv1.EnsureRuntimeReq) (sv1
 
 // claimRuntime inserts the runtime row, its machine, the intent and
 // the docker-create effect — all in one transaction.
-func (s *Server) claimRuntime(ctx context.Context, tx *sql.Tx, sp spaceRow) error {
+func claimRuntime(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow) error {
 	p, err := specPassports(sp)
 	if err != nil {
 		return err
@@ -279,9 +367,16 @@ func (s *Server) claimRuntime(ctx context.Context, tx *sql.Tx, sp spaceRow) erro
 		digest: sp.digest, image: p.Stack.Image})
 }
 
+// rtState pairs a runtime row with its machine state.
+type rtState struct {
+	row   runtimeRow
+	state string
+}
+
 // ensureByState answers EnsureRuntime from the current machine state.
-func (s *Server) ensureByState(ctx context.Context, tx *sql.Tx, sp spaceRow,
-	rt runtimeRow, st string) (sv1.EnsureRuntimeResp, error) {
+func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
+	rs rtState) (sv1.EnsureRuntimeResp, error) {
+	rt, st := rs.row, rs.state
 	switch st {
 	case "warm":
 		return sv1.EnsureRuntimeResp{Runtime: rt.id, Endpoint: rt.endpoint,
@@ -308,7 +403,7 @@ func (s *Server) ensureByState(ctx context.Context, tx *sql.Tx, sp spaceRow,
 	}
 }
 
-func (s *Server) releaseRuntime(ctx context.Context, r sv1.ReleaseRuntimeReq) (sv1.ReleaseRuntimeResp, error) {
+func releaseRuntimeOp(s *Server, ctx context.Context, r sv1.ReleaseRuntimeReq) (sv1.ReleaseRuntimeResp, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return sv1.ReleaseRuntimeResp{}, fmt.Errorf("begin: %w", err)
@@ -337,7 +432,7 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+func healthz(s *Server, w http.ResponseWriter, r *http.Request) {
 	age, err := fsm.TickAge(r.Context(), s.db, "fsm", "spawn-controller", s.deps.Now())
 	if err != nil || age > 15*time.Second {
 		w.WriteHeader(http.StatusServiceUnavailable)

@@ -62,6 +62,8 @@ func (s *Server) Mux() *http.ServeMux {
 	ownerOps := map[string]bool{
 		"CreateSpace": true, "GetSpace": true, "DestroySpace": true,
 		"DrainRuntime": true, "SetModel": true,
+		"SubmitLayers": true, "Preview": true, "Activate": true,
+		"Rollback": true, "Explain": true,
 	}
 	serviceVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.EdgeTab, s.deps.Now)
 	ownerVer := httpapi.EdgeVerifier(s.deps.Issuer, "owner", s.sub, s.deps.EdgeTab, s.deps.Now)
@@ -86,6 +88,8 @@ func (s *Server) Mux() *http.ServeMux {
 				return run(w, r)
 			}))
 	}
-	mux.HandleFunc("/healthz", s.healthz)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		healthz(s, w, r)
+	})
 	return mux
 }

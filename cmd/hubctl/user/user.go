@@ -22,7 +22,7 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	}
 	switch args[0] {
 	case "add":
-		template := "default"
+		template := "assistant"
 		if len(args) == 4 && args[2] == "--template" {
 			template = args[3]
 		} else if len(args) != 2 {

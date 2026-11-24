@@ -2,6 +2,7 @@ package svc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
@@ -9,11 +10,10 @@ import (
 	herrors "github.com/letya999/h-hub/shared/errors"
 )
 
-// setModelOp switches models.default inside the space's own effective
-// spec: the route must already be declared in the passport's routes
-// table — the command cannot invent policy, only select it. The
-// recompiled spec gets a new digest; the next run picks it up without
-// restarting the runtime.
+// setModelOp switches models.default through the layer mechanism:
+// the user layer gains a revision pinning the choice leaf, then a
+// preview+activate runs in one call. The route must already exist in
+// the passport table — the command selects, it cannot widen policy.
 func setModelOp(s *Server, ctx context.Context, r sv1.SetModelReq) (sv1.SetModelResp, error) {
 	scope, err := idv1.ScopeFrom(ctx)
 	if err != nil {
@@ -26,29 +26,57 @@ func setModelOp(s *Server, ctx context.Context, r sv1.SetModelReq) (sv1.SetModel
 	if err != nil {
 		return sv1.SetModelResp{}, err
 	}
+	if err := modelExists(sp, s.deps.ModelURL, r.Default); err != nil {
+		return sv1.SetModelResp{}, err
+	}
+	return applyUserLeaf(s, ctx, sp, "models.default", r.Default)
+}
+
+// modelExists refuses a route name the passport table does not list.
+func modelExists(sp spaceRow, modelURL, name string) error {
 	p, err := specPassports(sp)
 	if err != nil {
-		return sv1.SetModelResp{}, err
+		return err
 	}
-	p.normalize(s.deps.ModelURL)
-	found := false
+	p.normalize(modelURL)
 	for _, rt := range p.Models.Routes {
-		if rt.Name == r.Default {
-			found = true
+		if rt.Name == name {
+			return nil
 		}
 	}
-	if !found {
-		return sv1.SetModelResp{}, herrors.New(herrors.CodeInvalid, //nolint:wrapcheck // shared error form
-			"err.invalid-arg").With("route", r.Default)
+	return herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
+									With("route", name)
+}
+
+// applyUserLeaf writes one user-layer leaf and runs submit + preview
+// + activate — the standard path for owner-selectable values.
+func applyUserLeaf(s *Server, ctx context.Context, sp spaceRow,
+	path string, v any) (sv1.SetModelResp, error) {
+	space := sp.id
+	if err := ensureLayers(s, ctx, sp); err != nil {
+		return sv1.SetModelResp{}, err
 	}
-	p.Models.Default = r.Default
-	spec, digest, err := compile(p)
+	layer, err := latestUserDocs(ctx, s.db, sp.id)
 	if err != nil {
 		return sv1.SetModelResp{}, err
 	}
-	if _, err := s.db.ExecContext(ctx,
-		`UPDATE spaces SET spec=$2, digest=$3 WHERE id=$1`, sp.id, spec, digest); err != nil {
-		return sv1.SetModelResp{}, fmt.Errorf("set model: %w", err)
+	setLeaf(layer, path, v)
+	docs, err := json.Marshal(layer)
+	if err != nil {
+		return sv1.SetModelResp{}, fmt.Errorf("docs: %w", err)
 	}
-	return sv1.SetModelResp{Digest: digest}, nil
+	if _, err := submitLayersOp(s, ctx, sv1.SubmitLayersReq{
+		Space: space, Role: "user", Docs: docs}); err != nil {
+		return sv1.SetModelResp{}, err
+	}
+	prev, err := previewOp(s, ctx, sv1.PreviewReq{Space: space})
+	if err != nil {
+		return sv1.SetModelResp{}, err
+	}
+	act, err := activateOp(s, ctx, sv1.ActivateReq{
+		Space: space, Base: prev.Base, Candidate: prev.Candidate})
+	if err != nil {
+		return sv1.SetModelResp{}, err
+	}
+	return sv1.SetModelResp{Digest: act.Digest}, nil
 }
