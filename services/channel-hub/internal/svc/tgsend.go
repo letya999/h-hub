@@ -248,7 +248,7 @@ func (ad *tgAdapter) tgPhoto(ctx context.Context, intakeID string) (bool, error)
 		input = "photo"
 	}
 	job, err := client.CreateJob(ctx, tv1.CreateJobReq{
-		Space: resolved.Space, Conversation: conv, Input: input,
+		Space: resolved.Space, Conversation: conv, Input: input, Idem: r.id,
 		Attachments: []tv1.Attachment{
 			{Mime: "image/jpeg", Data: base64.StdEncoding.EncodeToString(data)}}})
 	if err != nil {
