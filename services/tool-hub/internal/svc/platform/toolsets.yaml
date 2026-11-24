@@ -1,0 +1,77 @@
+# Toolset registry: the model-facing tool model in three levels —
+# a toolset (what the model sees) names its executor, the executor
+# names its provider. Executors are the closed set toolhub, harness,
+# mcp, cli, remote; only toolhub exists in this phase, so no `via`
+# field is needed — the admission path derives from the executor.
+# Every tool names exactly one capability from the platform catalog;
+# a tool cannot introduce a new right.
+toolsets:
+  - name: probe
+    executor: toolhub
+    provider: builtin
+    tools:
+      - name: probe_echo
+        description: Return the given string unchanged.
+        capability: tools.use
+        parameters: &echo_args
+          type: object
+          properties:
+            text:
+              type: string
+          required: [text]
+  - name: cap
+    executor: toolhub
+    provider: builtin
+    tools:
+      - name: cap_tools_use
+        description: Capability probe for tools.use.
+        capability: tools.use
+        parameters: *echo_args
+      - name: cap_tools_configure
+        description: Capability probe for tools.configure.
+        capability: tools.configure
+        parameters: *echo_args
+      - name: cap_config_edit_own
+        description: Capability probe for config.edit_own.
+        capability: config.edit_own
+        parameters: *echo_args
+      - name: cap_persona_edit_own
+        description: Capability probe for persona.edit_own.
+        capability: persona.edit_own
+        parameters: *echo_args
+      - name: cap_models_select
+        description: Capability probe for models.select.
+        capability: models.select
+        parameters: *echo_args
+      - name: cap_agents_restart_self
+        description: Capability probe for agents.restart_self.
+        capability: agents.restart_self
+        parameters: *echo_args
+      - name: cap_observability_read_own_logs
+        description: Capability probe for observability.read_own_logs.
+        capability: observability.read_own_logs
+        parameters: *echo_args
+      - name: cap_grants_read_own
+        description: Capability probe for grants.read_own.
+        capability: grants.read_own
+        parameters: *echo_args
+      - name: cap_workspace_read
+        description: Capability probe for workspace.read.
+        capability: workspace.read
+        parameters: *echo_args
+      - name: cap_workspace_write
+        description: Capability probe for workspace.write.
+        capability: workspace.write
+        parameters: *echo_args
+      - name: cap_memory_capture
+        description: Capability probe for memory.capture.
+        capability: memory.capture
+        parameters: *echo_args
+      - name: cap_memory_search
+        description: Capability probe for memory.search.
+        capability: memory.search
+        parameters: *echo_args
+      - name: cap_memory_propose
+        description: Capability probe for memory.propose.
+        capability: memory.propose
+        parameters: *echo_args
