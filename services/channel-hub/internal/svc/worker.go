@@ -260,7 +260,7 @@ func (s *Server) pollJob(ctx context.Context, id string) (bool, error) {
 		return false, nil
 	}
 	answer := job.Job.Result
-	if answer == "" {
+	if job.Job.State != "succeeded" || answer == "" {
 		answer = locale.T(locale.EN, "channel.job-failed", "state", job.Job.State)
 	}
 	return true, s.completeText(ctx, r, answer, phaseKey(job.Job.State))
