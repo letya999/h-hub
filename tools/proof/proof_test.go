@@ -4,7 +4,6 @@
 package proof
 
 import (
-	"crypto/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,21 +56,17 @@ func TestDepguardBroken(t *testing.T) {
 	}
 }
 
-// TestGitleaksBroken proves gitleaks finds a generated test secret.
+// TestGitleaksBroken proves gitleaks finds a planted test secret.
+// The content is fixed — a random draw lands below the detector's
+// entropy threshold roughly one run in ten — and assembled in
+// chunks so the literal never sits in git history.
 func TestGitleaksBroken(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	key := make([]byte, 56)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	for i := range key {
-		key[i] = alphabet[int(key[i])%len(alphabet)]
-	}
+	secret := "x9K2mV8p" + "Q4rT7wZ1" + "bN5hJ3fG" + "6sD0aL9c" + "E2uY4iO"
 	if err := os.WriteFile(filepath.Join(dir, "secret.txt"),
-		[]byte("aws_access_key_id = AKIA"+string(key[:16])+"\n"+
-			"aws_secret_access_key = "+string(key[16:])+"\n"), 0600); err != nil {
+		[]byte("aws_access_key_id = AKIAQ3W5E7R9T1Y6U3W5\n"+
+			"aws_secret_access_key = "+secret+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, failed := run(t, dir, "gitleaks", "dir", "--redact", ".")
