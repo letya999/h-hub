@@ -218,14 +218,16 @@ func (ad *tgAdapter) tgPhoto(ctx context.Context, intakeID string) (bool, error)
 	}
 	p := tgPayloadOf(r.payload)
 	if p.FileID == "" {
-		return true, ad.s.completeText(ctx, r, locale.T(locale.EN, "channel.photo-no-vision"))
+		return true, ad.s.completeText(ctx, r, locale.T(locale.EN, "channel.photo-no-vision"),
+			"channel.phase.refused")
 	}
 	tok, err := ad.tgToken(ctx)
 	if err != nil {
 		return false, err
 	}
 	if p.FileSize > tgMaxPhoto {
-		return true, ad.s.completeText(ctx, r, locale.T(locale.EN, "channel.photo-too-big"))
+		return true, ad.s.completeText(ctx, r, locale.T(locale.EN, "channel.photo-too-big"),
+			"channel.phase.refused")
 	}
 	path, err := ad.api.filePath(ctx, tok, p.FileID)
 	if err != nil {

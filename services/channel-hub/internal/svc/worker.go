@@ -127,7 +127,7 @@ func (s *Server) dispatch(ctx context.Context, id string) error {
 	client, resolved, err := s.taskClient(ctx, r.channel, r.external)
 	if herrors.CodeOf(err) == herrors.CodeNotFound {
 		return s.completeText(ctx, r, locale.T(locale.EN, "channel.link-required"),
-			"channel.phase.failed")
+			"channel.phase.refused")
 	}
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func dispatchPhoto(ctx context.Context, s *Server, r inputRow) error {
 	mc, err := (&commandOps{s}).modelClient(ctx, r.channel, r.external)
 	if herrors.CodeOf(err) == herrors.CodeNotFound {
 		return s.completeText(ctx, r, locale.T(locale.EN, "channel.link-required"),
-			"channel.phase.failed")
+			"channel.phase.refused")
 	}
 	if err != nil {
 		return err
@@ -191,7 +191,7 @@ func dispatchPhoto(ctx context.Context, s *Server, r inputRow) error {
 	}
 	if !vision {
 		return s.completeText(ctx, r, locale.T(locale.EN, "channel.photo-no-vision"),
-			"channel.phase.failed")
+			"channel.phase.refused")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

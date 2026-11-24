@@ -8,12 +8,14 @@ import (
 	"crypto/rand"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	credv1 "github.com/letya999/h-hub/contracts/cred/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	mv1 "github.com/letya999/h-hub/contracts/model/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
@@ -171,5 +173,108 @@ func TestTelegramPhotoCreatesJob(t *testing.T) {
 	}
 	if got.Idem != id || got.Space != "space-t1" || len(got.Attachments) != 1 {
 		t.Fatalf("job req: %+v", got)
+	}
+}
+
+// modelStub reports one no-vision active route so dispatchPhoto must
+// refuse at the gate: a localized text plus a "Refused." status phase
+// — never a job, never an upstream call.
+func modelStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	ops := mv1.Ops(mv1.Handlers{Routes: func(context.Context,
+		mv1.RoutesReq) (mv1.RoutesResp, error) {
+		return mv1.RoutesResp{Default: "devin", Routes: []mv1.RouteInfo{
+			{Name: "devin", Model: "devin/swe-2-flash"}}}, nil
+	}})
+	mux := http.NewServeMux()
+	for op, h := range ops {
+		mux.Handle("/v1/"+op, httpapi.Handle("link-tk", h))
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestTelegramPhotoNoVisionRefused pins the live finding: a photo on a
+// no-vision route answers with the localized refusal and the status
+// phase "Refused." — a refusal is not a failure.
+func TestTelegramPhotoNoVisionRefused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, _ := testkit.TempSchema(t, ctx, "pgx", testkit.DSN())
+	if err := fsm.EnsureSchema(ctx, db, "fsm"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx, db, Migrations(), "migrations"); err != nil {
+		t.Fatal(err)
+	}
+	var got tv1.CreateJobReq
+	_, selfKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New("channel-hub", db, Deps{
+		IdentityURL: idStub(t).URL,
+		BrokerURL:   credStub(t).URL,
+		TaskURL:     taskStub(t, &got).URL,
+		ModelURL:    modelStub(t).URL,
+		TG:          NewTGAPI(tgStub(t).URL),
+		SelfKey:     selfKey,
+		Now:         time.Now,
+	})
+	u := rawText(9002, 480637186, 480637186, "")
+	u.Message.Photo = append(u.Message.Photo,
+		struct {
+			FileID   string `json:"file_id"`
+			FileSize int64  `json:"file_size"`
+			Width    int64  `json:"width"`
+			Height   int64  `json:"height"`
+		}{FileID: "tgfile2", FileSize: 4, Width: 2, Height: 2})
+	up := normalizeUpdate(u)
+	if err := s.tg.admitUpdate(ctx, up); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	var id string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id FROM inbound_updates WHERE update_id='9002'`).Scan(&id); err != nil {
+		t.Fatalf("intake id: %v", err)
+	}
+	r, err := inputOf(ctx, s, id)
+	if err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	if err := dispatchPhoto(ctx, s, r); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT kind, body FROM deliveries WHERE intake_id=$1 ORDER BY kind`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	seen := map[string]string{}
+	for rows.Next() {
+		var kind, body string
+		if err := rows.Scan(&kind, &body); err != nil {
+			t.Fatal(err)
+		}
+		seen[kind] = body
+	}
+	if !strings.Contains(seen["text"], "no vision") {
+		t.Fatalf("refusal text: %q", seen["text"])
+	}
+	if seen["status"] != "Refused." {
+		t.Fatalf("status phase: %q", seen["status"])
+	}
+	var state string
+	if err := db.QueryRowContext(ctx,
+		`SELECT state FROM fsm.machines WHERE kind='intake' AND id=$1`, id).Scan(&state); err != nil {
+		t.Fatalf("machine: %v", err)
+	}
+	if state != "completed" {
+		t.Fatalf("intake state %q", state)
+	}
+	if got.Space != "" {
+		t.Fatalf("provider reached: %+v", got)
 	}
 }
