@@ -1,6 +1,9 @@
 package svc
 
 import (
+	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/letya999/h-hub/shared/testkit"
@@ -56,6 +59,30 @@ func TestNormalizeUpdateKinds(t *testing.T) {
 	}
 	if got := normalizeUpdate(rawText(4, 7, 42, "A=b")); got.Kind == "secret" {
 		t.Fatal("short pair intercepted")
+	}
+}
+
+func TestTgAPIErrorNeverCarriesToken(t *testing.T) {
+	t.Parallel()
+	testkit.Req(t, "sys.secret-leak")
+
+	srv := httptest.NewServer(nil)
+	srv.Close() // refuse every connection: the transport error quotes the URL
+	api := NewTGAPI(srv.URL)
+	const token = "8775588743:AAtestSecretTokenMustNotLeak"
+
+	_, callErr := api.getUpdates(context.Background(), token, 1, 0)
+	testkit.Deny(t, "sys.secret-leak",
+		callErr != nil && !strings.Contains(callErr.Error(), token))
+	if callErr == nil || strings.Contains(callErr.Error(), token) {
+		t.Fatalf("call error leaks token: %v", callErr)
+	}
+
+	_, fileErr := api.download(context.Background(), token, "p", 8)
+	testkit.Deny(t, "sys.secret-leak",
+		fileErr != nil && !strings.Contains(fileErr.Error(), token))
+	if fileErr == nil || strings.Contains(fileErr.Error(), token) {
+		t.Fatalf("file error leaks token: %v", fileErr)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,12 +56,12 @@ func (a *tgAPI) call(ctx context.Context, token, method string,
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		a.base+"/bot"+token+"/"+method, bytes.NewReader(b))
 	if err != nil {
-		return fmt.Errorf("telegram %s request: %w", method, err)
+		return fmt.Errorf("telegram %s request: %w", method, redactToken(err, token))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := a.hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram %s call: %w", method, err)
+		return fmt.Errorf("telegram %s call: %w", method, redactToken(err, token))
 	}
 	defer res.Body.Close() //nolint:errcheck // best-effort close
 	data, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
@@ -160,11 +161,11 @@ func (a *tgAPI) download(ctx context.Context, token, path string, limit int64) (
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		a.base+"/file/bot"+token+"/"+path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("telegram file request: %w", err)
+		return nil, fmt.Errorf("telegram file request: %w", redactToken(err, token))
 	}
 	res, err := a.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("telegram file: %w", err)
+		return nil, fmt.Errorf("telegram file: %w", redactToken(err, token))
 	}
 	defer res.Body.Close() //nolint:errcheck // best-effort close
 	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
@@ -175,6 +176,16 @@ func (a *tgAPI) download(ctx context.Context, token, path string, limit int64) (
 		return nil, fmt.Errorf("telegram file over %d bytes", limit)
 	}
 	return data, nil
+}
+
+// redactToken strips the leased token from an error before it can
+// reach a log line: the Bot API puts the token in the request path,
+// so transport errors quote the full URL.
+func redactToken(err error, token string) error {
+	if err == nil || token == "" || !strings.Contains(err.Error(), token) {
+		return err
+	}
+	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), token, "[redacted]"))
 }
 
 // topicJSON writes the correct thread field: forum threads and
