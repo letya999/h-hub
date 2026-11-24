@@ -1,0 +1,27 @@
+# Schema registry: one row per leaf. The chain is an ordered list of
+# roles in data — a new role (org, agent) joins without a format or
+# schema change. class: how a lower layer may touch the leaf;
+# consumer: the service that enforces the leaf; effect: the runtime
+# action a change needs. An unproven live is applied as respawn.
+chain: [platform, user]
+leaves:
+  - {path: stack.identity.owner, class: invariant, consumer: spawn-controller, effect: recreate}
+  - {path: stack.image, class: invariant, consumer: spawn-controller, effect: respawn}
+  - {path: stack.uid, class: invariant, consumer: spawn-controller, effect: respawn}
+  - {path: stack.mem, class: narrow, consumer: spawn-controller, effect: respawn}
+  - {path: stack.cpu, class: narrow, consumer: spawn-controller, effect: respawn}
+  - {path: stack.pids, class: narrow, consumer: spawn-controller, effect: respawn}
+  - {path: config.sub, class: invariant, consumer: harness-runtime, effect: respawn}
+  - {path: config.task_url, class: invariant, consumer: harness-runtime, effect: respawn}
+  - {path: config.model_url, class: invariant, consumer: harness-runtime, effect: respawn}
+  - {path: config.timeout_ms, class: narrow, consumer: harness-runtime, effect: respawn}
+  - {path: models.default, class: choice, consumer: model-gateway, effect: live, proven: true}
+  - {path: models.routes, class: narrow, consumer: model-gateway, effect: live, proven: true}
+  - {path: models.daily_tokens, class: narrow, consumer: model-gateway, effect: live, proven: true}
+  - {path: models.run_tokens, class: narrow, consumer: model-gateway, effect: live, proven: true}
+  - {path: models.reserve, class: narrow, consumer: model-gateway, effect: live, proven: true}
+  - {path: workspace.layout.nodes, class: narrow, consumer: spawn-controller, effect: respawn}
+  - {path: workspace.files, class: user_data, consumer: spawn-controller, effect: recreate}
+  - {path: tools.core, class: narrow, consumer: tool-hub, effect: respawn}
+  - {path: tools.extended, class: narrow, consumer: tool-hub, effect: respawn}
+  - {path: grants.allow, class: narrow, consumer: tool-hub, effect: live}

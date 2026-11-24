@@ -1,0 +1,4 @@
+allow:
+  - tools.use
+  - memory.search
+  - workspace.read

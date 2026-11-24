@@ -82,7 +82,7 @@ func specPassports(s spaceRow) (Passports, error) {
 	if err := json.Unmarshal(s.spec, &p); err != nil {
 		return p, fmt.Errorf("spec decode: %w", err)
 	}
-	if p.SchemaVersion > 1 || p.SchemaVersion < 0 {
+	if p.SchemaVersion > 2 || p.SchemaVersion < 0 {
 		return p, fmt.Errorf("spec schema version %d is unsupported", p.SchemaVersion)
 	}
 	return p, nil
@@ -177,6 +177,12 @@ func deleteSpace(ctx context.Context, tx *sql.Tx, id string) error {
 	if _, err := tx.ExecContext(ctx,
 		"DELETE FROM runtimes WHERE space=$1", id); err != nil {
 		return fmt.Errorf("delete runtimes: %w", err)
+	}
+	for _, t := range []string{"layer_revisions", "effective_specs", "activations"} {
+		if _, err := tx.ExecContext(ctx,
+			"DELETE FROM "+t+" WHERE space=$1", id); err != nil {
+			return fmt.Errorf("delete %s: %w", t, err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		"DELETE FROM spaces WHERE id=$1", id); err != nil {

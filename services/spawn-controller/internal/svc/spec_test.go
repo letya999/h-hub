@@ -10,8 +10,7 @@ import (
 func TestSpecDigestBindsImage(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "adr.spawn-runtime.digest-pins-image")
-	p := defaultPassports("sha256:first", "http://model", "http://task",
-		Limits{Mem: "256m", CPU: "1.0", Pids: 256})
+	p := Passports{SchemaVersion: 2, Stack: StackPassport{Image: "sha256:first"}}
 	_, first, err := compile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -30,12 +29,12 @@ func TestSpecDigestBindsImage(t *testing.T) {
 func TestSpecSchemaVersion(t *testing.T) {
 	t.Parallel()
 	testkit.Req(t, "sys.schema-version")
-	p := defaultPassports("sha256:first", "http://model", "http://task", Limits{Mem: "256m", CPU: "1.0", Pids: 256})
+	p := Passports{SchemaVersion: 2}
 	spec, _, err := compile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(spec, []byte(`"schema_version":1`)) {
+	if !bytes.Contains(spec, []byte(`"schema_version":2`)) {
 		t.Fatalf("new spec has no version: %s", spec)
 	}
 	for _, doc := range []string{`{"stack":{},"config":{},"models":{}}`, string(spec)} {
@@ -43,6 +42,6 @@ func TestSpecSchemaVersion(t *testing.T) {
 			t.Fatalf("cannot read old/new spec: %v", err)
 		}
 	}
-	_, err = specPassports(spaceRow{spec: []byte(`{"schema_version":2}`)})
+	_, err = specPassports(spaceRow{spec: []byte(`{"schema_version":3}`)})
 	testkit.Deny(t, "sys.schema-version", err != nil)
 }

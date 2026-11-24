@@ -1,0 +1,10 @@
+allow:
+  - tools.use
+  - memory.capture
+  - memory.search
+  - memory.propose
+  - workspace.read
+  - workspace.write
+  - config.edit_own
+  - persona.edit_own
+  - models.select

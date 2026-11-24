@@ -1,0 +1,4 @@
+layout:
+  nodes:
+    - {path: /etc/hhub/render, mode: ro, note: "rendered spec and workspace files"}
+files: {}
