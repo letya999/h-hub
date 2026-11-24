@@ -77,16 +77,26 @@ func setGrants(t *testing.T, scope OwnerSpace, allow []string) string {
 		Docs: json.RawMessage(`{"grants":{"allow":` + string(raw) + `}}`)}); err != nil {
 		t.Fatalf("submit grants: %v", err)
 	}
-	prev, err := c.Preview(ctx, sv1.PreviewReq{Space: scope.Space})
-	if err != nil {
-		t.Fatalf("preview: %v", err)
-	}
-	act, err := c.Activate(ctx, sv1.ActivateReq{
-		Space: scope.Space, Base: prev.Base, Candidate: prev.Candidate})
-	if err != nil {
-		t.Fatalf("activate: %v", err)
-	}
-	return act.Digest
+	var digest string
+	testkit.Poll(t, 30*time.Second, 250*time.Millisecond, func() bool {
+		prev, err := c.Preview(ctx, sv1.PreviewReq{Space: scope.Space})
+		if err != nil {
+			t.Fatalf("preview: %v", err)
+		}
+		act, err := c.Activate(ctx, sv1.ActivateReq{
+			Space: scope.Space, Base: prev.Base, Candidate: prev.Candidate})
+		if err != nil {
+			// A concurrent activation (e.g. the warm job settling the
+			// platform candidate) moves the base; re-preview and retry.
+			if herrors.CodeOf(err) == herrors.CodeStale {
+				return false
+			}
+			t.Fatalf("activate: %v", err)
+		}
+		digest = act.Digest
+		return true
+	})
+	return digest
 }
 
 // toolJob drives one real turn: the scripted model asks for the tool,
