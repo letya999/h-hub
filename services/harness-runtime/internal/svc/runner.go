@@ -11,6 +11,7 @@ import (
 
 	mv1 "github.com/letya999/h-hub/contracts/model/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
+	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/services/harness-runtime/internal/config"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -104,41 +105,143 @@ func userContent(a Admission) any {
 	return parts
 }
 
-// turn is the one model call through the gateway's Complete op: the
-// request is stripped to exactly the OpenAI fields, the run token is
-// the only credential, and no other caller headers ever propagate.
+// maxToolRounds caps the tool-call loop: a model that never stops
+// calling tools is a run failure, not an unbounded turn.
+const maxToolRounds = 8
+
+// assistantMsg is one assistant reply: content or tool calls.
+type assistantMsg struct {
+	Content   string `json:"content"`
+	ToolCalls []struct {
+		ID       string `json:"id"`
+		Function struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		} `json:"function"`
+	} `json:"tool_calls"`
+}
+
+// turn drives the model conversation: the projection decides which
+// tools exist for the model, each tool call goes through tool-hub
+// admission, and the loop ends on plain content or the round cap.
+// The request is stripped to exactly the OpenAI fields, the run
+// token is the only credential, and no other caller headers ever
+// propagate.
 func (r *HermesRunner) turn(ctx context.Context, a Admission) (string, error) {
-	body, err := json.Marshal(map[string]any{
-		"model":    "scripted",
-		"messages": []map[string]any{{"role": "user", "content": userContent(a)}},
-	})
-	if err != nil {
-		return "", fmt.Errorf("model request: %w", err)
-	}
 	mc := &mv1.Client{T: mv1.HTTP{C: httpapi.NewClientTimeout(
 		r.cfg.ModelURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
+	tools, toolset, err := r.projection(ctx, a)
+	if err != nil {
+		return "", err
+	}
+	messages := []map[string]any{{"role": "user", "content": userContent(a)}}
+	for range maxToolRounds {
+		body, err := r.modelRequest(tools, messages)
+		if err != nil {
+			return "", err
+		}
+		msg, err := r.complete(ctx, mc, a, body)
+		if err != nil {
+			return "", err
+		}
+		if len(msg.ToolCalls) == 0 {
+			return msg.Content, nil
+		}
+		messages = append(messages, map[string]any{
+			"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
+		for _, call := range msg.ToolCalls {
+			messages = append(messages, map[string]any{
+				"role": "tool", "tool_call_id": call.ID,
+				"content": r.callTool(ctx, a, toolset, call.Function.Name,
+					call.Function.Arguments)})
+		}
+	}
+	return "", fmt.Errorf("tool rounds exhausted")
+}
+
+// modelRequest strips the request to the OpenAI fields the gateway
+// relays; the tools array appears only when the projection is live.
+func (r *HermesRunner) modelRequest(tools []map[string]any,
+	messages []map[string]any) (json.RawMessage, error) {
+	req := map[string]any{
+		"model":    "scripted",
+		"messages": messages,
+	}
+	if len(tools) > 0 {
+		req["tools"] = tools
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("model request: %w", err)
+	}
+	return body, nil
+}
+
+// projection asks tool-hub which tools the model may see under this
+// run's digest. A refused projection means no tools for the model;
+// any other failure refuses the turn. The name -> toolset map lets
+// the call path find the selected set again.
+func (r *HermesRunner) projection(ctx context.Context, a Admission) ([]map[string]any,
+	map[string]string, error) {
+	tc := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClientTimeout(
+		r.cfg.ToolURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
+	p, err := tc.Projection(ctx, thv1.ProjectionReq{Run: a.Run, Digest: a.Digest})
+	if err != nil {
+		if herrors.CodeOf(err) == herrors.CodeForbidden {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("tool projection: %w", err)
+	}
+	var tools []map[string]any
+	toolset := map[string]string{}
+	for _, t := range append(append([]thv1.ToolInfo{}, p.Core...), p.Extended...) {
+		tools = append(tools, map[string]any{"type": "function",
+			"function": map[string]any{"name": t.Name,
+				"description": t.Description, "parameters": t.Parameters}})
+		toolset[t.Name] = t.Toolset
+	}
+	return tools, toolset, nil
+}
+
+// callTool runs one model-asked call through tool-hub admission; the
+// result — echo or refusal — is what the model reads back.
+func (r *HermesRunner) callTool(ctx context.Context, a Admission,
+	toolset map[string]string, name string, args json.RawMessage) string {
+	tc := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClientTimeout(
+		r.cfg.ToolURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
+	res, err := tc.Invoke(ctx, thv1.InvokeReq{
+		Run: a.Run, Digest: a.Digest, Toolset: toolset[name], Tool: name,
+		Arguments: args})
+	if err != nil {
+		return herrors.New(herrors.CodeOf(err), "err.tool-denied").Error()
+	}
+	return string(res.Result)
+}
+
+// complete sends one turn request and decodes the assistant message.
+func (r *HermesRunner) complete(ctx context.Context, mc *mv1.Client,
+	a Admission, body json.RawMessage) (assistantMsg, error) {
+	var out assistantMsg
 	res, err := mc.Complete(ctx, mv1.CompleteReq{Run: a.Run, Request: body})
 	if err != nil {
 		var he *herrors.Error
 		if errors.As(err, &he) {
-			return "", errors.New(he.Error())
+			return out, errors.New(he.Error())
 		}
-		return "", fmt.Errorf("model call: %w", err)
+		return out, fmt.Errorf("model call: %w", err)
 	}
-	var out struct {
+	var wire struct {
 		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
+			Message assistantMsg `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal(res.Response, &out); err != nil {
-		return "", fmt.Errorf("model decode: %w", err)
+	if err := json.Unmarshal(res.Response, &wire); err != nil {
+		return out, fmt.Errorf("model decode: %w", err)
 	}
-	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("model: no choices")
+	if len(wire.Choices) == 0 {
+		return out, fmt.Errorf("model: no choices")
 	}
-	return out.Choices[0].Message.Content, nil
+	return wire.Choices[0].Message, nil
 }
 
 // reportHTTP posts the journal events to task-engine.

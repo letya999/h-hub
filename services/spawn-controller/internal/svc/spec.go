@@ -36,6 +36,7 @@ type ConfigPassport struct {
 	Sub       string `json:"sub"`
 	TaskURL   string `json:"task_url"`
 	ModelURL  string `json:"model_url"`
+	ToolURL   string `json:"tool_url"`
 	TimeoutMS int    `json:"timeout_ms"`
 }
 
