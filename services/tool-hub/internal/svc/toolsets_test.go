@@ -9,8 +9,8 @@ import (
 // names a capability and carries an argument schema.
 func TestRegistryLoads(t *testing.T) {
 	t.Parallel()
-	if len(registry) != 2 {
-		t.Fatalf("toolsets: got %d, want probe+cap", len(registry))
+	if len(registry) != 1 {
+		t.Fatalf("toolsets: got %d, want probe", len(registry))
 	}
 	for _, ts := range registry {
 		for _, td := range ts.Tools {
@@ -53,12 +53,12 @@ func TestDecideMatrix(t *testing.T) {
 
 // TestProjectFiltersUngranted pins the projection rule: a tool whose
 // capability is not granted is absent from the output, not refused
-// in place.
+// in place — with no grants at all the projection comes back empty.
 func TestProjectFiltersUngranted(t *testing.T) {
 	t.Parallel()
 	spec := specView{
 		Grants: grantsView{Allow: []string{"tools.use"}},
-		Tools:  toolsView{Core: []string{"probe"}, Extended: []string{"cap"}},
+		Tools:  toolsView{Core: []string{"probe"}},
 	}
 	p, err := project(spec)
 	if err != nil {
@@ -67,16 +67,19 @@ func TestProjectFiltersUngranted(t *testing.T) {
 	if len(p.Core) != 1 || p.Core[0].Name != "probe_echo" {
 		t.Fatalf("core: %+v", p.Core)
 	}
-	for _, ti := range p.Extended {
-		if ti.Name != "cap_tools_use" {
-			t.Fatalf("ungranted cap tool projected: %s", ti.Name)
-		}
-	}
 	var params struct {
 		Properties map[string]any `json:"properties"`
 	}
 	if err := json.Unmarshal(p.Core[0].Parameters, &params); err != nil {
 		t.Fatalf("schema decode: %v", err)
+	}
+	spec.Grants.Allow = nil
+	p, err = project(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Core)+len(p.Extended) != 0 {
+		t.Fatalf("ungranted tool projected: %+v", p)
 	}
 }
 

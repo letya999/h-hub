@@ -70,7 +70,7 @@ func caseAdmitAllowed(t *testing.T, ctx context.Context, c *Client) {
 
 func caseAdmitDenied(t *testing.T, ctx context.Context, c *Client) {
 	res, err := c.AdmitCall(ctx, AdmitCallReq{
-		Run: "run_1", Digest: "dg_1", Toolset: "cap", Tool: "missing_tool"})
+		Run: "run_1", Digest: "dg_1", Toolset: "probe", Tool: "missing_tool"})
 	if err != nil {
 		t.Fatalf("admit: %v", err)
 	}

@@ -39,8 +39,8 @@ func NewFake(digest string, grants ...string) *Fake {
 			Toolset: "probe", Name: "probe_echo",
 			Description: "Echo the given string.",
 			Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}}}`)}},
-		"cap/cap_note": {section: "extended", cap: "memory.search", info: ToolInfo{
-			Toolset: "cap", Name: "cap_note",
+		"extra/probe_note": {section: "extended", cap: "memory.search", info: ToolInfo{
+			Toolset: "extra", Name: "probe_note",
 			Description: "Capability probe.",
 			Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}}}`)}},
 	}}
