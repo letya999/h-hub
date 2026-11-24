@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var reqRe = regexp.MustCompile(`^(adr|cap|sys)\.[a-z0-9-]+(\.[a-z0-9-]+)?$`)
+var reqRe = regexp.MustCompile(`^(adr|cap|sys)\.[a-z0-9_-]+(\.[a-z0-9_-]+)*$`)
 
 // Req marks a test as a check for requirement IDs. IDs must use the
 // trace format (adr.<slug>.<invariant>, cap.<name>, sys.<name>); the

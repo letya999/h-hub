@@ -27,7 +27,7 @@ var sysIDs = map[string]bool{
 
 var (
 	reqLineRe = regexp.MustCompile(`\b(req:|requires:|testkit\.(Req|Deny)\()`)
-	idRe      = regexp.MustCompile(`\b(adr|cap|sys)\.[a-z0-9-]+(\.[a-z0-9-]+)?`)
+	idRe      = regexp.MustCompile(`\b(adr|cap|sys)\.[a-z0-9_-]+(\.[a-z0-9_-]+)*`)
 	adrFileRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-([a-z0-9-]+)\.md$`)
 	adrInvRe  = regexp.MustCompile(`\badr\.[a-z0-9-]+\.[a-z0-9-]+\b`)
 )
@@ -42,7 +42,11 @@ func Trace(root string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRegister(root, rows, adrs); err != nil {
+	caps, err := capabilityNames(root)
+	if err != nil {
+		return err
+	}
+	if err := checkRegister(root, rows, adrs, caps); err != nil {
 		return err
 	}
 	return findInFiles(root, []string{"_test.go", ".yaml", ".yml"}, func(rel, line string, n int) error {
@@ -58,26 +62,54 @@ func Trace(root string) error {
 	})
 }
 
-func checkID(id string, adrs map[string]map[string]bool) error {
+func checkID(id string, adrs map[string]map[string]bool,
+	caps map[string]bool) error {
 	parts := strings.SplitN(id, ".", 2)
 	switch parts[0] {
 	case "sys":
-		if !sysIDs[parts[1]] {
-			return fmt.Errorf("unknown system invariant %s", id)
-		}
+		return checkSysID(parts[1], id)
 	case "adr":
-		tail := strings.SplitN(parts[1], ".", 2)
-		invs, ok := adrs[tail[0]]
-		if !ok {
-			return fmt.Errorf("unknown ADR %s", id)
+		return checkADRID(id, parts[1], adrs)
+	case "cap":
+		if !caps[parts[1]] {
+			return fmt.Errorf("unknown capability %s", id)
 		}
-		if len(tail) != 2 || !invs[tail[1]] {
-			return fmt.Errorf("ADR %s declares no invariant %s", tail[0], id)
-		}
+		return nil
 	default:
-		return fmt.Errorf("capability catalog does not exist yet: %s", id)
+		return fmt.Errorf("unknown trace class %s", id)
+	}
+}
+
+func checkSysID(slug, id string) error {
+	if !sysIDs[slug] {
+		return fmt.Errorf("unknown system invariant %s", id)
 	}
 	return nil
+}
+
+func checkADRID(id, tail string, adrs map[string]map[string]bool) error {
+	parts := strings.SplitN(tail, ".", 2)
+	invs, ok := adrs[parts[0]]
+	if !ok {
+		return fmt.Errorf("unknown ADR %s", id)
+	}
+	if len(parts) != 2 || !invs[parts[1]] {
+		return fmt.Errorf("ADR %s declares no invariant %s", parts[0], id)
+	}
+	return nil
+}
+
+// capabilityNames resolves the catalog for cap.* ids; roots without
+// a catalog (gate unit tests) carry no capabilities.
+func capabilityNames(root string) (map[string]bool, error) {
+	names, err := loadCapabilities(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]bool{}, nil
+		}
+		return nil, err
+	}
+	return names, nil
 }
 
 // adrIndex maps each ADR slug to the invariant IDs it declares. An
