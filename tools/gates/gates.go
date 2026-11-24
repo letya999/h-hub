@@ -27,6 +27,7 @@ var All = []Gate{
 	{"env-declared", EnvDeclared},
 	{"env-no-secrets", NoEnvSecrets},
 	{"passport-schema", PassportSchema},
+	{"capabilities", Capabilities},
 	{"docs", Docs},
 	{"trace", Trace},
 	{"miglint", MigLint},
