@@ -1,12 +1,12 @@
 //go:build hhube2e
 
-// Capability triples (phase 9): every capability in the platform
-// catalog gets the same three checks on one warm runtime — a granted
-// call passes end to end, an ungranted tool is absent from the
-// projection (it does not exist for the model), and a direct call
-// without admission is refused. Grants are live leaves, so toggles
-// apply without restarts; the meta check counts runtime starts
-// against the distinct-projection budget.
+// Capability triples (phase 9): tools.use — the one capability with
+// a real consumer this phase — gets three checks on one warm
+// runtime: a granted call passes end to end, an ungranted tool is
+// absent from the projection (it does not exist for the model), and
+// a direct call without admission is refused. Grants are live
+// leaves, so toggles apply without restarts; the meta check counts
+// runtime starts against the distinct-projection budget.
 package capability
 
 import (
@@ -58,36 +58,6 @@ func catalogCaps(t *testing.T) []string {
 	}
 	if len(out) == 0 {
 		t.Fatal("catalog is empty")
-	}
-	return out
-}
-
-// capTools maps each capability to the probe tool that exercises it,
-// read from the same toolset registry the service ships.
-func capTools(t *testing.T) map[string]string {
-	t.Helper()
-	data, err := os.ReadFile(
-		"/src/services/tool-hub/internal/svc/platform/toolsets.yaml")
-	if err != nil {
-		t.Fatalf("read toolsets: %v", err)
-	}
-	var f struct {
-		Toolsets []struct {
-			Name  string `yaml:"name"`
-			Tools []struct {
-				Name       string `yaml:"name"`
-				Capability string `yaml:"capability"`
-			} `yaml:"tools"`
-		} `yaml:"toolsets"`
-	}
-	if err := yaml.Unmarshal(data, &f); err != nil {
-		t.Fatalf("toolsets parse: %v", err)
-	}
-	out := map[string]string{}
-	for _, ts := range f.Toolsets {
-		for _, tl := range ts.Tools {
-			out[tl.Capability] = tl.Name
-		}
 	}
 	return out
 }
@@ -237,7 +207,6 @@ func TestCapabilityTriples(t *testing.T) {
 	owner, space := "capability", EnsureSpace(t, "capability", Idem("cap"))
 	scope := OwnerSpace{Owner: owner, Space: space}
 	caps := catalogCaps(t)
-	tools := capTools(t)
 
 	// The platform role opens all catalog names; the user layer then
 	// selects from them — a user grant can only narrow what platform
@@ -257,49 +226,42 @@ func TestCapabilityTriples(t *testing.T) {
 	starts := map[string]bool{cid: true}
 	projections := map[string]bool{}
 
-	for _, capName := range caps {
-		tool := tools[capName]
-		if tool == "" {
-			t.Fatalf("no probe tool for %s", capName)
-		}
-		// The markers stay on the top-level test: the trace gate
-		// keys req/deny proofs by test function name, so each
-		// cap.* id attributes here, not to a subtest.
-		testkit.Req(t, "cap."+capName)
+	// tools.use is the capability with a real consumer this phase:
+	// probe_echo admits, projects and invokes through the same path
+	// every later tool will use. The markers stay on the top-level
+	// test — the trace gate keys req/deny proofs by test function.
+	testkit.Req(t, "cap.tools.use")
 
-		// Granted: the call passes end to end — model asks,
-		// admission allows, executor answers, receipt lands.
-		grantDigest := setGrants(t, scope, caps)
-		projections[grantDigest] = true
-		job := toolJob(t, scope, tool, capName)
-		if !receiptAllowed(t, job.ID, "job", tool) {
-			t.Fatalf("granted call for %s recorded a denial", capName)
-		}
-
-		// Ungranted: the tool is absent from the projection —
-		// it does not exist for the model — and a direct call
-		// without admission is refused.
-		denyDigest := setGrants(t, scope, without(caps, capName))
-		projections[denyDigest] = true
-		run := Idem("run", capName)
-		tc := runToken(t, scope, denyDigest, run)
-		p, err := tc.Projection(context.Background(), thv1.ProjectionReq{
-			Run: run, Digest: denyDigest})
-		if err != nil {
-			t.Fatalf("projection for %s: %v", capName, err)
-		}
-		absent := !hasTool(p, tool)
-		_, invErr := tc.Invoke(context.Background(), thv1.InvokeReq{
-			Run: run, Digest: denyDigest, Toolset: "cap", Tool: tool,
-			Arguments: json.RawMessage(`{"text":"ping"}`)})
-		refused := herrors.CodeOf(invErr) == herrors.CodeForbidden
-		if receiptAllowed(t, run, "run", tool) {
-			t.Fatalf("bypass call for %s recorded an allow", capName)
-		}
-		testkit.Deny(t, "cap."+capName, absent && refused)
-
-		starts[currentRuntime(t, space)] = true
+	// Granted: the call passes end to end — model asks, admission
+	// allows, executor answers, receipt lands.
+	grantDigest := setGrants(t, scope, caps)
+	projections[grantDigest] = true
+	job := toolJob(t, scope, "probe_echo", "tools.use")
+	if !receiptAllowed(t, job.ID, "job", "probe_echo") {
+		t.Fatal("granted call for tools.use recorded a denial")
 	}
+
+	// Ungranted: the tool is absent from the projection — it does
+	// not exist for the model (with no granted tool the projection
+	// is refused outright) — and a direct call without admission is
+	// refused.
+	denyDigest := setGrants(t, scope, without(caps, "tools.use"))
+	projections[denyDigest] = true
+	run := Idem("run", "tools.use")
+	tc := runToken(t, scope, denyDigest, run)
+	p, err := tc.Projection(context.Background(), thv1.ProjectionReq{
+		Run: run, Digest: denyDigest})
+	absent := err != nil || !hasTool(p, "probe_echo")
+	_, invErr := tc.Invoke(context.Background(), thv1.InvokeReq{
+		Run: run, Digest: denyDigest, Toolset: "probe", Tool: "probe_echo",
+		Arguments: json.RawMessage(`{"text":"ping"}`)})
+	refused := herrors.CodeOf(invErr) == herrors.CodeForbidden
+	if receiptAllowed(t, run, "run", "probe_echo") {
+		t.Fatal("bypass call for tools.use recorded an allow")
+	}
+	testkit.Deny(t, "cap.tools.use", absent && refused)
+
+	starts[currentRuntime(t, space)] = true
 
 	// Meta check: runtime starts in this run may not exceed the
 	// distinct projections plus kill scenarios (none here) — every
