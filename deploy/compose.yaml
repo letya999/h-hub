@@ -31,6 +31,7 @@ services:
       - keys-channel-hub:/keys/keys-channel-hub
       - keys-spawn-controller:/keys/keys-spawn-controller
       - keys-model-gateway:/keys/keys-model-gateway
+      - keys-tool-hub:/keys/keys-tool-hub
       - keys-credential-broker:/keys/keys-credential-broker
     networks: [hhub]
   spawn-controller:
@@ -94,6 +95,25 @@ services:
       HHUB_CHANNEL_URL: http://channel-hub:9000
     volumes:
       - keys-task-engine:/etc/hhub:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      keydist: {condition: service_completed_successfully}
+    networks: [hhub, hhub-space]
+  tool-hub:
+    image: hhub-tool-hub:local
+    container_name: tool-hub
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 256
+    environment:
+      HHUB_SUB: tool-hub
+      HHUB_DSN: postgres://tool_hub@postgres:5432/tool_hub?sslmode=disable
+      HHUB_KEYS: /etc/hhub
+      HHUB_IDENTITY_URL: http://identity-hub:9000
+      HHUB_SPAWN_URL: http://spawn-controller:9000
+    volumes:
+      - keys-tool-hub:/etc/hhub:ro
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
@@ -176,6 +196,7 @@ volumes:
   keys-channel-hub:
   keys-spawn-controller:
   keys-model-gateway:
+  keys-tool-hub:
   keys-credential-broker:
 networks:
   hhub:
