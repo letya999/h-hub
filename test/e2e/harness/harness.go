@@ -38,6 +38,7 @@ var (
 	SpawnURL    = testkit.Env("HHUB_SPAWN_URL", "http://spawn-controller:9000")
 	IdentityURL = testkit.Env("HHUB_IDENTITY_URL", "http://identity-hub:9000")
 	ModelURL    = testkit.Env("HHUB_MODEL_URL", "http://model-gateway:9000")
+	ToolURL     = testkit.Env("HHUB_TOOL_URL", "http://tool-hub:9000")
 	AdminDSN    = testkit.Env("HHUB_ADMIN_DSN",
 		"postgres://postgres@postgres:5432/postgres?sslmode=disable")
 	// Nonce makes idempotency keys unique per suite run and per test

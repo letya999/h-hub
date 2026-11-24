@@ -20,7 +20,7 @@ checkrun := "docker run --rm --network hhub -v /var/run/docker.sock:/var/run/doc
             "-e HHUB_TEST_DSN=" + dsn + " -e HHUB_ADMIN_DSN=" + dsn + \
             " -e HHUB_TASK_URL=http://task-engine:9000 -e HHUB_SPAWN_URL=http://spawn-controller:9000" + \
             " -e HHUB_IDENTITY_URL=http://identity-hub:9000 -e HHUB_MODEL_URL=http://model-gateway:9000" + \
-            " -e HHUB_BROKER_URL=http://credential-broker:9000" + \
+            " -e HHUB_BROKER_URL=http://credential-broker:9000 -e HHUB_TOOL_URL=http://tool-hub:9000" + \
             " -v hhub-conf:/etc/hhub:ro -v " + data + "/secrets:/run/hhub-secrets:ro" + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 check_line := if os() == "windows" { "just stack && " + checkrun + img + " just _check" } else { "just _check" }
@@ -88,12 +88,13 @@ e2e:
       -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
       -e HHUB_MODEL_URL=http://model-gateway:9000 \
       -e HHUB_BROKER_URL=http://credential-broker:9000 \
+      -e HHUB_TOOL_URL=http://tool-hub:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} sh -c 'go test -tags hhube2e -count=1 -timeout 10m \
-        ./test/e2e/channel ./test/e2e/lifecycle && \
+        ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability && \
         go test -tags hhube2e -count=1 -timeout 10m ./test/e2e/disrupt'
 
 # optional three-user load measurement, separate from mandatory e2e
