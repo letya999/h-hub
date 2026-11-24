@@ -22,7 +22,7 @@ var sysIDs = map[string]bool{
 	"passport-narrow": true, "passport-activate": true,
 	"passport-live": true, "passport-respawn": true,
 	"passport-recreate": true, "passport-rollback": true,
-	"passport-explain": true,
+	"passport-explain": true, "grant-revocation": true,
 }
 
 var (
