@@ -134,22 +134,59 @@ live during the phase-8 wrap-up:
 1. **Adapter activation on lease — proved.** The running stack picked
    the token up without restart or code change: polling works, intake
    admitted, answers delivered.
-2. **Live conversation — partially proved.** One real Telegram user
-   linked via `/start` + code, switched `/model devin` and held a real
-   conversation (delivered answers observed in `tg_status`). The
-   three-user variant still needs two more humans on the bot.
-3. **Photo / vision route — deferred.** No photo updates have been
-   sent by a human yet; nothing was simulated.
-4. **`KEY=value` deletion — deferred.** No secret-looking live message
-   observed; the interception is covered by unit tests, the live path
-   awaits a real message.
-5. **Status-edit cadence — deferred.** `tg_status` shows Working…/Done
-   rows; ≤ 1/5 s cadence needs a human conversation to observe.
+2. **Live conversation — proved.** Three real Telegram users linked
+   via `/start` + code and held real conversations on `devin`.
+   Two simultaneous conversations ran truly in parallel: runs started
+   16 ms apart, both succeeded (8–10 s), answers went to their own
+   chats, spend split per owner (`spend_events` seq 366/367). The
+   three-at-once variant was not exercised — the third user stayed
+   silent in the window.
+3. **Photo / vision route — proved, after a fix.** The declared
+   `vision: true` on `devin` was false: `devin/swe-2-flash` refuses
+   all image parts upstream (`invalid_argument`). A platform-layer
+   revision removed the flag and added `devin-vision`
+   (`devin/gemini-3-8-flash`, the same cliproxy/key_ref). Photo on
+   `devin-vision` produced a correct image description and a real
+   spend row (route `devin-vision`, charged 2070, measured).
+4. **`KEY=value` deletion — proved, after a fix.** Canary
+   `HHUB_LIVE_CHECK=canary-otter-77`: the message was deleted from the
+   chat, the hint delivered, no job spawned, zero hits in all service
+   logs. One defect found and fixed — the raw secret value was
+   persisted in `inbound_updates.body` (channel-hub commits, merged
+   via #16); the value now dies at normalize.
+5. **Status-edit cadence — proved.** One `message_id` per job; bodies
+   were only phase words (Working…/Done.). An ~80 s run with eight
+   progress heartbeats produced zero intermediate edits (same-phase
+   skip; the 5 s throttle is the backstop).
 6. **Leak canary with live secrets — proved.** A probe leased both
    real credentials (`telegram-bot-token`, `cliproxy-key`) through the
    production service-token path and grepped 24 readable surfaces
    (service logs, inspect output, pg_dump of every database, rendered
    configs): **0 hits**. Values were never printed.
+
+Defects found by the live cases and fixed (PRs #16, #17):
+
+- Photo job creation sent an empty idempotency key — refused by the
+  engine as missing-input (wedge: intake stuck in waiting).
+- A policy refusal finalized the status message as "Failed." — new
+  `channel.phase.refused` ("Refused."/"Отклонено.") on all five
+  refusal paths.
+- A failed run's raw error (`unavailable: err.unavailable`) was served
+  to the user as the answer; non-succeeded states now get the
+  localized `channel.job-failed` text.
+- `inbound_updates.body` stored the intercepted secret verbatim.
+- The platform layer's route table was declared twice (yaml +
+  `modelDefaults()`); `normalize()` now decodes the same yaml.
+- `config.timeout_ms` 120 s is one non-streamed model call; slow real
+  generations exceeded it — raised to 300 s everywhere (layer + live
+  revisions on the three spaces).
+
+Operational notes for the record: one Telegram update was lost in a
+channel-hub restart window (poller down, Telegram did not redeliver);
+`tg_status.phase` stays "Working…" after the final edit (internal
+cursor only); long answers split mid-word (cosmetic). The bot token
+appeared in service logs before the secret-body fix — rotation via
+@BotFather + `hubctl secret set` is the owner's call.
 
 ## Out of scope (per brief)
 
