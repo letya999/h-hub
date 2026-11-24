@@ -1,2 +1,2 @@
 sub: harness-runtime
-timeout_ms: 120000
+timeout_ms: 300000

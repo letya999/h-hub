@@ -101,35 +101,43 @@ type GrantsPassport struct {
 	Allow []string `json:"allow"`
 }
 
-// modelDefaults is the phase-6 route table: the scripted upstreams
-// for checks and CI plus the real provider behind cliproxy. The
-// scripted-alt route exists so /model has a second choice in tests.
-func modelDefaults() ModelsPassport {
-	return ModelsPassport{
-		Default: "scripted",
-		Routes: []ModelRoute{
-			{Name: "scripted", URL: "http://scripted-model:9000", Model: "scripted", Vision: true},
-			{Name: "scripted-alt", URL: "http://scripted-model:9000", Model: "scripted"},
-			{Name: "devin", URL: "http://cliproxy:8317", Model: "devin/swe-2-flash",
-				KeyRef: "cred://builtin/platform/cliproxy-key", Vision: true},
-		},
-		DailyTokens: 1_000_000,
-		RunTokens:   250_000,
-		Reserve:     4096,
+// modelDefaults decodes the shipped platform layer's models doc so
+// the normalize upgrade and new spaces share the one route table —
+// a second table in Go is what let the vision flag drift.
+func modelDefaults() (ModelsPassport, error) {
+	docs, err := layerDocs("platform/layer")
+	if err != nil {
+		return ModelsPassport{}, err
 	}
+	raw, err := json.Marshal(docs["models"])
+	var m ModelsPassport
+	if err == nil {
+		err = json.Unmarshal(raw, &m)
+	}
+	if err != nil {
+		return ModelsPassport{}, fmt.Errorf("platform layer models: %w", err)
+	}
+	if len(m.Routes) == 0 {
+		return ModelsPassport{}, fmt.Errorf("platform layer: empty models doc")
+	}
+	return m, nil
 }
 
 // normalize fills the fields a phase-5 spec predates: the routes
 // table and the token ceilings. The stored document is upgraded in
 // place at resolve time so the digest keeps pinning real bytes.
-func (p *Passports) normalize(modelURL string) bool {
+func (p *Passports) normalize(modelURL string) (bool, error) {
 	old := p.Models.Routes == nil || p.Models.DailyTokens == 0
 	if !old {
-		return false
+		return false, nil
 	}
-	p.Models = modelDefaults()
+	m, err := modelDefaults()
+	if err != nil {
+		return false, err
+	}
+	p.Models = m
 	p.Config.ModelURL = modelURL
-	return true
+	return true, nil
 }
 
 // compile renders the effective spec as canonical JSON plus its

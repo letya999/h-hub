@@ -279,7 +279,11 @@ func resolveSpecOp(s *Server, ctx context.Context, r sv1.ResolveSpecReq) (sv1.Re
 	if err != nil {
 		return sv1.ResolveSpecResp{}, err
 	}
-	if !p.normalize(s.deps.ModelURL) {
+	upgraded, err := p.normalize(s.deps.ModelURL)
+	if err != nil {
+		return sv1.ResolveSpecResp{}, err
+	}
+	if !upgraded {
 		return sv1.ResolveSpecResp{Spec: string(sp.spec), Digest: sp.digest, Owner: sp.owner}, nil
 	}
 	spec, digest, err := compile(p)
