@@ -9,7 +9,7 @@ if ! go test -tags "hhubdb libsqlite3" -json -count=1 ./... > "$report"; then
   exit 1
 fi
 if ! go test -tags hhube2e -json -count=1 -timeout 10m \
-  ./test/e2e/channel ./test/e2e/lifecycle >> "$report"; then
+  ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability >> "$report"; then
   cat "$report"
   exit 1
 fi
