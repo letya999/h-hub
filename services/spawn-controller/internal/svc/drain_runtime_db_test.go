@@ -96,6 +96,14 @@ func TestPendingRuntimeCreateIsNotMarkedMissing(t *testing.T) {
 
 func seedRuntimeState(t *testing.T, ctx context.Context, s *Server, space, runtime, state string) {
 	t.Helper()
+	seedRuntimeActor(t, ctx, s, space, runtime, state, "test")
+}
+
+// seedRuntimeActor lands the machine in state recording actor as the
+// last transition's actor — the marker EnsureRuntime reads to tell a
+// deliberate drain from a sweep or passport one.
+func seedRuntimeActor(t *testing.T, ctx context.Context, s *Server, space, runtime, state, actor string) {
+	t.Helper()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +117,7 @@ func seedRuntimeState(t *testing.T, ctx context.Context, s *Server, space, runti
 		t.Fatal(err)
 	}
 	if err := s.runM.Create(ctx, tx, clock{time.Now}, fsm.CreateReq{ID: runtime, Initial: state,
-		Actor: "test"}); err != nil {
+		Actor: actor}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {

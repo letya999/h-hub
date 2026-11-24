@@ -326,11 +326,12 @@ func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv
 		}
 		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
 	}
-	st, err := s.runM.State(ctx, s.db, rt.id)
-	if err != nil {
+	var st, actor string
+	if err := tx.QueryRowContext(ctx, `SELECT state, actor FROM fsm.machines
+		WHERE kind='runtime' AND id=$1`, rt.id).Scan(&st, &actor); err != nil {
 		return sv1.EnsureRuntimeResp{}, fmt.Errorf("runtime state: %w", err)
 	}
-	out, err := ensureByState(s, ctx, tx, sp, rtState{row: rt, state: st})
+	out, err := ensureByState(s, ctx, tx, sp, rtState{row: rt, state: st, actor: actor})
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
@@ -367,22 +368,32 @@ func claimRuntime(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow) error
 		digest: sp.digest, image: p.Stack.Image})
 }
 
-// rtState pairs a runtime row with its machine state.
+// rtState pairs a runtime row with its machine state and the actor
+// of the transition that landed it there.
 type rtState struct {
 	row   runtimeRow
 	state string
+	actor string
 }
 
 // ensureByState answers EnsureRuntime from the current machine state.
 func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 	rs rtState) (sv1.EnsureRuntimeResp, error) {
 	rt, st := rs.row, rs.state
+	notReady := sv1.EnsureRuntimeResp{Digest: sp.digest}
 	switch st {
 	case "warm":
 		return sv1.EnsureRuntimeResp{Runtime: rt.id, Endpoint: rt.endpoint,
 			Digest: sp.digest, Ready: true}, nil
-	case "busy":
-		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
+	case "starting", "busy":
+		return notReady, nil
+	case "draining":
+		// Sweep and passport drains are transient teardown the caller
+		// polls past; an operator drain refuses a blind re-activate
+		// (adr.spawn-runtime.digest-pins-image).
+		if rs.actor == "sweep" || rs.actor == "passport" {
+			return notReady, nil
+		}
 	case "absent", "missing", "failed":
 		// A reaped or lost container is re-claimed in place; the
 		// machine edge carries it to starting.
@@ -392,17 +403,13 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 				Payload: mustJSON(createEffect{Runtime: rt.id, Space: sp.id})}}}, nil); err != nil {
 			return sv1.EnsureRuntimeResp{}, fmt.Errorf("re-claim: %w", err)
 		}
-		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
-	case "starting", "draining":
-		// Transient states: the caller polls until the machine lands
-		// somewhere claimable (draining expires to missing).
-		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
-	default:
-		// quarantined: an operator must release it, no silent wait.
-		conflict := herrors.New(herrors.CodeConflict, "err.machine-state").
-			With("state", st)
-		return sv1.EnsureRuntimeResp{}, conflict //nolint:wrapcheck // shared error form
+		return notReady, nil
 	}
+	// Operator-drained and quarantined runtimes refuse: an operator
+	// releases them, no silent wait.
+	conflict := herrors.New(herrors.CodeConflict, "err.machine-state").
+		With("state", st)
+	return sv1.EnsureRuntimeResp{}, conflict //nolint:wrapcheck // shared error form
 }
 
 func releaseRuntimeOp(s *Server, ctx context.Context, r sv1.ReleaseRuntimeReq) (sv1.ReleaseRuntimeResp, error) {

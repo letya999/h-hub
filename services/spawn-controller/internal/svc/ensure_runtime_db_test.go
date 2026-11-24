@@ -16,6 +16,7 @@ import (
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	"github.com/letya999/h-hub/shared/auth"
 	"github.com/letya999/h-hub/shared/edges"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/store"
@@ -26,6 +27,7 @@ import (
 // a fresh claim starts from. EnsureRuntime must re-claim it — the
 // bug answered a live message with conflict and wedged the job.
 func TestEnsureAbsentRuntimeReclaims(t *testing.T) {
+	testkit.Req(t, "sys.wedge-unblock")
 	ctx := context.Background()
 	fx, db, key := ensureSvc(t, ctx)
 	space, runtime := newID("space"), newID("rt")
@@ -52,21 +54,51 @@ func TestEnsureAbsentRuntimeReclaims(t *testing.T) {
 	}
 }
 
-// A draining runtime is transient: ensure answers not-ready so the
-// caller polls until the machine lands somewhere claimable.
-func TestEnsureDrainingRuntimeWaits(t *testing.T) {
+// A draining runtime's answer depends on who sent it there: sweep
+// and passport teardowns are transient — the caller polls until the
+// machine settles — while an operator drain refuses a blind
+// re-activate (adr.spawn-runtime.digest-pins-image).
+func TestEnsureSweepDrainedRuntimeWaits(t *testing.T) {
+	testkit.Req(t, "sys.wedge-unblock")
 	ctx := context.Background()
 	fx, _, key := ensureSvc(t, ctx)
 	space, runtime := newID("space"), newID("rt")
-	seedRuntimeState(t, ctx, fx.s, space, runtime, "draining")
+	seedRuntimeActor(t, ctx, fx.s, space, runtime, "draining", "sweep")
 	client := ensureTestClient(t, fx.url, key)
 	resp, err := client.EnsureRuntime(ctx, sv1.EnsureRuntimeReq{Space: space})
 	if err != nil {
-		t.Fatalf("draining runtime ensure refused: %v", err)
+		t.Fatalf("sweep-drained runtime ensure refused: %v", err)
 	}
 	if resp.Ready {
 		t.Fatalf("draining runtime reported ready: %+v", resp)
 	}
+}
+
+func TestEnsurePassportDrainedRuntimeWaits(t *testing.T) {
+	testkit.Req(t, "sys.wedge-unblock")
+	ctx := context.Background()
+	fx, _, key := ensureSvc(t, ctx)
+	space, runtime := newID("space"), newID("rt")
+	seedRuntimeActor(t, ctx, fx.s, space, runtime, "draining", "passport")
+	client := ensureTestClient(t, fx.url, key)
+	resp, err := client.EnsureRuntime(ctx, sv1.EnsureRuntimeReq{Space: space})
+	if err != nil {
+		t.Fatalf("passport-drained runtime ensure refused: %v", err)
+	}
+	if resp.Ready {
+		t.Fatalf("draining runtime reported ready: %+v", resp)
+	}
+}
+
+func TestEnsureOperatorDrainedRuntimeConflicts(t *testing.T) {
+	ctx := context.Background()
+	fx, _, key := ensureSvc(t, ctx)
+	space, runtime := newID("space"), newID("rt")
+	seedRuntimeActor(t, ctx, fx.s, space, runtime, "draining", "operator")
+	client := ensureTestClient(t, fx.url, key)
+	_, err := client.EnsureRuntime(ctx, sv1.EnsureRuntimeReq{Space: space})
+	testkit.Deny(t, "adr.spawn-runtime.digest-pins-image",
+		herrors.CodeOf(err) == herrors.CodeConflict)
 }
 
 type ensureFixture struct {
