@@ -38,26 +38,30 @@ type rmEffect struct {
 }
 
 // Loops runs the outbox executor, the reconcile pass and watchdog
-// ticks until ctx ends.
+// ticks until ctx ends. Each gets its own goroutine: a deep outbox
+// (real Docker calls) must not starve the deadline sweeper.
 func (s *Server) Loops(ctx context.Context, l *log.L) {
-	out := time.NewTicker(outboxEvery)
-	defer out.Stop()
-	rec := time.NewTicker(reconcileEvery)
-	defer rec.Stop()
-	tick := time.NewTicker(tickEvery)
-	defer tick.Stop()
+	go s.every(ctx, outboxEvery, func() { s.outboxPass(ctx, l) })
+	go s.every(ctx, reconcileEvery, func() { s.reconcilePass(ctx, l) })
+	go s.every(ctx, tickEvery, func() {
+		if err := fsm.WriteTick(ctx, s.db, "fsm", tickName, s.deps.Now()); err != nil {
+			l.Error(ctx, "watchdog tick", err)
+		}
+	})
+	<-ctx.Done()
+}
+
+// every runs f on each tick until ctx ends; a slow pass drops its
+// missed ticks instead of piling up.
+func (s *Server) every(ctx context.Context, d time.Duration, f func()) {
+	t := time.NewTicker(d)
+	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-out.C:
-			s.outboxPass(ctx, l)
-		case <-rec.C:
-			s.reconcilePass(ctx, l)
-		case <-tick.C:
-			if err := fsm.WriteTick(ctx, s.db, "fsm", tickName, s.deps.Now()); err != nil {
-				l.Error(ctx, "watchdog tick", err)
-			}
+		case <-t.C:
+			f()
 		}
 	}
 }
