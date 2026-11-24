@@ -38,6 +38,7 @@ var broken = map[string][]string{
 	"env-declared":    {"env-declared", "env-environ"},
 	"env-no-secrets":  {"env-secrets-compose", "env-secrets-file"},
 	"passport-schema": {"passport-schema"},
+	"capabilities":    {"capabilities", "capabilities-grants"},
 	"docs":            {"docs-agents", "docs-testlink"},
 	"trace":           {"trace", "trace-invariant"},
 	"miglint":         {"miglint-drop", "miglint-state"},
