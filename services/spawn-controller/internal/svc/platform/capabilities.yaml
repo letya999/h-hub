@@ -10,10 +10,6 @@ capabilities:
     summary: Invoke the tools the effective spec projects.
     why: Tool calls are the agent's actuators; without this grant the
       projection is empty and no call is admitted.
-  - name: tools.configure
-    summary: Change which toolsets the effective spec selects.
-    why: Toolset selection moves attack surface; it is a separate
-      right from merely calling what is already selected.
   - name: config.edit_own
     summary: Edit own config-layer leaves.
     why: Owners delegate routine tuning without handing over the
@@ -22,22 +18,6 @@ capabilities:
     summary: Edit own persona documents.
     why: Persona is agent-authored state; editing it must not require
       owner rights.
-  - name: models.select
-    summary: Pick a route among the routes the spec allows.
-    why: Route choice within a bounded set is a live decision, not a
-      chain change.
-  - name: agents.restart_self
-    summary: Ask for own runtime to be respawned.
-    why: Recovery from a wedge must not need an owner in the loop,
-      but it is still a deliberate act worth a named right.
-  - name: observability.read_own_logs
-    summary: Read own runtime and job logs.
-    why: Self-diagnosis needs visibility; reading other spaces' logs
-      stays impossible.
-  - name: grants.read_own
-    summary: Read the grants of own effective spec.
-    why: Explaining what one may do requires seeing the decision
-      input, never editing it.
   - name: workspace.read
     summary: Read files in own workspace.
     why: Recall and citation need read access to the agent's own
