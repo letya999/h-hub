@@ -61,6 +61,28 @@ func TestGrantNamesResolveToCatalog(t *testing.T) {
 	}
 }
 
+// TestToolAdmissionFailClosed pins rule 13 for tool calls: a spec
+// that selects toolsets without an admission url must refuse runs —
+// quiet tool-less mode hides operator error. A spec selecting nothing
+// runs without tools by design.
+func TestToolAdmissionFailClosed(t *testing.T) {
+	t.Parallel()
+	if err := toolAdmission(Passports{
+		Tools: ToolsPassport{Core: []string{"probe"}},
+	}); err == nil {
+		t.Fatal("toolsets without tool_url passed admission")
+	}
+	for _, p := range []Passports{
+		{},
+		{Tools: ToolsPassport{Core: []string{"probe"}},
+			Config: ConfigPassport{ToolURL: "http://tool-hub:9000"}},
+	} {
+		if err := toolAdmission(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // route finds one named route in the passport table.
 func route(m ModelsPassport, name string) ModelRoute {
 	for _, rt := range m.Routes {

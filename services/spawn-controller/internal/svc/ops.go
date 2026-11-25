@@ -302,6 +302,26 @@ func resolveSpecOp(s *Server, ctx context.Context, r sv1.ResolveSpecReq) (sv1.Re
 // for runtime creation against a changed image.
 func staleDigest(req, current string) bool { return req != "" && req != current }
 
+// admissionReady refuses a run whose spec cannot be read or selects
+// toolsets without an admission url — fail closed at the run boundary.
+func admissionReady(sp spaceRow) error {
+	p, err := specPassports(sp)
+	if err != nil {
+		return err
+	}
+	return toolAdmission(p)
+}
+
+// toolAdmission refuses a run whose spec selects toolsets but names no
+// tool admission url — fail closed, never a quiet tool-less mode. A
+// spec selecting nothing runs without tools by design.
+func toolAdmission(p Passports) error {
+	if len(p.Tools.Core)+len(p.Tools.Extended) > 0 && p.Config.ToolURL == "" {
+		return herrors.New(herrors.CodeInvalid, "err.tool-admission-missing")
+	}
+	return nil
+}
+
 func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
 	sp, err := getSpaceAny(ctx, s.db, r.Space)
 	if err != nil {
@@ -311,6 +331,9 @@ func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv
 		stale := herrors.New(herrors.CodeStale, "err.stale").
 			With("digest", r.Digest)
 		return sv1.EnsureRuntimeResp{}, stale //nolint:wrapcheck // shared error form
+	}
+	if err := admissionReady(sp); err != nil {
+		return sv1.EnsureRuntimeResp{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
