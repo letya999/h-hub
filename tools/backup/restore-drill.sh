@@ -13,11 +13,12 @@ channel="hhub-restore-channel-$id"
 spawn="hhub-restore-spawn-$id"
 model="hhub-restore-model-$id"
 gateway="hhub-restore-gateway-$id"
+toolhub="hhub-restore-toolhub-$id"
 render="hhub-restore-render-$id"
 operator_conf="hhub-restore-conf-$id"
-services="identity-hub task-engine channel-hub spawn-controller model-gateway"
+services="identity-hub task-engine channel-hub spawn-controller model-gateway tool-hub"
 cleanup() {
-  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$pg" >/dev/null 2>&1 || true
+  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$toolhub" "$pg" >/dev/null 2>&1 || true
   for runtime in $(docker ps -aq --filter "network=$net" --filter label=hhub.managed=true); do
     docker rm -f "$runtime" >/dev/null 2>&1 || true
   done
@@ -55,9 +56,9 @@ while IFS= read -r db; do
     < "$dir/db/$db.dump" >/dev/null
 done < "$dir/databases"
 
-# A database introduced after the backup (phase 6: model_gateway)
-# starts empty and migrates itself on service boot.
-for db in model_gateway; do
+# A database introduced after the backup (phase 6: model_gateway,
+# phase 9: tool_hub) starts empty and migrates itself on service boot.
+for db in model_gateway tool_hub; do
   if ! grep -qx "$db" "$dir/databases"; then
     docker exec "$pg" psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE $db LOGIN" >/dev/null
     docker exec "$pg" createdb -U postgres -O "$db" "$db" >/dev/null
@@ -127,7 +128,12 @@ docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-contro
   -v "hhub-restore-keys-spawn-controller-$id:/etc/hhub:ro" -v "$render:/render" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   hhub-spawn-controller:local >/dev/null
-for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn" "model-gateway:$gateway"; do
+docker run -d --rm --name "$toolhub" --network "$net" --network-alias tool-hub \
+  -e HHUB_SUB=tool-hub -e 'HHUB_DSN=postgres://tool_hub@postgres:5432/tool_hub?sslmode=disable' \
+  -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
+  -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" hhub-tool-hub:local >/dev/null
+for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn" "model-gateway:$gateway" "tool-hub:$toolhub"; do
   host=${pair%%:*}
   container=${pair#*:}
   ready=0
