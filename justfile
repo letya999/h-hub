@@ -65,8 +65,12 @@ _check-commit:
 
 # --- stack operations (host side, docker commands work in both shells) ---
 
+# verify and fetch the official Hermes release before building the stack
+hermes-image:
+    docker run --rm -v {{ src }}:/src:ro -v /var/run/docker.sock:/var/run/docker.sock {{ trim(read("deploy/dev-image.ref")) }} sh tools/hermes/verify-pin.sh
+
 # build every service/runtime/test image the stack needs
-images:
+images: hermes-image
     docker build -f deploy/hubctl.Dockerfile -t hhub-hubctl:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=identity-hub -t hhub-identity-hub:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=channel-hub -t hhub-channel-hub:local .
