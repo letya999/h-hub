@@ -25,6 +25,7 @@ checkrun := "docker run --rm --network hhub -v /var/run/docker.sock:/var/run/doc
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 check_line := if os() == "windows" { "just stack && " + checkrun + img + " just _check" } else { "just _check" }
 fast_line  := if os() == "windows" { run + img + " just check-fast" } else { "just _check-fast" }
+commit_line := if os() == "windows" { run + "-e HHUB_COMMIT_MSG_FILE " + img + " just _check-commit" } else { "just _check-commit" }
 
 # every gate, same locally and in CI
 check:
@@ -33,6 +34,10 @@ check:
 # fast part for pre-commit
 check-fast:
     {{ fast_line }}
+
+# rule-21 gate for .githooks/commit-msg: the commit being created
+check-commit:
+    {{ commit_line }}
 
 # build the pinned dev image and record its digest
 dev-image:
@@ -54,6 +59,9 @@ _check-fast:
     golangci-lint run ./...
     go test $(go list ./... | grep -v /tools/proof)
     gitleaks protect --staged
+
+_check-commit:
+    go test ./tools/gates -run '^TestFixNeedsTestCommit$' -count=1 -args -commit-msg "$HHUB_COMMIT_MSG_FILE"
 
 # --- stack operations (host side, docker commands work in both shells) ---
 

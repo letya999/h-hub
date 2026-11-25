@@ -45,7 +45,7 @@ var broken = map[string][]string{
 	"sql-eol":         {"sql-eol"},
 	"module-ban":      {"module-ban"},
 	"blob-size":       {"blob-size"},
-	"fix-needs-test":  {"fix-needs-test"},
+	"fix-needs-test":  {"fix-needs-test", "fix-needs-test-blind"},
 	"cron-alert":      {"cron-alert"},
 }
 
