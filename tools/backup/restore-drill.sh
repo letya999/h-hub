@@ -116,6 +116,7 @@ docker run -d --rm --name "$task" --network "$net" --network-alias task-engine \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -e HHUB_CHANNEL_URL=http://channel-hub:9000 \
+  -e HHUB_TOOL_URL=http://tool-hub:9000 \
   -v "hhub-restore-keys-task-engine-$id:/etc/hhub:ro" hhub-task-engine:local >/dev/null
 docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hub \
   -e HHUB_SUB=channel-hub -e 'HHUB_DSN=postgres://channel_hub@postgres:5432/channel_hub?sslmode=disable' \
@@ -124,6 +125,7 @@ docker run -d --rm --name "$channel" --network "$net" --network-alias channel-hu
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -e HHUB_MODEL_URL=http://model-gateway:9000 \
   -e HHUB_BROKER_URL=http://credential-broker:9000 \
+  -e HHUB_TOOL_URL=http://tool-hub:9000 \
   -v "hhub-restore-keys-channel-hub-$id:/etc/hhub:ro" hhub-channel-hub:local >/dev/null
 docker run -d --rm --name "$gateway" --network "$net" --network-alias model-gateway \
   -e HHUB_SUB=model-gateway -e 'HHUB_DSN=postgres://model_gateway@postgres:5432/model_gateway?sslmode=disable' \
@@ -145,6 +147,7 @@ docker run -d --rm --name "$toolhub" --network "$net" --network-alias tool-hub \
   -e HHUB_SUB=tool-hub -e 'HHUB_DSN=postgres://tool_hub@postgres:5432/tool_hub?sslmode=disable' \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
+  -e HHUB_CHANNEL_URL=http://channel-hub:9000 \
   -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" hhub-tool-hub:local >/dev/null
 # credential-broker boots only after its key opens the restored
 # snapshot and PRAGMA cipher_version answers (open.go), so a green
