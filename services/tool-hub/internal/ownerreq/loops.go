@@ -68,13 +68,13 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) (bool, error) 
 }
 
 // channelClient builds a channel-hub client with a service token.
-func (s *Server) channelClient(ctx context.Context) (*cv1.Client, error) {
-	tok, err := s.deps.Tokens.Token(ctx, "channel-hub")
+func channelClient(ctx context.Context, deps Deps) (*cv1.Client, error) {
+	tok, err := deps.Tokens.Token(ctx, "channel-hub")
 	if err != nil {
 		return nil, fmt.Errorf("channel token: %w", err)
 	}
 	return &cv1.Client{T: cv1.HTTP{
-		C: httpapi.NewClient(s.deps.ChannelURL, tok)}}, nil
+		C: httpapi.NewClient(deps.ChannelURL, tok)}}, nil
 }
 
 // deliver hands the request to channel-hub and records the delivery
@@ -87,7 +87,7 @@ func (s *Server) deliver(ctx context.Context, id string) (bool, error) {
 	if rec.state != "pending" {
 		return true, nil
 	}
-	cl, err := s.channelClient(ctx)
+	cl, err := channelClient(ctx, s.deps)
 	if err != nil {
 		return false, err
 	}
@@ -115,7 +115,7 @@ func (s *Server) deliver(ctx context.Context, id string) (bool, error) {
 // retract tells channel-hub the request closed; the link and any
 // unfinished delivery retire on the channel side.
 func (s *Server) retract(ctx context.Context, id string) (bool, error) {
-	cl, err := s.channelClient(ctx)
+	cl, err := channelClient(ctx, s.deps)
 	if err != nil {
 		return false, err
 	}

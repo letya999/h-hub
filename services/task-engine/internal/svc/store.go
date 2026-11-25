@@ -318,11 +318,12 @@ func setResult(ctx context.Context, tx *sql.Tx, job, result string) error {
 type waitingJob struct {
 	id      string
 	request string
+	conv    string
 }
 
 // waitingJobs lists every job in waiting_owner with its request id.
 func waitingJobs(ctx context.Context, db *sql.DB) ([]waitingJob, error) {
-	rows, err := db.QueryContext(ctx, `SELECT j.id, j.owner_request FROM jobs j
+	rows, err := db.QueryContext(ctx, `SELECT j.id, j.owner_request, j.conversation FROM jobs j
 		JOIN fsm.machines m ON m.kind='job' AND m.id=j.id AND m.state='waiting_owner'`)
 	if err != nil {
 		return nil, fmt.Errorf("waiting jobs: %w", err)
@@ -331,7 +332,7 @@ func waitingJobs(ctx context.Context, db *sql.DB) ([]waitingJob, error) {
 	var out []waitingJob
 	for rows.Next() {
 		var w waitingJob
-		if err := rows.Scan(&w.id, &w.request); err != nil {
+		if err := rows.Scan(&w.id, &w.request, &w.conv); err != nil {
 			return nil, fmt.Errorf("scan waiting: %w", err)
 		}
 		out = append(out, w)

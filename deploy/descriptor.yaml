@@ -90,7 +90,7 @@ services:
       - to: harness-runtime
         ops: [SubmitRun, CancelRun]
       - to: tool-hub
-        ops: [CreateRequest, GetRequest]
+        ops: [CreateRequest, GetRequest, BindRequest]
   - name: harness-runtime
     zone: space
     deploy: false

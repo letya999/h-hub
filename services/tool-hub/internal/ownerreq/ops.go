@@ -19,7 +19,8 @@ import (
 // Handlers exposes the contract operation table.
 func (s *Server) Handlers() orv1.Handlers {
 	return orv1.Handlers{CreateRequest: s.createRequest,
-		AnswerRequest: s.answerRequest, GetRequest: s.getRequest}
+		AnswerRequest: s.answerRequest, GetRequest: s.getRequest,
+		BindRequest: s.bindRequest}
 }
 
 // caller is the verified op caller: a run token carries claims the
@@ -72,20 +73,18 @@ func (s *Server) createRequest(ctx context.Context, r orv1.CreateReq) (orv1.Crea
 }
 
 // addressee binds the request's target to what the caller proved:
-// run claims pin owner, space and conversation; a service caller
-// names the addressee explicitly.
+// run claims pin owner, space, job and run — the conversation
+// arrives later through BindRequest, because the mint wire stays
+// frozen for the rollback baseline; a service caller names the
+// addressee explicitly.
 func addressee(c caller, r orv1.CreateReq) (request, error) {
 	rec := request{kind: r.Kind, prompt: r.Prompt, options: r.Options}
 	if c.run {
 		if r.Kind == orv1.KindApproval {
 			return rec, herrors.New(herrors.CodeForbidden, "err.request-kind")
 		}
-		rec.owner, rec.space, rec.conv = c.claims.Owner, c.claims.Space, c.claims.Conv
+		rec.owner, rec.space = c.claims.Owner, c.claims.Space
 		rec.job, rec.run = c.claims.Job, c.claims.Run
-		if rec.conv == "" {
-			return rec, herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
-												With("leaf", "conversation")
-		}
 		return rec, nil
 	}
 	rec.owner, rec.space = r.Owner, r.Space
@@ -135,8 +134,9 @@ func (s *Server) create(ctx context.Context, c caller, r orv1.CreateReq) (orv1.C
 }
 
 // commitRequest writes the machine, the row and the mode decision in
-// one transaction: ask arms the delivery effect, other modes resolve
-// the request at once.
+// one transaction: ask arms the delivery effect when the addressee
+// is already deliverable — a run-created request waits for its
+// binding — other modes resolve the request at once.
 func (s *Server) commitRequest(ctx context.Context, rec request,
 	ttlSec int64, mode string, now time.Time) (string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -161,15 +161,102 @@ func (s *Server) commitRequest(ctx context.Context, rec request,
 			return "", err
 		}
 		state = "answered"
-	} else if _, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
-		(kind, machine_id, topic, payload) VALUES ('owner_request',$1,'deliver-request',$2)`,
-		rec.id, rec.id); err != nil {
-		return "", fmt.Errorf("request effect: %w", err)
+	} else if deliverable(rec) {
+		if err := armDelivery(ctx, tx, rec.id); err != nil {
+			return "", err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("request commit: %w", err)
 	}
 	return state, nil
+}
+
+// deliverable tells whether the row carries enough targeting for the
+// delivery effect: a conversation, or a direct channel binding.
+func deliverable(rec request) bool {
+	return rec.conv != "" || (rec.channel != "" && rec.external != "")
+}
+
+// armDelivery inserts the delivery effect row inside tx.
+func armDelivery(ctx context.Context, tx *sql.Tx, id string) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
+		(kind, machine_id, topic, payload) VALUES ('owner_request',$1,'deliver-request',$2)`,
+		id, id); err != nil {
+		return fmt.Errorf("request effect: %w", err)
+	}
+	return nil
+}
+
+// bindRequest pins one pending request to its conversation and arms
+// the delivery effect in the same transaction. Only services bind —
+// task-engine, when the runtime's journal event names the request;
+// the run token cannot carry the conversation because the mint wire
+// stays frozen for the rollback baseline. A repeat with the same
+// conversation is the idempotent success, never a second effect.
+func (s *Server) bindRequest(ctx context.Context, r orv1.BindReq) (orv1.BindResp, error) {
+	var out orv1.BindResp
+	if err := herrors.Require(r.Request != "" && r.Conversation != "",
+		"err.invalid-arg"); err != nil {
+		return out, err //nolint:wrapcheck // shared error form
+	}
+	c, err := callerOf(ctx)
+	if err != nil {
+		return out, err
+	}
+	if c.run {
+		return out, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	rec, err := s.loadFresh(ctx, r.Request)
+	if err != nil {
+		return out, err
+	}
+	if rec.state != "pending" {
+		return out, errClosed(rec.state)
+	}
+	if rec.conv == r.Conversation {
+		return orv1.BindResp{Request: rec.id, State: rec.state}, nil
+	}
+	if rec.conv != "" {
+		return out, herrors.New(herrors.CodeConflict, "err.request-bound")
+	}
+	return bindTx(ctx, s.db, r)
+}
+
+// bindTx pins the conversation under the row lock and arms the
+// delivery effect in the same transaction; the lock serializes
+// racing binds, so a loser reads the winner's value as a conflict.
+func bindTx(ctx context.Context, db *sql.DB, r orv1.BindReq) (orv1.BindResp, error) {
+	var out orv1.BindResp
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return out, fmt.Errorf("bind begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // best-effort close
+	var cur string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT conversation FROM owner_requests WHERE id=$1 FOR UPDATE`,
+		r.Request).Scan(&cur); err != nil {
+		return out, fmt.Errorf("bind lock: %w", err)
+	}
+	if cur == r.Conversation {
+		return orv1.BindResp{Request: r.Request, State: "pending"}, nil
+	}
+	if cur != "" {
+		return out, herrors.New(herrors.CodeConflict, "err.request-bound")
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE owner_requests SET conversation=$1 WHERE id=$2`,
+		r.Conversation, r.Request); err != nil {
+		return out, fmt.Errorf("bind write: %w", err)
+	}
+	if err := armDelivery(ctx, tx, r.Request); err != nil {
+		return out, err
+	}
+	if err := tx.Commit(); err != nil {
+		return out, fmt.Errorf("bind commit: %w", err)
+	}
+	return orv1.BindResp{Request: r.Request, State: "pending"}, nil
 }
 
 // autoAnswer resolves an approval at once under a non-ask mode: the
