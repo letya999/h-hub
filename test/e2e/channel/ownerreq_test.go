@@ -53,12 +53,20 @@ func ownerRoundTrip(t *testing.T, mark, tool, args, question, reply, answer, fin
 		cv1.InjectReq{External: owner, UpdateID: Idem("ask", mark), Text: "scenario:" + sid + " go"}); err != nil {
 		t.Fatalf("message inject: %v", err)
 	}
+	linked := cursor
 	cursor = WaitMock(t, owner, cursor, question, 3*time.Minute)
+	messages, err := MockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(),
+		cv1.ReadOutboxReq{External: owner, After: linked})
+	if err != nil || len(messages.Messages) != 1 || messages.Messages[0].Kind != "request" ||
+		messages.Messages[0].Body != "asking the owner\n\n"+question {
+		t.Fatalf("expected one question with the turn introduction, got %+v (%v)", messages, err)
+	}
 	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
 		cv1.InjectReq{External: owner, UpdateID: Idem("answer", mark), Text: reply}); err != nil {
 		t.Fatalf("answer inject: %v", err)
 	}
 	WaitMock(t, owner, cursor, final, 3*time.Minute)
+	WaitMock(t, owner, cursor, "Answer accepted.", 10*time.Second)
 	res, err := http.Get("http://scripted-model:9000/v1/scenarios/" + sid + "/verify")
 	if err != nil {
 		t.Fatal(err)
@@ -79,5 +87,5 @@ func TestOwnerChoiceRoundTrip(t *testing.T) {
 	t.Parallel()
 	ownerRoundTrip(t, "choose", "choose",
 		`{"question":"red or blue","options":["red","blue"]}`,
-		"red or blue", "2", "blue", "blue it is")
+		"red or blue\n1. red\n2. blue", "2", "blue", "blue it is")
 }

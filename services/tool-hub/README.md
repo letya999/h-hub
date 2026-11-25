@@ -27,23 +27,28 @@ executor, the provider behind it ([TestRegistryLoads](internal/svc/toolsets_test
 
 Implements `contracts/toolhub/v1` (`AdmitCall`, `Projection`,
 `Invoke`) and consumes `contracts/identity/v1` (run-token verify)
-and `contracts/spawn/v1` (`ResolveSpec`); the fake lives next to the
-contract.
+and `contracts/spawn/v1` (`ResolveSpec`). It owns `contracts/ownerreq/v1`,
+calls task-engine's service-only `GetRequestTurn` and delivers or retracts
+questions through `contracts/channel/v1`.
+[Question and choice round trips](../../test/e2e/channel/ownerreq_test.go)
 
 ## Does not do
 
-Does not own policy or grants (spawn-controller), does not ask the
-owner for confirmation (a later phase), does not run side-effecting
-tools — the only executor is the in-process `toolhub` echo.
+Spawn-controller owns policy and grants. Channel-hub owns delivery and
+routes replies to the request's addressee.
+[Single-use answers](../../test/e2e/channel/ownerreq_proof_test.go#TestOwnerAnswerSingleUse)
 
 ## Machines
 
-None. Receipts are append-only facts; the projection cache never
-changes under a digest.
+`owner_request` moves from `pending` to `answered`, `denied` or `expired`.
+Tool-hub checks the originating job before delivery and answer. A durable
+outbox check also retires unreported requests after a job finishes.
+[Lost-report scenario](../../test/e2e/channel/ownerreq_proof_test.go#TestFinishedJobRetractsUnreportedRequests)
 
 ## Config
 
-`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`, `HHUB_SPAWN_URL`;
+`HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`,
+`HHUB_SPAWN_URL`, `HHUB_CHANNEL_URL` and `HHUB_TASK_URL`,
 loaded once in `internal/config`.
 
 ## Runbook

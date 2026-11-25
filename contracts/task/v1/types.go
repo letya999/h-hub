@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
@@ -109,6 +110,26 @@ type GetRunResp struct {
 	Events []RunEvent `json:"events"`
 }
 
+// RequestTurnReq identifies the request and the run that created it.
+type RequestTurnReq struct {
+	Job     string `json:"job"`
+	Run     string `json:"run"`
+	Request string `json:"request"`
+}
+
+func (r RequestTurnReq) Validate() error {
+	return herrors.Require(r.Job != "" && r.Run != "" && r.Request != "", "err.missing-input") //nolint:wrapcheck // contract error
+}
+
+// RequestTurnResp exposes the delivery context only for the request this
+// job awaits. A positive Deadline means the turn ended and delivery can start.
+type RequestTurnResp struct {
+	Done         bool   `json:"done"`
+	Conversation string `json:"conversation,omitempty"`
+	Deadline     int64  `json:"deadline,omitempty"`
+	Introduction string `json:"introduction,omitempty"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateJob       func(context.Context, CreateJobReq) (CreateJobResp, error)
@@ -120,6 +141,7 @@ type Handlers struct {
 	SetHold         func(context.Context, SetHoldReq) (SetHoldResp, error)
 	ReportRun       func(context.Context, ReportRunReq) (ReportRunResp, error)
 	GetRun          func(context.Context, GetRunReq) (GetRunResp, error)
+	GetRequestTurn  func(context.Context, RequestTurnReq) (RequestTurnResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -134,6 +156,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"SetHold":         op(h.SetHold),
 		"ReportRun":       op(h.ReportRun),
 		"GetRun":          op(h.GetRun),
+		"GetRequestTurn":  op(h.GetRequestTurn),
 	}
 }
 

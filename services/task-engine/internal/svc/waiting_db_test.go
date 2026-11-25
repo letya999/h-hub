@@ -73,6 +73,9 @@ func TestOwnerRequestEventWaitsJob(t *testing.T) {
 	if state, err := s.jobM.State(ctx, db, jobID); err != nil || state != "waiting_owner" {
 		t.Fatalf("state %q %v", state, err)
 	}
+	if err := s.rep.applyEvent(ctx, runID, tv1.RunEvent{Seq: 3, Kind: "progress"}); err != nil {
+		t.Fatal(err)
+	}
 	var req string
 	var dl time.Time
 	if err := db.QueryRowContext(ctx, `SELECT j.owner_request, m.deadline_at FROM jobs j
@@ -92,7 +95,14 @@ func TestFinalSettlesRunButJobKeepsWaiting(t *testing.T) {
 	t.Parallel()
 	s, db, jobID, runID := waitingFixture(t)
 	ctx := context.Background()
-	deadline := time.Now().Add(90 * time.Second).Unix()
+	var jobDeadline time.Time
+	if err := db.QueryRowContext(ctx, "SELECT deadline_at FROM fsm.machines WHERE kind='job' AND id=$1", jobID).
+		Scan(&jobDeadline); err != nil {
+		t.Fatal(err)
+	}
+	// The run asks with one minute left on the job and gives the human two.
+	s.deps.Now = func() time.Time { return jobDeadline.Add(-time.Minute) }
+	deadline := jobDeadline.Add(time.Minute).Unix()
 	ev := tv1.RunEvent{Seq: 2, Kind: "owner-request",
 		Data: `{"request":"oqr-x","deadline":` + jsonInt(deadline) + `}`}
 	if err := s.rep.applyEvent(ctx, runID, ev); err != nil {
@@ -115,6 +125,37 @@ func TestFinalSettlesRunButJobKeepsWaiting(t *testing.T) {
 	}
 	if released == nil {
 		t.Fatal("conversation claim still held: the lane must stay free")
+	}
+	turn, err := s.ops.getRequestTurn(ctx, tv1.RequestTurnReq{Job: jobID, Run: runID, Request: "oqr-x"})
+	if err != nil || turn.Done || turn.Introduction != "i asked the owner" ||
+		turn.Conversation != "c" || turn.Deadline != jobDeadline.Unix() {
+		t.Fatalf("waiting turn: %+v %v, want job deadline %d", turn, err, jobDeadline.Unix())
+	}
+}
+
+func TestRequestTurnClosesForEveryStoppedJob(t *testing.T) {
+	t.Parallel()
+	for state, events := range map[string][]string{
+		"succeeded": {"settle-ok"}, "failed": {"settle-fail"},
+		"cancelled": {"cancel"}, "quarantined": {"lost", "expire"},
+	} {
+		t.Run(state, func(t *testing.T) {
+			t.Parallel()
+			s, _, job, run := waitingFixture(t)
+			ctx := context.Background()
+			req := tv1.RequestTurnReq{Job: job, Run: run, Request: "unreported"}
+			if got, err := s.ops.getRequestTurn(ctx, req); err != nil || got != (tv1.RequestTurnResp{}) {
+				t.Fatalf("unreported request during turn: %+v %v", got, err)
+			}
+			for _, event := range events {
+				if err := s.disp.withJobTx(ctx, job, event, "test", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got, err := s.ops.getRequestTurn(ctx, req); err != nil || !got.Done || got.Introduction != "" {
+				t.Fatalf("request after %s: %+v %v", state, got, err)
+			}
+		})
 	}
 }
 

@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // tgAPI is a minimal Telegram Bot API client: getUpdates long
@@ -56,12 +58,21 @@ func (a *tgAPI) call(ctx context.Context, token, method string,
 	if err != nil {
 		return fmt.Errorf("telegram %s encode: %w", method, err)
 	}
+	return a.post(ctx, token, method, tgBody{"application/json", b}, out)
+}
+
+type tgBody struct {
+	contentType string
+	data        []byte
+}
+
+func (a *tgAPI) post(ctx context.Context, token, method string, body tgBody, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.base+"/bot"+token+"/"+method, bytes.NewReader(b))
+		a.base+"/bot"+token+"/"+method, bytes.NewReader(body.data))
 	if err != nil {
 		return fmt.Errorf("telegram %s request: %w", method, redactToken(err, token))
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", body.contentType)
 	res, err := a.hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("telegram %s call: %w", method, redactToken(err, token))
@@ -194,8 +205,8 @@ type tgRequestMsg struct {
 // sendRequest posts one owner request with an inline keyboard — one
 // button per option, callback_data "a:<request>:<1-based index>".
 // The same index a mock user types is what the button reports.
-func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) (int64, error) {
-	body := map[string]any{"chat_id": m.Chat, "text": m.Text}
+func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) error {
+	body := map[string]any{"chat_id": m.Chat}
 	topicJSON(body, m.Topic)
 	var rows [][]map[string]any
 	for i, o := range m.Options {
@@ -203,12 +214,49 @@ func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) (
 			"text":          o,
 			"callback_data": fmt.Sprintf("a:%s:%d", m.RequestID, i+1)}})
 	}
-	body["reply_markup"] = map[string]any{"inline_keyboard": rows}
-	var out struct {
-		MessageID int64 `json:"message_id"`
+	if len(rows) > 0 {
+		body["reply_markup"] = map[string]any{"inline_keyboard": rows}
 	}
-	err := a.call(ctx, token, "sendMessage", body, &out)
-	return out.MessageID, err
+	if utf8.RuneCountInString(m.Text) > maxTextPart {
+		doc, err := requestDocument(m, body)
+		if err != nil {
+			return err
+		}
+		return a.post(ctx, token, "sendDocument", doc, nil)
+	}
+	body["text"] = m.Text
+	return a.call(ctx, token, "sendMessage", body, nil)
+}
+
+// A long turn and its question still occupy one message with working buttons.
+func requestDocument(m tgRequestMsg, fields map[string]any) (tgBody, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		b, err := json.Marshal(v) // numeric chat/topic IDs or the inline keyboard
+		if err != nil {
+			return tgBody{}, fmt.Errorf("document %s: %w", k, err)
+		}
+		if err := w.WriteField(k, string(b)); err != nil {
+			return tgBody{}, fmt.Errorf("document field: %w", err)
+		}
+	}
+	const maxCaption = 1024
+	text := []rune(m.Text)
+	if err := w.WriteField("caption", "…"+string(text[len(text)-maxCaption+1:])); err != nil {
+		return tgBody{}, fmt.Errorf("document caption: %w", err)
+	}
+	part, err := w.CreateFormFile("document", m.RequestID+".txt")
+	if err != nil {
+		return tgBody{}, fmt.Errorf("document part: %w", err)
+	}
+	if _, err := io.WriteString(part, m.Text); err != nil {
+		return tgBody{}, fmt.Errorf("document text: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return tgBody{}, fmt.Errorf("document finish: %w", err)
+	}
+	return tgBody{w.FormDataContentType(), buf.Bytes()}, nil
 }
 
 // answerCallbackQuery stops the button's spinner; the reply itself

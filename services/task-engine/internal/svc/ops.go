@@ -27,6 +27,7 @@ func (s *Server) handlers() tv1.Handlers {
 		SetHold:         s.ops.setHold,
 		ReportRun:       s.rep.reportRun,
 		GetRun:          s.ops.getRun,
+		GetRequestTurn:  s.ops.getRequestTurn,
 	}
 }
 

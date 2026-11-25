@@ -140,14 +140,9 @@ func (ad *tgAdapter) tgSendRequest(ctx context.Context, tx *sql.Tx, tok string, 
 	if err := json.Unmarshal(opts, &options); err != nil {
 		return fmt.Errorf("tg request options: %w", err)
 	}
-	if len(options) == 0 {
-		_, err := ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
-		return err
-	}
-	_, err = ad.api.sendRequest(ctx, tok, tgRequestMsg{
+	return ad.api.sendRequest(ctx, tok, tgRequestMsg{
 		Chat: chat, Topic: d.topic, Text: d.body,
 		RequestID: requestID, Options: options})
-	return err
 }
 
 // The first answer replaces the progress message. A delayed working
