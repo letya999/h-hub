@@ -156,7 +156,7 @@ func (s *Server) commitRequest(ctx context.Context, rec request,
 		return "", err
 	}
 	state := "pending"
-	if mode != "ask" {
+	if rec.kind == orv1.KindApproval && mode != "ask" {
 		if err := s.autoAnswer(ctx, tx, rec, mode, now); err != nil {
 			return "", err
 		}
@@ -172,11 +172,13 @@ func (s *Server) commitRequest(ctx context.Context, rec request,
 	return state, nil
 }
 
-// autoAnswer resolves a request at once under a non-ask mode: the
-// row and the machine record who answered (the mode), no delivery.
+// autoAnswer resolves an approval at once under a non-ask mode: the
+// canonical answer is yes — the mode permits the action, it never
+// picks for the human. The row records who answered (the mode); no
+// delivery is armed.
 func (s *Server) autoAnswer(ctx context.Context, tx *sql.Tx, rec request, mode string, now time.Time) error {
 	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
-		return recordAnswer(ctx, tx, rec.id, mode, "mode:"+mode)
+		return recordAnswer(ctx, tx, rec.id, "yes", "mode:"+mode)
 	}
 	err := s.m.Transition(ctx, tx, fsm.Request{
 		ID: rec.id, Event: "answer", Actor: "mode:" + mode, At: now}, hook)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -99,6 +100,10 @@ func validateSpec(p Passports) error {
 	}
 	if err := validateGrants(p.Grants); err != nil {
 		return err
+	}
+	if m := p.Config.Approvals.Mode; m != "" && !slices.Contains(approvalModes, m) {
+		return herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
+										With("leaf", "config.approvals.mode")
 	}
 	for f := range p.Workspace.Files {
 		if f == "" || strings.Contains(f, "..") || strings.HasPrefix(f, "/") {
@@ -274,12 +279,25 @@ func splitUnit(s string) (float64, string) {
 	return f, s[i:]
 }
 
+// approvalModes is the config.approvals.mode domain: ask requires
+// the human's answer, auto and bypass resolve approvals at once —
+// inside the grants, never beyond them.
+var approvalModes = []string{"ask", "auto", "bypass"}
+
 // checkChoice enforces enumerated leaves; domains live here, not in
 // the registry, because they derive from the effective document.
 func checkChoice(path string, v any) error {
-	if path != "models.default" {
-		return herrors.New(herrors.CodeInvalid, "err.forbidden"). //nolint:wrapcheck // shared error form
-										With("leaf", path)
+	switch path {
+	case "models.default":
+		return nil // domain = effective routes; validateSpec enforces it
+	case "config.approvals.mode":
+		s, ok := v.(string)
+		if !ok || !slices.Contains(approvalModes, s) {
+			return herrors.New(herrors.CodeInvalid, "err.forbidden"). //nolint:wrapcheck // shared error form
+											With("leaf", path)
+		}
+		return nil
 	}
-	return nil // domain = effective routes; validateSpec enforces it
+	return herrors.New(herrors.CodeInvalid, "err.forbidden"). //nolint:wrapcheck // shared error form
+									With("leaf", path)
 }

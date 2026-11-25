@@ -33,11 +33,20 @@ type StackPassport struct {
 // ConfigPassport is the harness runtime config shape rendered
 // host-side and mounted read-only.
 type ConfigPassport struct {
-	Sub       string `json:"sub"`
-	TaskURL   string `json:"task_url"`
-	ModelURL  string `json:"model_url"`
-	ToolURL   string `json:"tool_url"`
-	TimeoutMS int    `json:"timeout_ms"`
+	Sub       string            `json:"sub"`
+	TaskURL   string            `json:"task_url"`
+	ModelURL  string            `json:"model_url"`
+	ToolURL   string            `json:"tool_url"`
+	TimeoutMS int               `json:"timeout_ms"`
+	Approvals ApprovalsPassport `json:"approvals"`
+}
+
+// ApprovalsPassport is the ask/auto/bypass mode the owner-request
+// module in tool-hub enforces. ask requires an answer; auto answers
+// yes at once; bypass answers yes at once — inside the grants, never
+// beyond them.
+type ApprovalsPassport struct {
+	Mode string `json:"mode,omitempty"`
 }
 
 // ModelsPassport routes the model through the gateway: the named

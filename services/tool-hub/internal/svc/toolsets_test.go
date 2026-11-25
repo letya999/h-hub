@@ -92,3 +92,46 @@ func TestProjectUnknownToolset(t *testing.T) {
 		t.Fatal("unknown toolset projected")
 	}
 }
+
+// TestBypassStaysWithinGrants pins the bypass boundary: the mode
+// decides how approvals resolve, never what is admitted — the
+// projection and the decision are pure functions of the grants, so
+// a bypass spec admits exactly what its ask twin admits.
+func TestBypassStaysWithinGrants(t *testing.T) {
+	t.Parallel()
+	base := specView{
+		Grants: grantsView{Allow: []string{"tools.use"}},
+		Tools:  toolsView{Core: []string{"probe"}},
+	}
+	var projections []string
+	for _, mode := range []string{"ask", "bypass"} {
+		spec := base
+		spec.Config.Approvals.Mode = mode
+		p, err := project(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := json.Marshal(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		projections = append(projections, string(raw))
+	}
+	if projections[0] != projections[1] {
+		t.Fatalf("mode changed the projection: %s vs %s", projections[0], projections[1])
+	}
+	selected := map[string]bool{"probe": true}
+	granted := map[string]bool{"tools.use": true}
+	for _, tc := range []struct {
+		name string
+		gr   map[string]bool
+		want bool
+	}{
+		{"granted", granted, true},
+		{"ungranted", nil, false},
+	} {
+		if got, _, _ := decide(selected, tc.gr, "probe", "probe_echo"); got != tc.want {
+			t.Fatalf("%s under any mode: decide=%v want %v", tc.name, got, tc.want)
+		}
+	}
+}
