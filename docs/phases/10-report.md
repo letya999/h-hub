@@ -54,6 +54,32 @@ free while the owner decides.
   with `[owner request answered: X]` composed into the continuation
   input; denial or expiry fails it with a clear reason — never a hang.
 
+### Rollback-safe lazy binding (owner decision)
+
+- The first design minted the conversation into the run token. The
+  N-1 restore drill caught the break: the frozen v0.0.4.1 issuer
+  strict-decodes `MintRunToken`, the unknown `conv` field failed
+  every mint and even a plain echo run died in the restored stack.
+  Rolling identity-hub back across this boundary would have killed
+  the whole system, not just owner requests.
+- The owner approved the redesign over re-publishing the rollback
+  baseline: the mint wire is frozen again — bit-for-bit the v0.0.4.1
+  shape — and identity-hub no longer knows conversations exist.
+  A run-created request starts unbound and arms no delivery; the
+  service-only `BindRequest` op pins the conversation and arms the
+  delivery effect in one transaction. task-engine carries the binding
+  on its waiting poll, so a transient bind failure heals on the next
+  tick; binding is idempotent and a conflicting rebind refuses.
+- Proof: the local drill against the pinned v0.0.4.1 issuer image
+  ends `message answered`, and all six owner-request e2e pass on the
+  live stack unchanged — the redesign is invisible to every proof.
+- Open tension recorded for the owner: strict server-side decoding
+  (`DisallowUnknownFields` in shared/httpapi) is incompatible with
+  additive wire evolution inside any mixed-version window. No change
+  made in this phase — every future additive field on a frozen-seam
+  operation will face this same drill verdict and must be designed
+  lazily or the owner must re-baseline.
+
 ## Invariant matrix
 
 | ID | Status | Proof |
