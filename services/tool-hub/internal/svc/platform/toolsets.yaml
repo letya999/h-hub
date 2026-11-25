@@ -19,3 +19,29 @@ toolsets:
             text:
               type: string
           required: [text]
+  - name: ownerreq
+    executor: toolhub
+    provider: ownerreq
+    tools:
+      - name: ask
+        description: Ask the owner a free-text question and wait for the answer.
+        capability: tools.use
+        parameters:
+          type: object
+          properties:
+            question:
+              type: string
+          required: [question]
+      - name: choose
+        description: Offer the owner a numbered choice and wait for the pick.
+        capability: tools.use
+        parameters:
+          type: object
+          properties:
+            question:
+              type: string
+            options:
+              type: array
+              items:
+                type: string
+          required: [question, options]

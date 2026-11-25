@@ -128,12 +128,17 @@ services:
       - HHUB_KEYS
       - HHUB_IDENTITY_URL
       - HHUB_SPAWN_URL
+      - HHUB_CHANNEL_URL
     volumes:
       - name: keys-tool-hub
         path: /etc/hhub
     edges:
       - to: spawn-controller
         ops: [ResolveSpec]
+      - to: identity-hub
+        ops: [Resolve]
+      - to: channel-hub
+        ops: [DeliverRequest, RetractRequest]
   - name: memory-hub
     zone: agent
     database: postgres
@@ -161,6 +166,7 @@ services:
       - HHUB_SPAWN_URL
       - HHUB_MODEL_URL
       - HHUB_BROKER_URL
+      - HHUB_TOOL_URL
     volumes:
       - name: keys-channel-hub
         path: /etc/hhub
@@ -175,6 +181,8 @@ services:
         ops: [Usage, Routes]
       - to: credential-broker
         ops: [Acquire, Revoke]
+      - to: tool-hub
+        ops: [AnswerRequest]
   - name: ingress-gateway
     zone: edge
     database: none

@@ -1,2 +1,2 @@
-core: [probe]
+core: [probe, ownerreq]
 extended: []

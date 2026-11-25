@@ -46,3 +46,19 @@ func (c *Client) Alert(ctx context.Context, r AlertReq) (AlertResp, error) {
 	}
 	return out, nil
 }
+
+func (c *Client) DeliverRequest(ctx context.Context, r DeliverRequestReq) (DeliverRequestResp, error) {
+	var out DeliverRequestResp
+	if err := c.T.Call(ctx, "DeliverRequest", r, &out); err != nil {
+		return out, fmt.Errorf("deliver request: %w", err)
+	}
+	return out, nil
+}
+
+func (c *Client) RetractRequest(ctx context.Context, r RetractRequestReq) (RetractRequestResp, error) {
+	var out RetractRequestResp
+	if err := c.T.Call(ctx, "RetractRequest", r, &out); err != nil {
+		return out, fmt.Errorf("retract request: %w", err)
+	}
+	return out, nil
+}

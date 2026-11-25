@@ -38,14 +38,51 @@ type AlertResp struct {
 	OK bool `json:"ok"`
 }
 
+// DeliverRequestReq asks the channel to put one owner request in
+// front of its addressee. Addressing resolves Conversation first,
+// then Channel+External; Kind renders the form (buttons or numbered
+// text) without channel-hub knowing what is asked.
+type DeliverRequestReq struct {
+	Request      string   `json:"request"`
+	Owner        string   `json:"owner"`
+	Kind         string   `json:"kind"`
+	Prompt       string   `json:"prompt"`
+	Options      []string `json:"options,omitempty"`
+	Deadline     int64    `json:"deadline"`
+	Conversation string   `json:"conversation,omitempty"`
+	Channel      string   `json:"channel,omitempty"`
+	External     string   `json:"external,omitempty"`
+	Chat         string   `json:"chat,omitempty"`
+	Topic        string   `json:"topic,omitempty"`
+}
+type DeliverRequestResp struct {
+	Delivery string `json:"delivery"`
+}
+
+// RetractRequestReq closes a request's open link and retires its
+// unfinished delivery — the owner side of the request/delivery pair.
+type RetractRequestReq struct {
+	Request string `json:"request"`
+}
+type RetractRequestResp struct {
+	OK bool `json:"ok"`
+}
+
 type Handlers struct {
-	Inject     func(context.Context, InjectReq) (InjectResp, error)
-	ReadOutbox func(context.Context, ReadOutboxReq) (ReadOutboxResp, error)
-	Alert      func(context.Context, AlertReq) (AlertResp, error)
+	Inject         func(context.Context, InjectReq) (InjectResp, error)
+	ReadOutbox     func(context.Context, ReadOutboxReq) (ReadOutboxResp, error)
+	Alert          func(context.Context, AlertReq) (AlertResp, error)
+	DeliverRequest func(context.Context, DeliverRequestReq) (DeliverRequestResp, error)
+	RetractRequest func(context.Context, RetractRequestReq) (RetractRequestResp, error)
 }
 
 func Ops(h Handlers) map[string]httpapi.Handler {
-	return map[string]httpapi.Handler{"Inject": op(h.Inject), "ReadOutbox": op(h.ReadOutbox), "Alert": op(h.Alert)}
+	return map[string]httpapi.Handler{
+		"Inject":         op(h.Inject),
+		"ReadOutbox":     op(h.ReadOutbox),
+		"Alert":          op(h.Alert),
+		"DeliverRequest": op(h.DeliverRequest),
+		"RetractRequest": op(h.RetractRequest)}
 }
 
 func op[Req, Resp any](fn func(context.Context, Req) (Resp, error)) httpapi.Handler {

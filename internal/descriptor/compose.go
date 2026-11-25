@@ -224,6 +224,7 @@ var envFixed = map[string]string{
 	"HHUB_TASK_URL":      "http://task-engine:9000",
 	"HHUB_MODEL_URL":     "http://model-gateway:9000",
 	"HHUB_BROKER_URL":    "http://credential-broker:9000",
+	"HHUB_TOOL_URL":      "http://tool-hub:9000",
 	"HHUB_DB_PATH":       "/data/broker.db",
 	// Compose prefixes volume names with the project name "hhub".
 	"HHUB_RENDER_VOL": "hhub_hhub-render",

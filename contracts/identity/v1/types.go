@@ -81,6 +81,7 @@ type RunClaims struct {
 	Space  string   `json:"space"`
 	Owner  string   `json:"owner"`
 	Digest string   `json:"digest"`
+	Conv   string   `json:"conv,omitempty"`
 	Aud    []string `json:"aud"`
 	Exp    int64    `json:"exp"`
 	Kid    string   `json:"kid"`
@@ -127,6 +128,7 @@ type MintRunTokenReq struct {
 	Space  string   `json:"space"`
 	Owner  string   `json:"owner"`
 	Digest string   `json:"digest"`
+	Conv   string   `json:"conv,omitempty"`
 	Aud    []string `json:"aud"`
 }
 

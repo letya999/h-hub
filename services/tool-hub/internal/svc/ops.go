@@ -77,7 +77,8 @@ func (s *Server) invoke(ctx context.Context, r thv1.InvokeReq) (thv1.InvokeResp,
 		return thv1.InvokeResp{}, herrors.New(herrors.CodeForbidden, "err.tool-denied")
 	}
 	ts := registry[r.Toolset]
-	res, err := executors[ts.Executor](ctx, r.Arguments)
+	res, err := executors[ts.Executor](ctx, s,
+		toolCall{ts: ts, name: r.Tool, claims: d.claims, args: r.Arguments})
 	if err != nil {
 		return thv1.InvokeResp{}, err
 	}

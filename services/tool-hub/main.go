@@ -15,6 +15,7 @@ import (
 	"github.com/letya999/h-hub/services/tool-hub/internal/config"
 	"github.com/letya999/h-hub/services/tool-hub/internal/svc"
 	"github.com/letya999/h-hub/shared/auth"
+	"github.com/letya999/h-hub/shared/edges"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/lifecycle"
 	"github.com/letya999/h-hub/shared/log"
@@ -55,15 +56,28 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("issuer key: %w", err)
 	}
+	edgeData, err := os.ReadFile(filepath.Join(cfg.Keys, "edges"))
+	if err != nil {
+		return fmt.Errorf("edges: %w", err)
+	}
+	tab, err := edges.Parse(string(edgeData))
+	if err != nil {
+		return fmt.Errorf("edge table: %w", err)
+	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
 		IdentityURL: cfg.IdentityURL,
 		SpawnURL:    cfg.SpawnURL,
+		ChannelURL:  cfg.ChannelURL,
 		Issuer:      issuer,
 		SelfKey:     key,
+		Edges:       tab.For(cfg.Sub),
 		Now:         time.Now,
 	}, l)
 	sctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	g := lifecycle.NewGroup(sctx)
+	defer g.Stop()
+	g.Go(func(ctx context.Context) { s.Loops(ctx, l) })
 	return serve(sctx, l, s.Mux())
 }
 
