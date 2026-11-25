@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/letya999/h-hub/shared/auth"
 )
@@ -32,6 +33,12 @@ type Rendered struct {
 // Env loads C from the environment; every declared variable is
 // required (missing input is a refusal).
 func Env() (C, error) {
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(key, "HHUB_") && key != "HHUB_CONFIG" && key != "HHUB_SUB" {
+			return C{}, fmt.Errorf("config: unexpected environment key %s", key)
+		}
+	}
 	c := C{
 		Sub:    os.Getenv("HHUB_SUB"),
 		Config: os.Getenv("HHUB_CONFIG"),

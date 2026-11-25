@@ -134,37 +134,56 @@ func (s *Server) dockerCreate(ctx context.Context, e createEffect) error {
 	if err != nil {
 		return err
 	}
-	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, sp.id, p); err != nil {
-		return err
-	}
 	name := "hhub-" + e.Runtime
-	cid, err := s.deps.Docker.CreateAndStart(ctx, backend.Launch{
-		Name:      name,
-		Image:     p.Stack.Image,
-		UID:       p.Stack.UID,
-		Env:       harnessEnv(sp.id),
-		MemBytes:  memBytes(p.Stack.Mem),
-		NanoCPUs:  nanoCPUs(p.Stack.CPU),
-		Pids:      p.Stack.Pids,
-		Network:   s.deps.Network,
-		RenderVol: s.deps.RenderVol,
-	})
+	cid, err := s.launchHermes(ctx, name, sp, p)
 	if err != nil {
-		return fmt.Errorf("docker create: %w", err)
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
-	if err := setContainer(ctx, tx, e.Runtime, cid,
-		"http://"+name+":9000"); err != nil {
+	if err := setContainer(ctx, tx, e.Runtime, cid, "http://"+name+":9000"); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p Passports) (string, error) {
+	if err := s.requireImage(p.Stack.Image); err != nil {
+		return "", err
+	}
+	adapter, err := s.deps.Docker.ImageID(ctx, s.deps.Image)
+	if err != nil {
+		return "", fmt.Errorf("resolve adapter image: %w", err)
+	}
+	dir := filepath.Join(sp.id, sp.digest)
+	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, dir, p); err != nil {
+		return "", err
+	}
+	cid, err := s.deps.Docker.CreateAndStart(ctx, backend.Launch{
+		Name:      name,
+		Image:     p.Stack.Image,
+		Adapter:   adapter,
+		Space:     sp.id,
+		Digest:    sp.digest,
+		UID:       p.Stack.UID,
+		Env:       []string{"HHUB_SUB=harness-runtime", "HHUB_CONFIG=/etc/hhub/render/config.json"},
+		MemBytes:  memBytes(p.Stack.Mem),
+		NanoCPUs:  nanoCPUs(p.Stack.CPU),
+		Pids:      p.Stack.Pids,
+		Network:   s.deps.Network,
+		RenderVol: s.deps.RenderVol,
+		ConfigDir: dir,
+	})
+	if err != nil {
+		return "", fmt.Errorf("docker create: %w", err)
+	}
+	return cid, nil
 }
 
 // renderConfig writes the space's effective harness config and the
@@ -174,6 +193,9 @@ func renderConfig(renderDir string, issuer ed25519.PublicKey, space string, p Pa
 	dir := filepath.Join(renderDir, space)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("render dir: %w", err)
+	}
+	if err := writeHermesConfig(dir); err != nil {
+		return err
 	}
 	data, err := json.Marshal(p.Config)
 	if err != nil {
@@ -202,15 +224,6 @@ func renderConfig(renderDir string, issuer ed25519.PublicKey, space string, p Pa
 		}
 	}
 	return nil
-}
-
-// harnessEnv is the exact environment allowlist for a runtime
-// container: nothing else crosses the boundary.
-func harnessEnv(space string) []string {
-	return []string{
-		"HHUB_SUB=harness-runtime",
-		"HHUB_CONFIG=/etc/hhub/render/" + space + "/config.json",
-	}
 }
 
 func (s *Server) dockerRemove(ctx context.Context, e rmEffect) error {

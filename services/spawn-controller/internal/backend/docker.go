@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -41,8 +42,11 @@ func New(sock, network string) *Docker {
 
 // Launch describes one hardened runtime container.
 type Launch struct {
-	Name      string   // container name == runtime endpoint host
-	Image     string   // pinned name@sha256
+	Name      string // container name == runtime endpoint host
+	Image     string // pinned name@sha256
+	Adapter   string // immutable h-hub image containing /svc
+	Space     string
+	Digest    string   // effective passport at launch
 	UID       string   // non-root uid:gid
 	Env       []string // exact allowlist, nothing else
 	MemBytes  int64
@@ -58,6 +62,7 @@ type createReq struct {
 	Image        string              `json:"Image"`
 	User         string              `json:"User"`
 	Env          []string            `json:"Env"`
+	Entrypoint   []string            `json:"Entrypoint"`
 	Labels       map[string]string   `json:"Labels"`
 	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
 	HostConfig   hostConfig          `json:"HostConfig"`
@@ -85,13 +90,20 @@ type hostConfig struct {
 	Tmpfs          map[string]string `json:"Tmpfs"`
 	Mounts         []mount           `json:"Mounts,omitempty"`
 	SecurityOpt    []string          `json:"SecurityOpt"`
+	Init           bool              `json:"Init"`
 }
 
 type mount struct {
-	Type     string `json:"Type"`
-	Source   string `json:"Source"`
-	Target   string `json:"Target"`
-	ReadOnly bool   `json:"ReadOnly"`
+	Type          string     `json:"Type"`
+	Source        string     `json:"Source"`
+	Target        string     `json:"Target"`
+	ReadOnly      bool       `json:"ReadOnly"`
+	VolumeOptions *mountPath `json:"VolumeOptions,omitempty"`
+	ImageOptions  *mountPath `json:"ImageOptions,omitempty"`
+}
+
+type mountPath struct {
+	Subpath string `json:"Subpath"`
 }
 
 // CreateAndStart creates the container with the hardened spec and
@@ -100,7 +112,13 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 	if l.Network == "" || l.Network != d.network {
 		return "", fmt.Errorf("docker launch outside network %q", d.network)
 	}
-	id, running, err := d.existingLaunch(ctx, l)
+	spec := runtimeSpec(l)
+	var upstream struct{ Config struct{ Env []string } }
+	if err := d.req(ctx, http.MethodGet, "/images/"+l.Image+"/json", nil, &upstream); err != nil {
+		return "", fmt.Errorf("inspect pinned Hermes: %w", err)
+	}
+	spec.Env = append(slices.Clone(l.Env), upstream.Config.Env...)
+	id, running, err := d.existingLaunch(ctx, l.Name, spec)
 	if err != nil {
 		return "", err
 	}
@@ -111,39 +129,6 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 			}
 		}
 		return id, nil
-	}
-	spec := createReq{
-		Image: l.Image,
-		User:  l.UID,
-		Env:   l.Env,
-		Labels: map[string]string{
-			"hhub.managed": "true",
-			"hhub.runtime": l.Name,
-		},
-		HostConfig: hostConfig{
-			NetworkMode:    l.Network,
-			CapDrop:        []string{"ALL"},
-			ReadonlyRootfs: true,
-			Memory:         l.MemBytes,
-			NanoCPUs:       l.NanoCPUs,
-			PidsLimit:      l.Pids,
-			Tmpfs:          map[string]string{"/tmp": "rw,noexec,nosuid,size=16m"},
-			SecurityOpt:    []string{"no-new-privileges"},
-		},
-		Healthcheck: healthCheck{
-			Test: []string{"CMD", "wget", "-q", "-O", "/dev/null",
-				"http://127.0.0.1:9000/healthz"},
-			Interval:    1e9,
-			Timeout:     2e9,
-			Retries:     30,
-			StartPeriod: 5e9,
-		},
-	}
-	if l.RenderVol != "" {
-		spec.HostConfig.Mounts = []mount{{
-			Type: "volume", Source: l.RenderVol,
-			Target: "/etc/hhub/render", ReadOnly: true,
-		}}
 	}
 	var out struct{ ID string }
 	if err := d.req(ctx, http.MethodPost,
@@ -157,16 +142,61 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 	return out.ID, nil
 }
 
+func runtimeSpec(l Launch) createReq {
+	return createReq{
+		Image:      l.Image,
+		User:       l.UID,
+		Env:        l.Env,
+		Entrypoint: []string{"/hhub-adapter"},
+		Labels: map[string]string{
+			"hhub.managed": "true",
+			"hhub.runtime": l.Name,
+			"hhub.agent":   "main",
+			"hhub.space":   l.Space,
+			"hhub.digest":  l.Digest,
+		},
+		HostConfig: hostConfig{
+			NetworkMode:    l.Network,
+			CapDrop:        []string{"ALL"},
+			ReadonlyRootfs: true,
+			Memory:         l.MemBytes,
+			NanoCPUs:       l.NanoCPUs,
+			PidsLimit:      l.Pids,
+			Tmpfs: map[string]string{
+				"/tmp":      "rw,noexec,nosuid,size=16m",
+				"/opt/data": "rw,nodev,noexec,nosuid,uid=65534,gid=65534,mode=0700,size=64m",
+			},
+			Init: true,
+			Mounts: []mount{
+				{Type: "image", Source: l.Adapter, Target: "/hhub-adapter", ReadOnly: true, ImageOptions: &mountPath{"svc"}},
+				{Type: "volume", Source: l.RenderVol, Target: "/etc/hhub/render", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir}},
+				{Type: "volume", Source: l.RenderVol, Target: "/opt/data/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
+			},
+			SecurityOpt: []string{"no-new-privileges"},
+		},
+		Healthcheck: healthCheck{
+			Test: []string{"CMD", "curl", "-fsS", "-o", "/dev/null",
+				"http://127.0.0.1:9000/healthz"},
+			Interval:    1e9,
+			Timeout:     2e9,
+			Retries:     30,
+			StartPeriod: 5e9,
+		},
+	}
+}
+
 // existingLaunch recovers a container created before the intent was acknowledged.
 type containerInspect struct {
 	ID     string `json:"Id"`
 	Config struct {
-		Image  string
-		User   string
-		Env    []string
-		Labels map[string]string
+		Image      string
+		User       string
+		Env        []string
+		Entrypoint []string
+		Labels     map[string]string
 	}
-	State struct {
+	HostConfig hostConfig
+	State      struct {
 		Running bool
 		Health  struct {
 			Status string
@@ -175,22 +205,30 @@ type containerInspect struct {
 	NetworkSettings struct{ Networks map[string]json.RawMessage }
 }
 
-func (d *Docker) existingLaunch(ctx context.Context, l Launch) (string, bool, error) {
+func (d *Docker) existingLaunch(ctx context.Context, name string, spec createReq) (string, bool, error) {
 	var out containerInspect
-	err := d.req(ctx, http.MethodGet, "/containers/"+l.Name+"/json", nil, &out)
+	err := d.req(ctx, http.MethodGet, "/containers/"+name+"/json", nil, &out)
 	if isNotFound(err) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
-	if out.ID == "" || out.Config.Image != l.Image || out.Config.User != l.UID ||
-		len(out.Config.Env) < len(l.Env) || !slices.Equal(out.Config.Env[:len(l.Env)], l.Env) ||
-		out.Config.Labels["hhub.managed"] != "true" ||
-		out.Config.Labels["hhub.runtime"] != l.Name || !d.onNetwork(out.NetworkSettings.Networks) {
-		return "", false, fmt.Errorf("docker container %s does not match runtime intent", l.Name)
+	if out.ID == "" || !out.matches(spec) || !d.onNetwork(out.NetworkSettings.Networks) {
+		return "", false, fmt.Errorf("docker container %s does not match runtime intent", name)
 	}
 	return out.ID, out.State.Running, nil
+}
+
+func (out containerInspect) matches(spec createReq) bool {
+	for label, value := range spec.Labels {
+		if stored, ok := out.Config.Labels[label]; !ok || stored != value {
+			return false
+		}
+	}
+	return out.Config.Image == spec.Image && out.Config.User == spec.User &&
+		slices.Equal(out.Config.Env, spec.Env) && slices.Equal(out.Config.Entrypoint, spec.Entrypoint) &&
+		reflect.DeepEqual(out.HostConfig, spec.HostConfig) && len(out.NetworkSettings.Networks) == 1
 }
 
 // ImageID resolves an image reference to its immutable id, used to

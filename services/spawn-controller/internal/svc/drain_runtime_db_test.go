@@ -110,7 +110,7 @@ func seedRuntimeActor(t *testing.T, ctx context.Context, s *Server, space, runti
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
 	if err := insertSpace(ctx, tx, spaceRow{id: space, owner: "owner-a", name: space,
-		template: "default", spec: []byte(`{}`), digest: "digest"}); err != nil {
+		template: "default", spec: mustJSON(Passports{Stack: StackPassport{Image: s.deps.Hermes}}), digest: "digest"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := insertRuntime(ctx, tx, runtimeRow{id: runtime, space: space, digest: "digest"}); err != nil {

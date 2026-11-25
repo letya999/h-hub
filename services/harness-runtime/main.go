@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/letya999/h-hub/services/harness-runtime/internal/config"
+	"github.com/letya999/h-hub/services/harness-runtime/internal/hermes"
 	"github.com/letya999/h-hub/services/harness-runtime/internal/svc"
 	"github.com/letya999/h-hub/shared/lifecycle"
 	"github.com/letya999/h-hub/shared/log"
@@ -40,18 +41,33 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("issuer key: %w", err)
 	}
+	sigctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	sctx, quit := context.WithCancelCause(sigctx)
+	gateway, done, err := hermes.Start(sctx, quit)
+	if err != nil {
+		quit(err)
+		return fmt.Errorf("upstream: %w", err)
+	}
+	defer func() { quit(nil); <-done }()
+	probe, cancel := context.WithTimeout(sctx, 85*time.Second)
+	defer cancel()
+	if err := gateway.Ready(probe); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
 	s := svc.New(cfg.Sub, svc.Deps{
 		Issuer:   issuer,
 		Now:      time.Now,
 		Runner:   svc.NewRunner(rendered, l),
 		Rendered: rendered,
 	})
-	sctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	srv := &http.Server{Addr: listenAddr, Handler: s.Mux(), ReadHeaderTimeout: 5 * time.Second}
 	l.Info(sctx, "listening", "addr", listenAddr)
 	if err := lifecycle.Serve(sctx, srv, 5*time.Second); err != nil {
 		return fmt.Errorf("serve: %w", err)
+	}
+	if sigctx.Err() == nil {
+		return fmt.Errorf("upstream: %w", context.Cause(sctx))
 	}
 	return nil
 }

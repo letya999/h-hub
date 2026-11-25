@@ -131,7 +131,7 @@ func ensureSvc(t *testing.T, ctx context.Context) (*ensureFixture, *sql.DB,
 	if err != nil {
 		t.Fatal(err)
 	}
-	sv := New("spawn-controller", db, Deps{Issuer: pub, Now: time.Now,
+	sv := New("spawn-controller", db, Deps{Issuer: pub, Now: time.Now, Hermes: "hermes@test-release",
 		EdgeTab: edges.Table{"spawn-controller": {"task-engine": {"EnsureRuntime": true}}}})
 	srv := httptest.NewServer(sv.Mux())
 	t.Cleanup(func() {

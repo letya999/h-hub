@@ -29,7 +29,8 @@ func Migrations() fs.FS { return migrations }
 // Deps are the service's collaborators and launch parameters.
 type Deps struct {
 	Docker    *backend.Docker
-	Image     string // pinned harness image (name@sha256)
+	Hermes    string // official registry reference, verified during the build
+	Image     string // deployment image containing the h-hub adapter
 	ModelURL  string
 	TaskURL   string
 	RenderVol string // volume name mounted ro into runtimes

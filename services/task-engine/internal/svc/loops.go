@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	hv1 "github.com/letya999/h-hub/contracts/harness/v1"
@@ -18,6 +19,7 @@ import (
 
 const (
 	dispatchEvery = 250 * time.Millisecond
+	dispatchSlots = 4
 	sweepEvery    = time.Second
 	outboxEvery   = 250 * time.Millisecond
 	tickEvery     = 5 * time.Second
@@ -33,13 +35,16 @@ const (
 func (lp *loopRunner) Loops(ctx context.Context, l *log.L) {
 	t := time.NewTicker(dispatchEvery)
 	defer t.Stop()
-	go lp.maintenance(ctx, l)
+	var active sync.WaitGroup
+	defer active.Wait()
+	active.Go(func() { lp.maintenance(ctx, l) })
+	slots := make(chan struct{}, dispatchSlots)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			lp.dispatchPass(ctx, l)
+			lp.dispatchPass(ctx, l, slots, &active)
 		}
 	}
 }
@@ -69,10 +74,10 @@ func (lp *loopRunner) maintenance(ctx context.Context, l *log.L) {
 	}
 }
 
-// dispatchPass claims and dispatches due jobs. Dispatch of each claim
-// runs inline: the admitted deadline is the backstop against hangs.
-func (lp *loopRunner) dispatchPass(ctx context.Context, l *log.L) {
-	for {
+// A cold space can wait for Hermes while independent conversations dispatch.
+// The database claim still holds a single job in each conversation lane.
+func (lp *loopRunner) dispatchPass(ctx context.Context, l *log.L, slots chan struct{}, active *sync.WaitGroup) {
+	for len(slots) < cap(slots) {
 		id, err := lp.s.disp.claim(ctx)
 		if errors.Is(err, errNoClaim) {
 			return
@@ -81,7 +86,11 @@ func (lp *loopRunner) dispatchPass(ctx context.Context, l *log.L) {
 			l.Error(ctx, "claim", err)
 			return
 		}
-		lp.s.disp.dispatch(ctx, l, id)
+		slots <- struct{}{}
+		active.Go(func() {
+			defer func() { <-slots }()
+			lp.s.disp.dispatch(ctx, l, id)
+		})
 	}
 }
 

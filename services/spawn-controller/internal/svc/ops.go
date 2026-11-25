@@ -87,13 +87,6 @@ func createSpaceOp(s *Server, ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cr
 		return sv1.CreateSpaceResp{}, err
 	}
 	owner := scope.Owner
-	// The passport pins the image by digest: the configured tag
-	// resolves to the daemon's immutable id at compile time, so the
-	// spec digest binds image content, not a moving tag.
-	image, err := s.deps.Docker.ImageID(ctx, s.deps.Image)
-	if err != nil {
-		return sv1.CreateSpaceResp{}, fmt.Errorf("image pin: %w", err)
-	}
 	// Idempotent on the natural key (owner,name): a repeat returns the
 	// existing space — its spec stays pinned at creation time.
 	if sp, err := spaceByName(ctx, s.db, owner, r.Name); err != nil {
@@ -104,7 +97,7 @@ func createSpaceOp(s *Server, ctx context.Context, r sv1.CreateSpaceReq) (sv1.Cr
 	// The space's layers: the shipped platform layer plus per-space
 	// facts, then the template folder as the user layer. The first
 	// activation compiles them into the effective spec.
-	chain, err := spaceLayers(s, owner, image, r.Template)
+	chain, err := spaceLayers(s, owner, s.deps.Hermes, r.Template)
 	if err != nil {
 		return sv1.CreateSpaceResp{}, err
 	}
@@ -271,7 +264,7 @@ func drainRuntime(s *Server, ctx context.Context, tx *sql.Tx, rt runtimeRow) err
 // phase-5 document to the phase-6 models shape once so the digest
 // keeps binding real stored bytes.
 func resolveSpecOp(s *Server, ctx context.Context, r sv1.ResolveSpecReq) (sv1.ResolveSpecResp, error) {
-	sp, err := getSpaceAny(ctx, s.db, r.Space)
+	sp, err := s.spaceForRun(ctx, r.Space)
 	if err != nil {
 		return sv1.ResolveSpecResp{}, err
 	}
@@ -304,12 +297,22 @@ func staleDigest(req, current string) bool { return req != "" && req != current 
 
 // admissionReady refuses a run whose spec cannot be read or selects
 // toolsets without an admission url — fail closed at the run boundary.
-func admissionReady(sp spaceRow) error {
+func (s *Server) admissionReady(sp spaceRow) error {
 	p, err := specPassports(sp)
 	if err != nil {
 		return err
 	}
+	if err := s.requireImage(p.Stack.Image); err != nil {
+		return err
+	}
 	return toolAdmission(p)
+}
+
+func (s *Server) requireImage(image string) error {
+	if image == "" || image != s.deps.Hermes {
+		return herrors.New(herrors.CodeInvalid, "err.invalid-arg").With("leaf", "stack.image") //nolint:wrapcheck // shared error form
+	}
+	return nil
 }
 
 // toolAdmission refuses a run whose spec selects toolsets but names no
@@ -323,7 +326,15 @@ func toolAdmission(p Passports) error {
 }
 
 func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv1.EnsureRuntimeResp, error) {
-	sp, err := getSpaceAny(ctx, s.db, r.Space)
+	if _, err := s.spaceForRun(ctx, r.Space); err != nil {
+		return sv1.EnsureRuntimeResp{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return sv1.EnsureRuntimeResp{}, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // best-effort close
+	sp, err := spaceForUpdate(ctx, tx, r.Space)
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
@@ -332,33 +343,10 @@ func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv
 			With("digest", r.Digest)
 		return sv1.EnsureRuntimeResp{}, stale //nolint:wrapcheck // shared error form
 	}
-	if err := admissionReady(sp); err != nil {
+	if err := s.admissionReady(sp); err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return sv1.EnsureRuntimeResp{}, fmt.Errorf("begin: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck // best-effort close
-	rt, ok, err := runtimeForSpace(ctx, tx, sp.id)
-	if err != nil {
-		return sv1.EnsureRuntimeResp{}, err
-	}
-	if !ok {
-		if err := claimRuntime(s, ctx, tx, sp); err != nil {
-			return sv1.EnsureRuntimeResp{}, err
-		}
-		if err := tx.Commit(); err != nil {
-			return sv1.EnsureRuntimeResp{}, fmt.Errorf("commit: %w", err)
-		}
-		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nil
-	}
-	var st, actor string
-	if err := tx.QueryRowContext(ctx, `SELECT state, actor FROM fsm.machines
-		WHERE kind='runtime' AND id=$1`, rt.id).Scan(&st, &actor); err != nil {
-		return sv1.EnsureRuntimeResp{}, fmt.Errorf("runtime state: %w", err)
-	}
-	out, err := ensureByState(s, ctx, tx, sp, rtState{row: rt, state: st, actor: actor})
+	out, err := s.runtimeForLaunch(ctx, tx, sp)
 	if err != nil {
 		return sv1.EnsureRuntimeResp{}, err
 	}
@@ -366,6 +354,22 @@ func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv
 		return sv1.EnsureRuntimeResp{}, fmt.Errorf("commit: %w", err)
 	}
 	return out, nil
+}
+
+func (s *Server) runtimeForLaunch(ctx context.Context, tx *sql.Tx, sp spaceRow) (sv1.EnsureRuntimeResp, error) {
+	rt, ok, err := runtimeForSpace(ctx, tx, sp.id)
+	if err != nil {
+		return sv1.EnsureRuntimeResp{}, err
+	}
+	if !ok {
+		return sv1.EnsureRuntimeResp{Digest: sp.digest}, claimRuntime(s, ctx, tx, sp)
+	}
+	var st, actor string
+	if err := tx.QueryRowContext(ctx, `SELECT state, actor FROM fsm.machines
+		WHERE kind='runtime' AND id=$1`, rt.id).Scan(&st, &actor); err != nil {
+		return sv1.EnsureRuntimeResp{}, fmt.Errorf("runtime state: %w", err)
+	}
+	return ensureByState(s, ctx, tx, sp, rtState{row: rt, state: st, actor: actor})
 }
 
 // claimRuntime inserts the runtime row, its machine, the intent and
@@ -422,6 +426,9 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 			return notReady, nil
 		}
 	case "absent", "missing", "failed":
+		if rt.digest != sp.digest {
+			return notReady, claimRuntime(s, ctx, tx, sp)
+		}
 		// A reaped or lost container is re-claimed in place; the
 		// machine edge carries it to starting.
 		if err := s.runM.Transition(ctx, tx, fsm.Request{
