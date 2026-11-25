@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,12 +16,18 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 
 func TestCreateAndStartRecoversCreatedContainer(t *testing.T) {
 	t.Parallel()
+	launch := Launch{Name: "hhub-run-1", Image: "upstream", Adapter: "adapter",
+		UID: "1000:1000", Env: []string{"HHUB_SUB=harness-runtime"}, Network: "hhub",
+		RenderVol: "render", ConfigDir: "space-1"}
+	inspect := recoveredInspect(t, launch)
 	created, started := 0, 0
 	d := &Docker{network: "hhub", hc: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		status, body := 200, `{}`
 		switch r.URL.Path {
+		case "/images/upstream/json":
+			body = `{"Config":{"Env":[]}}`
 		case "/containers/hhub-run-1/json":
-			body = `{"Id":"existing-id","Config":{"Image":"sha256:image","User":"1000:1000","Env":["HHUB_SUB=harness-runtime"],"Labels":{"hhub.managed":"true","hhub.runtime":"hhub-run-1"}},"State":{"Running":false},"NetworkSettings":{"Networks":{"hhub":{}}}}`
+			body = inspect
 		case "/containers/existing-id/start":
 			started++
 			status = 204
@@ -32,20 +39,28 @@ func TestCreateAndStartRecoversCreatedContainer(t *testing.T) {
 		}
 		return dockerResponse(status, body), nil
 	})}}
-	id, err := d.CreateAndStart(context.Background(), Launch{
-		Name: "hhub-run-1", Image: "sha256:image", UID: "1000:1000",
-		Env: []string{"HHUB_SUB=harness-runtime"}, Network: "hhub",
-	})
+	id, err := d.CreateAndStart(context.Background(), launch)
 	if err != nil || id != "existing-id" || created != 0 || started != 1 {
 		t.Fatalf("replay: id=%q err=%v created=%d started=%d", id, err, created, started)
 	}
-	_, err = d.CreateAndStart(context.Background(), Launch{
-		Name: "hhub-run-1", Image: "sha256:wrong", UID: "1000:1000",
-		Env: []string{"HHUB_SUB=harness-runtime"}, Network: "hhub",
-	})
+	launch.Adapter = "unexpected-adapter"
+	_, err = d.CreateAndStart(context.Background(), launch)
 	if err == nil || started != 1 {
 		t.Fatalf("mismatched intent started: err=%v started=%d", err, started)
 	}
+}
+
+func recoveredInspect(t *testing.T, launch Launch) string {
+	t.Helper()
+	spec := runtimeSpec(launch)
+	data, err := json.Marshal(map[string]any{
+		"Id": "existing-id", "Config": spec, "HostConfig": spec.HostConfig,
+		"NetworkSettings": map[string]any{"Networks": map[string]any{"hhub": struct{}{}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func TestDockerRefusesForeignNetwork(t *testing.T) {

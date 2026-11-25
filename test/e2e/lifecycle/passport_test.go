@@ -8,7 +8,6 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -162,8 +161,7 @@ func TestPassportRecreateRebuildsWorld(t *testing.T) {
 		t.Fatalf("effect %s", act.Effect)
 	}
 	cid := warmRuntime(t, scope)
-	out, err := ExecDocker(cid, "cat",
-		fmt.Sprintf("/etc/hhub/render/%s/files/soul.md", space))
+	out, err := ExecDocker(cid, "cat", "/etc/hhub/render/files/soul.md")
 	if err != nil {
 		t.Fatalf("read workspace file: %v: %s", err, out)
 	}

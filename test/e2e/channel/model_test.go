@@ -179,8 +179,8 @@ func TestSpaceReachesOnlyModelGateway(t *testing.T) {
 			WHERE space=$1 AND container<>'' ORDER BY created DESC LIMIT 1`, space).Scan(&container) == nil
 	})
 	probe := func(host string) error {
-		_, err := ExecDocker(container, "wget", "-q", "-T", "3",
-			"-O", "/dev/null", "http://"+host+"/healthz")
+		_, err := ExecDocker(container, "curl", "-fsS", "--max-time", "3",
+			"-o", "/dev/null", "http://"+host+"/healthz")
 		return err
 	}
 	if err := probe("model-gateway:9000"); err != nil {

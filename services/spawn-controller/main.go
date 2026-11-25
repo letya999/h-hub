@@ -63,6 +63,7 @@ func run(ctx context.Context, l *log.L) error {
 	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
 		Docker:    backend.New(cfg.DockerSock, cfg.NetworkName),
+		Hermes:    cfg.HermesImage,
 		Image:     cfg.RuntimeImg,
 		ModelURL:  cfg.ModelURL,
 		TaskURL:   cfg.TaskURL,

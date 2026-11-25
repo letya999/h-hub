@@ -5,6 +5,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 )
 
 // C is the service configuration: the declared env list.
@@ -14,6 +16,7 @@ type C struct {
 	Keys        string // HHUB_KEYS: service.key, pubs/, edges
 	DockerSock  string // HHUB_DOCKER_SOCK: engine socket path
 	RuntimeImg  string // HHUB_RUNTIME_IMAGE: pinned harness image
+	HermesImage string // official release packaged with the controller
 	ModelURL    string // HHUB_MODEL_URL: models passport route
 	TaskURL     string // HHUB_TASK_URL: report-back address for runtimes
 	RenderVol   string // HHUB_RENDER_VOL: volume for rendered configs
@@ -43,5 +46,15 @@ func Env() (C, error) {
 			return c, fmt.Errorf("config: all declared HHUB_* values are required")
 		}
 	}
+	raw, err := os.ReadFile("/usr/share/hhub/hermes-image.ref")
+	if err != nil {
+		return c, fmt.Errorf("hermes image pin: %w", err)
+	}
+	c.HermesImage = strings.TrimSpace(string(raw))
+	if !hermesRelease.MatchString(c.HermesImage) {
+		return c, fmt.Errorf("invalid Hermes image pin")
+	}
 	return c, nil
 }
+
+var hermesRelease = regexp.MustCompile(`^docker\.io/nousresearch/hermes-agent:v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$`)

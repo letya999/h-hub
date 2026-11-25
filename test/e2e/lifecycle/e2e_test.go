@@ -313,8 +313,8 @@ func TestSpaceNoDB(t *testing.T) {
 	if !renderRO {
 		t.Fatal("rendered config volume is absent or writable")
 	}
-	_, dberr := ExecDocker(rt.ID, "wget", "-q", "-T", "3",
-		"-O", "/dev/null", "http://postgres:5432/")
+	_, dberr := ExecDocker(rt.ID, "curl", "-fsS", "--max-time", "3",
+		"-o", "/dev/null", "http://postgres:5432/")
 	testkit.Deny(t, "adr.spawn-runtime.space-no-db", dberr != nil)
 	_, roerr := ExecDocker(rt.ID, "touch", "/etc/hhub/render/probe")
 	testkit.Deny(t, "adr.harness-admit.config-readonly", roerr != nil)
@@ -368,7 +368,6 @@ func TestMissingConfigRefused(t *testing.T) {
 		t.Fatalf("service started without env: %s", logs)
 	}
 }
-
 
 // AdminDB opens the admin DSN against one service database; Postgres
 // has no cross-database queries, so each service db is its own conn.
