@@ -14,6 +14,9 @@ const (
 	jobAdmittedTTL  = 2 * time.Minute
 	jobRunningTTL   = 10 * time.Minute
 	jobUncertainTTL = 15 * time.Minute
+	// waiting is re-armed to the request's own deadline at entry;
+	// the machine TTL is only the backstop above the request ceiling.
+	jobWaitingTTL = 6 * time.Minute
 
 	runDispatchedTTL = 30 * time.Second
 	// streaming is a stall deadline, not a turn budget: progress
@@ -46,6 +49,12 @@ func JobMachine() *fsm.Machine {
 			{From: "running", Event: "settle-fail", To: "failed"},
 			{From: "running", Event: "cancel", To: "cancelled"},
 			{From: "running", Event: "lost", To: "uncertain"},
+			{From: "running", Event: "wait-owner", To: "waiting_owner"},
+			{From: "waiting_owner", Event: "wait-owner", To: "waiting_owner"},
+			{From: "waiting_owner", Event: "resume", To: "queued"},
+			{From: "waiting_owner", Event: "settle-fail", To: "failed"},
+			{From: "waiting_owner", Event: "expire", To: "failed"},
+			{From: "waiting_owner", Event: "cancel", To: "cancelled"},
 			{From: "uncertain", Event: "settle-ok", To: "succeeded"},
 			{From: "uncertain", Event: "settle-fail", To: "failed"},
 			{From: "uncertain", Event: "cancel", To: "cancelled"},
@@ -54,10 +63,11 @@ func JobMachine() *fsm.Machine {
 			{From: "quarantined", Event: "unquarantine", To: "queued"},
 		},
 		Deadlines: map[string]fsm.Deadline{
-			"queued":    {Event: "stale", Actor: "sweep", TTL: jobQueuedTTL},
-			"admitted":  {Event: "lost", Actor: "sweep", TTL: jobAdmittedTTL},
-			"running":   {Event: "lost", Actor: "sweep", TTL: jobRunningTTL},
-			"uncertain": {Event: "expire", Actor: "sweep", TTL: jobUncertainTTL},
+			"queued":        {Event: "stale", Actor: "sweep", TTL: jobQueuedTTL},
+			"admitted":      {Event: "lost", Actor: "sweep", TTL: jobAdmittedTTL},
+			"running":       {Event: "lost", Actor: "sweep", TTL: jobRunningTTL},
+			"uncertain":     {Event: "expire", Actor: "sweep", TTL: jobUncertainTTL},
+			"waiting_owner": {Event: "expire", Actor: "sweep", TTL: jobWaitingTTL},
 		},
 	})
 	if err != nil {

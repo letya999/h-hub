@@ -15,6 +15,7 @@ type C struct {
 	IdentityURL string // HHUB_IDENTITY_URL
 	SpawnURL    string // HHUB_SPAWN_URL
 	ChannelURL  string // HHUB_CHANNEL_URL
+	ToolURL     string // HHUB_TOOL_URL
 }
 
 // Env loads C from the environment; every declared variable is
@@ -27,11 +28,12 @@ func Env() (C, error) {
 		IdentityURL: os.Getenv("HHUB_IDENTITY_URL"),
 		SpawnURL:    os.Getenv("HHUB_SPAWN_URL"),
 		ChannelURL:  os.Getenv("HHUB_CHANNEL_URL"),
+		ToolURL:     os.Getenv("HHUB_TOOL_URL"),
 	}
-	for _, v := range []string{c.Sub, c.DSN, c.Keys, c.IdentityURL, c.SpawnURL, c.ChannelURL} {
+	for _, v := range []string{c.Sub, c.DSN, c.Keys, c.IdentityURL, c.SpawnURL, c.ChannelURL, c.ToolURL} {
 		if v == "" {
 			return c, fmt.Errorf("config: HHUB_SUB, HHUB_DSN, HHUB_KEYS, " +
-				"HHUB_IDENTITY_URL, HHUB_SPAWN_URL and HHUB_CHANNEL_URL are required")
+				"HHUB_IDENTITY_URL, HHUB_SPAWN_URL, HHUB_CHANNEL_URL and HHUB_TOOL_URL are required")
 		}
 	}
 	return c, nil

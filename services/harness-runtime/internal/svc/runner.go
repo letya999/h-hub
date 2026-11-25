@@ -63,7 +63,7 @@ func (r *HermesRunner) Run(ctx context.Context, a Admission) {
 			}
 		}
 	}()
-	text, err := r.turn(ctx, a)
+	text, err := r.turn(ctx, a, next)
 	close(stop)
 
 	var final tv1.RunEvent
@@ -127,7 +127,8 @@ type assistantMsg struct {
 // The request is stripped to exactly the OpenAI fields, the run
 // token is the only credential, and no other caller headers ever
 // propagate.
-func (r *HermesRunner) turn(ctx context.Context, a Admission) (string, error) {
+func (r *HermesRunner) turn(ctx context.Context, a Admission,
+	next func(string, string) tv1.RunEvent) (string, error) {
 	mc := &mv1.Client{T: mv1.HTTP{C: httpapi.NewClientTimeout(
 		r.cfg.ModelURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
 	tools, toolset, err := r.projection(ctx, a)
@@ -150,13 +151,45 @@ func (r *HermesRunner) turn(ctx context.Context, a Admission) (string, error) {
 		messages = append(messages, map[string]any{
 			"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
 		for _, call := range msg.ToolCalls {
+			content := r.callTool(ctx, a, toolset, call.Function.Name,
+				call.Function.Arguments)
+			if toolset[call.Function.Name] == "ownerreq" {
+				r.reportOwnerRequest(a, next, content)
+			}
 			messages = append(messages, map[string]any{
 				"role": "tool", "tool_call_id": call.ID,
-				"content": r.callTool(ctx, a, toolset, call.Function.Name,
-					call.Function.Arguments)})
+				"content": content})
 		}
 	}
 	return "", fmt.Errorf("tool rounds exhausted")
+}
+
+// ownerToolResult is the ownerreq toolset's result shape: identity
+// and state, never links or nonces.
+type ownerToolResult struct {
+	Request  string `json:"request_id"`
+	State    string `json:"state"`
+	Deadline int64  `json:"deadline"`
+}
+
+// reportOwnerRequest journals the wait: when an ownerreq tool comes
+// back pending, task-engine must bind the job to the request — the
+// conversation stays free while the human decides. Anything
+// unparseable is not a wait and rides on as a plain tool result.
+func (r *HermesRunner) reportOwnerRequest(a Admission,
+	next func(string, string) tv1.RunEvent, content string) {
+	var res ownerToolResult
+	if err := json.Unmarshal([]byte(content), &res); err != nil ||
+		res.State != "pending" || res.Request == "" {
+		return
+	}
+	data, err := json.Marshal(map[string]any{
+		"request": res.Request, "deadline": res.Deadline})
+	if err != nil {
+		r.l.Error(context.Background(), "owner-request marshal", err)
+		return
+	}
+	r.reportBest(a, next("owner-request", string(data)))
 }
 
 // modelRequest strips the request to the OpenAI fields the gateway

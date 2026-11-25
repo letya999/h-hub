@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
@@ -96,6 +98,8 @@ func (rep *runReporter) eventMachines(ctx context.Context, tx *sql.Tx, runID str
 			return fmt.Errorf("stream-start: %w", err)
 		}
 		return rep.touchJob(ctx, tx, runID)
+	case "owner-request":
+		return rep.waitOwner(ctx, tx, runID, e)
 	case "final-ok", "final-fail":
 		return rep.settle(ctx, tx, runID, e)
 	case "progress":
@@ -122,9 +126,50 @@ func (rep *runReporter) touchJob(ctx context.Context, tx *sql.Tx, runID string) 
 	return nil
 }
 
+// waitEvent is the owner-request journal payload the runtime
+// reports: the pending request's id and its deadline, both read from
+// the tool result — the only place they cross a service boundary.
+type waitEvent struct {
+	Request  string `json:"request"`
+	Deadline int64  `json:"deadline"`
+}
+
+// waitOwner binds the job to the request its run is waiting on: the
+// machine moves to waiting_owner, the deadline re-arms to the
+// request's own, and a repeated event (the agent asked again)
+// supersedes — the newest request owns the wait, matching the
+// channel link rule. A job that already left running ignores the
+// late event.
+func (rep *runReporter) waitOwner(ctx context.Context, tx *sql.Tx, runID string, e tv1.RunEvent) error {
+	var w waitEvent
+	if err := json.Unmarshal([]byte(e.Data), &w); err != nil || w.Request == "" || w.Deadline <= 0 {
+		return fmt.Errorf("owner-request event: bad payload")
+	}
+	job, err := jobOfRun(ctx, tx, runID)
+	if err != nil {
+		return err
+	}
+	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
+		if err := bindRequest(ctx, tx, job, w.Request); err != nil {
+			return err
+		}
+		return armJobDeadline(ctx, tx, job, time.Unix(w.Deadline, 0))
+	}
+	err = rep.s.jobM.Transition(ctx, tx, fsm.Request{
+		ID: job, Event: "wait-owner", Actor: "runtime", At: rep.s.deps.Now()}, hook)
+	if errors.Is(err, fsm.ErrBadTransition) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("wait-owner: %w", err)
+	}
+	return nil
+}
+
 // settle commits run -> settled, releases its conversation claim,
 // stores the result and settles the job; the runtime release rides
-// outbox topic release-runtime.
+// outbox topic release-runtime. A job waiting on the owner stays
+// waiting: the run's turn is over, the answer has not landed.
 func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e tv1.RunEvent) error {
 	run, err := runForTx(ctx, tx, runID)
 	if err != nil {
@@ -142,6 +187,11 @@ func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e 
 		if err := releaseRun(ctx, tx, runID); err != nil {
 			return err
 		}
+		if waiting, err := jobWaiting(ctx, tx, run.job); err != nil {
+			return err
+		} else if waiting {
+			return nil
+		}
 		if err := setResult(ctx, tx, run.job, e.Data); err != nil {
 			return err
 		}
@@ -157,6 +207,16 @@ func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e 
 		return fmt.Errorf("settle: %w", err)
 	}
 	return nil
+}
+
+// jobWaiting reports whether the job machine is in waiting_owner.
+func jobWaiting(ctx context.Context, tx *sql.Tx, job string) (bool, error) {
+	var state string
+	if err := tx.QueryRowContext(ctx,
+		"SELECT state FROM fsm.machines WHERE kind='job' AND id=$1", job).Scan(&state); err != nil {
+		return false, fmt.Errorf("job state: %w", err)
+	}
+	return state == "waiting_owner", nil
 }
 
 type releaseEffect struct {
