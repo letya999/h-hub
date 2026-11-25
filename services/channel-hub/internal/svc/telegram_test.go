@@ -12,29 +12,7 @@ import (
 func rawText(id, from, chat int64, text string) tgRawUpdate {
 	var u tgRawUpdate
 	u.UpdateID = id
-	u.Message = &struct {
-		MessageID           int64  `json:"message_id"`
-		MessageThreadID     *int64 `json:"message_thread_id"`
-		Text                string `json:"text"`
-		Caption             string `json:"caption"`
-		DirectMessagesTopic *struct {
-			TopicID int64 `json:"topic_id"`
-		} `json:"direct_messages_topic"`
-		From *struct {
-			ID int64 `json:"id"`
-		} `json:"from"`
-		Chat struct {
-			ID      int64  `json:"id"`
-			Type    string `json:"type"`
-			IsForum bool   `json:"is_forum"`
-		} `json:"chat"`
-		Photo []struct {
-			FileID   string `json:"file_id"`
-			FileSize int64  `json:"file_size"`
-			Width    int64  `json:"width"`
-			Height   int64  `json:"height"`
-		} `json:"photo"`
-	}{MessageID: id * 10, Text: text,
+	u.Message = &tgRawMessage{MessageID: id * 10, Text: text,
 		From: &struct {
 			ID int64 `json:"id"`
 		}{ID: from}}
@@ -84,18 +62,8 @@ func TestNormalizeUpdatePhotoAndTopics(t *testing.T) {
 	u := rawText(5, 7, 42, "")
 	u.Message.Caption = "look"
 	u.Message.Photo = append(u.Message.Photo,
-		struct {
-			FileID   string `json:"file_id"`
-			FileSize int64  `json:"file_size"`
-			Width    int64  `json:"width"`
-			Height   int64  `json:"height"`
-		}{FileID: "small", FileSize: 10, Width: 10, Height: 10},
-		struct {
-			FileID   string `json:"file_id"`
-			FileSize int64  `json:"file_size"`
-			Width    int64  `json:"width"`
-			Height   int64  `json:"height"`
-		}{FileID: "big", FileSize: 90, Width: 90, Height: 90})
+		tgRawPhoto{FileID: "small", FileSize: 10, Width: 10, Height: 10},
+		tgRawPhoto{FileID: "big", FileSize: 90, Width: 90, Height: 90})
 	got := normalizeUpdate(u)
 	if got.Kind != "photo" || got.FileID != "big" || got.Text != "look" {
 		t.Fatalf("photo: %+v", got)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	credv1 "github.com/letya999/h-hub/contracts/cred/v1"
@@ -113,6 +114,11 @@ func (ad *tgAdapter) pollOnce(ctx context.Context, l *log.L) {
 			l.Error(ctx, "telegram intake", err)
 			continue // offset stays: the row replays next poll
 		}
+		if u.Kind == "answer" && u.QueryID != "" {
+			if err := ad.api.answerCallbackQuery(ctx, ad.token, u.QueryID); err != nil {
+				l.Error(ctx, "telegram callback ack", err)
+			}
+		}
 	}
 }
 
@@ -126,6 +132,9 @@ var secretRe = regexp.MustCompile(`(?m)^[A-Z_][A-Z0-9_]{1,}=[^\s]{4,}`)
 // topic are different fields — the prefixes keep them apart.
 func normalizeUpdate(u tgRawUpdate) tgUpdate {
 	out := tgUpdate{ID: u.UpdateID, Kind: "ignore"}
+	if cq := u.CallbackQuery; cq != nil {
+		return normalizeCallback(out, cq)
+	}
 	m := u.Message
 	if m == nil || m.From == nil {
 		return out
@@ -141,18 +150,48 @@ func normalizeUpdate(u tgRawUpdate) tgUpdate {
 	}
 	switch {
 	case len(m.Photo) > 0:
-		big := m.Photo[0]
-		for _, p := range m.Photo {
-			if p.Width*p.Height > big.Width*big.Height {
-				big = p
-			}
-		}
+		big := largestPhoto(m)
 		out.Kind, out.FileID, out.FileSize, out.Text = "photo", big.FileID, big.FileSize, m.Caption
 	case m.Text != "" && secretRe.MatchString(m.Text):
 		out.Kind = "secret"
 	case m.Text != "":
 		out.Kind, out.Text = "text", m.Text
 	}
+	return out
+}
+
+// largestPhoto picks the highest-resolution variant telegram sent.
+func largestPhoto(m *tgRawMessage) tgRawPhoto {
+	big := m.Photo[0]
+	for _, p := range m.Photo {
+		if p.Width*p.Height > big.Width*big.Height {
+			big = p
+		}
+	}
+	return big
+}
+
+// normalizeCallback maps a button press to an "answer" update when
+// its callback_data names a request (a:<request>:<choice>); other
+// callbacks are ignored. The request id is unguessable — the
+// presser's addressee check happens in dispatch.
+func normalizeCallback(out tgUpdate, cq *tgRawCallback) tgUpdate {
+	out.FromID, out.QueryID = cq.From.ID, cq.ID
+	if cq.Message != nil {
+		out.ChatID = cq.Message.Chat.ID
+		if cq.Message.MessageThreadID != nil && cq.Message.Chat.IsForum {
+			out.Topic = "thr:" + strconv.FormatInt(*cq.Message.MessageThreadID, 10)
+		}
+	}
+	parts := strings.Split(cq.Data, ":")
+	if len(parts) != 3 || parts[0] != "a" {
+		return out
+	}
+	n, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return out
+	}
+	out.Kind, out.RequestID, out.Choice = "answer", parts[1], n
 	return out
 }
 
@@ -172,14 +211,18 @@ func (ad *tgAdapter) admitUpdate(ctx context.Context, u tgUpdate) error {
 		return fmt.Errorf("tg intake begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
+	payload := fmt.Sprintf(`{"message_id":%d,"file_id":%q,"file_size":%d}`,
+		u.MessageID, u.FileID, u.FileSize)
+	if u.Kind == "answer" {
+		payload = fmt.Sprintf(`{"request":%q,"choice":%d,"query":%q}`,
+			u.RequestID, u.Choice, u.QueryID)
+	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO inbound_updates(
 		id,channel,update_id,external_id,body,kind,chat_id,topic,payload)
 		VALUES($1,'telegram',$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT(channel,update_id) DO NOTHING`,
 		id, strconv.FormatInt(u.ID, 10), strconv.FormatInt(u.FromID, 10),
-		u.Text, u.Kind, strconv.FormatInt(u.ChatID, 10), u.Topic,
-		fmt.Sprintf(`{"message_id":%d,"file_id":%q,"file_size":%d}`,
-			u.MessageID, u.FileID, u.FileSize))
+		u.Text, u.Kind, strconv.FormatInt(u.ChatID, 10), u.Topic, payload)
 	if err != nil {
 		return fmt.Errorf("tg intake insert: %w", err)
 	}

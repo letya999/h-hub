@@ -67,10 +67,10 @@ func (ad *tgAdapter) sendTelegram(ctx context.Context, id string) (bool, error) 
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
 	var d deliveryRow
-	err = tx.QueryRowContext(ctx, `SELECT m.state, d.kind, d.body, d.chat_id, d.topic, d.intake_id
+	err = tx.QueryRowContext(ctx, `SELECT m.state, d.id, d.kind, d.body, d.chat_id, d.topic, d.intake_id
 		FROM fsm.machines m JOIN deliveries d ON d.id=m.id
 		WHERE m.kind='delivery' AND m.id=$1`, id).
-		Scan(&d.state, &d.kind, &d.body, &d.chat, &d.topic, &d.intake)
+		Scan(&d.state, &d.id, &d.kind, &d.body, &d.chat, &d.topic, &d.intake)
 	if err != nil {
 		return false, fmt.Errorf("tg delivery read: %w", err)
 	}
@@ -101,16 +101,47 @@ func (ad *tgAdapter) sendTelegram(ctx context.Context, id string) (bool, error) 
 	return true, nil
 }
 
-type deliveryRow struct{ state, kind, body, chat, topic, intake string }
+type deliveryRow struct{ state, id, kind, body, chat, topic, intake string }
 
 // tgSendByKind performs the provider call for one delivery. A status
 // delivery edits the already-posted phase message when the intake
-// has one, and records the message id otherwise.
+// has one; a request delivery posts its prompt under an inline
+// keyboard whose buttons carry the answer index.
 func (ad *tgAdapter) tgSendByKind(ctx context.Context, tok string, d deliveryRow, chat int64) error {
-	if d.kind == "status" {
+	switch d.kind {
+	case "status":
 		return ad.tgSendStatus(ctx, tok, d, chat)
+	case "request":
+		return ad.tgSendRequest(ctx, tok, d, chat)
 	}
 	_, err := ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
+	return err
+}
+
+// tgSendRequest posts one owner request with its option buttons; a
+// question has no options and arrives as plain text — the link still
+// routes the typed reply.
+func (ad *tgAdapter) tgSendRequest(ctx context.Context, tok string, d deliveryRow, chat int64) error {
+	var (
+		requestID string
+		opts      []byte
+	)
+	err := ad.s.db.QueryRowContext(ctx, `SELECT request_id,options FROM request_links
+		WHERE delivery_id=$1`, d.id).Scan(&requestID, &opts)
+	if err != nil {
+		return fmt.Errorf("tg request link: %w", err)
+	}
+	var options []string
+	if err := json.Unmarshal(opts, &options); err != nil {
+		return fmt.Errorf("tg request options: %w", err)
+	}
+	if len(options) == 0 {
+		_, err := ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
+		return err
+	}
+	_, err = ad.api.sendRequest(ctx, tok, tgRequestMsg{
+		Chat: chat, Topic: d.topic, Text: d.body,
+		RequestID: requestID, Options: options})
 	return err
 }
 
@@ -241,7 +272,7 @@ func (ad *tgAdapter) tgPhoto(ctx context.Context, intakeID string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	conv, err := ad.s.conversation(ctx, r)
+	conv, err := (&threadOps{ad.s}).conversation(ctx, r)
 	if err != nil {
 		return false, err
 	}

@@ -115,14 +115,11 @@ func (s *Server) dispatch(ctx context.Context, id string) error {
 	if r.state != "processing" {
 		return nil
 	}
-	if r.kind == "secret" {
-		return interceptSecret(ctx, s, r)
+	if done, err := s.routeKind(ctx, r); done || err != nil {
+		return err
 	}
-	if r.kind == "photo" {
-		return dispatchPhoto(ctx, s, r)
-	}
-	if strings.HasPrefix(r.body, "/") {
-		return (&commandOps{s}).command(ctx, r)
+	if answered, err := (&requestOps{s}).tryAnswer(ctx, r); answered || err != nil {
+		return err
 	}
 	client, resolved, err := s.taskClient(ctx, r.channel, r.external)
 	if herrors.CodeOf(err) == herrors.CodeNotFound {
@@ -132,7 +129,7 @@ func (s *Server) dispatch(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	conv, err := s.conversation(ctx, r)
+	conv, err := (&threadOps{s}).conversation(ctx, r)
 	if err != nil {
 		return err
 	}
@@ -142,6 +139,24 @@ func (s *Server) dispatch(ctx context.Context, id string) error {
 		return fmt.Errorf("create job: %w", err)
 	}
 	return s.waitJob(ctx, r, job.ID)
+}
+
+// routeKind dispatches the non-job update kinds: intercepted
+// secrets, photos, request callbacks and slash commands each have
+// their own path; a plain text falls through to the request link
+// check and the job flow.
+func (s *Server) routeKind(ctx context.Context, r inputRow) (bool, error) {
+	switch {
+	case r.kind == "secret":
+		return true, interceptSecret(ctx, s, r)
+	case r.kind == "photo":
+		return true, dispatchPhoto(ctx, s, r)
+	case r.kind == "answer":
+		return true, (&requestOps{s}).answerByID(ctx, r)
+	case strings.HasPrefix(r.body, "/"):
+		return true, (&commandOps{s}).command(ctx, r)
+	}
+	return false, nil
 }
 
 // interceptSecret answers a KEY=value-looking message with the safe
