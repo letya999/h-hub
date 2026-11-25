@@ -93,6 +93,7 @@ services:
       HHUB_IDENTITY_URL: http://identity-hub:9000
       HHUB_SPAWN_URL: http://spawn-controller:9000
       HHUB_CHANNEL_URL: http://channel-hub:9000
+      HHUB_TOOL_URL: http://tool-hub:9000
     volumes:
       - keys-task-engine:/etc/hhub:ro
     depends_on:
@@ -112,6 +113,7 @@ services:
       HHUB_KEYS: /etc/hhub
       HHUB_IDENTITY_URL: http://identity-hub:9000
       HHUB_SPAWN_URL: http://spawn-controller:9000
+      HHUB_CHANNEL_URL: http://channel-hub:9000
     volumes:
       - keys-tool-hub:/etc/hhub:ro
     depends_on:
@@ -134,6 +136,7 @@ services:
       HHUB_SPAWN_URL: http://spawn-controller:9000
       HHUB_MODEL_URL: http://model-gateway:9000
       HHUB_BROKER_URL: http://credential-broker:9000
+      HHUB_TOOL_URL: http://tool-hub:9000
     volumes:
       - keys-channel-hub:/etc/hhub:ro
     depends_on:
