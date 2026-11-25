@@ -2,9 +2,12 @@ package backup
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/letya999/h-hub/internal/descriptor"
 )
 
 // A spec compiled by current code renders tool_url, so the restored
@@ -75,4 +78,66 @@ func TestBackupRecordsConnectionListing(t *testing.T) {
 			t.Fatalf("backup.sh missing %q", want)
 		}
 	}
+}
+
+// A drilled service boots a current image whose config refuses
+// startup when a required env is missing; because the drill runs
+// containers with -d --rm the dead container erases itself and the
+// readiness loop fails with "No such container", far from the cause.
+// Every env key the descriptor declares for a drilled service must
+// reach its docker run block. identity-hub is exempt on purpose: it
+// boots the N-1 image with the previous release's requirements.
+func TestRestoreDrillCarriesDeclaredEnv(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("restore-drill.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc, err := descriptor.Load(filepath.Join("..", "..", "deploy", "descriptor.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string][]string{}
+	for _, svc := range desc.Services {
+		declared[svc.Name] = svc.Env
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, svc := range []string{
+		"task-engine", "channel-hub", "model-gateway",
+		"spawn-controller", "tool-hub", "credential-broker",
+	} {
+		block := drillRunBlock(lines, svc)
+		if block == "" {
+			t.Fatalf("restore-drill.sh boots no %s container", svc)
+		}
+		for _, env := range declared[svc] {
+			if !strings.Contains(block, env+"=") {
+				t.Errorf("%s: drill missing declared env %s", svc, env)
+			}
+		}
+	}
+}
+
+// drillRunBlock extracts the docker run or create command that carries
+// the service's network alias: from the alias line to the end of the
+// command, marked by the >/dev/null redirect every drill command has.
+func drillRunBlock(lines []string, service string) string {
+	start := -1
+	for i, line := range lines {
+		if strings.Contains(line, "--network-alias "+service) {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i := start; i < len(lines); i++ {
+		b.WriteString(lines[i])
+		if strings.Contains(lines[i], ">/dev/null") {
+			break
+		}
+	}
+	return b.String()
 }
