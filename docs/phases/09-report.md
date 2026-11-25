@@ -155,3 +155,69 @@ unwritten platform-data ownership.
 Native tools with side effects — network, files, processes — are
 phases 11-15; the probe toolset is the only shipped tool. Owner
 request flow (10), memory-hub (16), broker forms and OAuth (18).
+
+## Closeout — the four owner questions resolved
+
+Post-release branch `fix/post-phase-09` (v0.0.9.1). Phase 10 was not
+started.
+
+1. **`fix-needs-test` was blind in both places it ran** (`facf186`,
+   `946d934`). `COMMIT_EDITMSG` is absent or stale during `pre-commit`,
+   so the prepared message is only readable in `commit-msg`, where git
+   hands the file as `$1`. New `.githooks/commit-msg` runs
+   `just check-commit`, which feeds the message file plus the staged
+   file list (`git diff --cached`, falling back to HEAD's list for
+   amend/reword) into `FixNeedsTest`. A normal `just check` and CI run
+   the gate over every non-merge commit in `origin/main..HEAD`, with a
+   HEAD-only fallback when the ref is absent. The rule is unchanged:
+   a `fix` commit must touch a `*_test.go`. Meta-proof: broken fixture
+   `testdata/broken/fix-needs-test-blind/` plus `gitgates_test.go`
+   tests on a scratch repo covering the range and staged paths —
+   including a merge commit carrying a `fix`-like subject.
+2. **Five consumerless capabilities removed** (`58e8e45`):
+   `tools.configure`, `models.select`, `agents.restart_self`,
+   `observability.read_own_logs`, `grants.read_own` — from the catalog,
+   `models.select` also from both assistant grant sources
+   (`platform/templates/assistant/grants.yaml` and the duplicate
+   `platform/layer/grants.yaml`), plus the five `cap.*` registry rows.
+   Per principle 22 a name returns together with its consumer; no
+   build phase in the current plan produces their tools, so the return
+   phase is the owner's call when a consumer is assigned.
+3. **credential-broker joins the restore drill** (`eae1fe9`).
+   `backup.sh` now snapshots the broker's SQLCipher volume
+   (`VACUUM INTO` inside its container) and records the expected
+   `hubctl secret list` output. The drill boots a broker container in
+   the isolated drill network from the restored snapshot and the saved
+   key: its healthz only answers after `cipherProof` and open, so a
+   green healthz proves the key fits the snapshot; `ListConnections`
+   is then diffed against the recorded names/types/versions. Secret
+   values are never requested or decrypted, and a missing key or
+   snapshot fails the drill. Live run verified against a backup
+   holding four real connections.
+4. **Missing `tool_url` is a refusal, not a silent tool-less run**
+   (`3b5fdb4`). `ensureRuntimeOp` now calls `toolAdmission` after the
+   stale-digest check: a spec whose passports select any toolset but
+   render no `tool_url` is rejected with
+   `err.tool-admission-missing` (ru/en catalog entries). A spec with no
+   toolsets still runs tool-less — that is a normal mode.
+   `TestToolAdmissionFailClosed` covers both sides.
+
+### What did not work
+
+- The new range parser shipped a real bug in `facf186`: `git log
+  --format=%x01%H%x01%s --name-only` emits two fields per commit (sha,
+  then subject glued to the file list), and the loop stepped three,
+  silently misparsing and even false-firing on `eae1fe9`, which did
+  carry a test. It passed review because the original tests used
+  single-commit ranges that never entered the loop. `946d934` fixes
+  the split and adds a multi-commit case that actually catches the
+  glue bug. The repaired gate then caught it — the failure it was
+  built to prevent is what surfaced it.
+- Two commits landed merged by accident (staged files from the next
+  step rode along) and were split via `git reset --soft`; the range
+  check verified each resulting commit independently.
+
+### Timings
+
+- Warm `just check` on this branch: **4m19s** (v0.0.9 measured 4m26s).
+- Cold run including image rebuilds and stack recreate: 6m53s.
