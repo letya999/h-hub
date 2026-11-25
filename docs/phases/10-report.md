@@ -16,7 +16,7 @@ free while the owner decides.
   service tokens; `AnswerRequest` is service-token-only. Approval is
   unreachable for run callers — the model can ask and offer choice,
   never approve its own action.
-- `services/tool-hub/internal/ownerreq` — 701 production lines against
+- `services/tool-hub/internal/ownerreq` — 795 production lines at the tag against
   the pinned 800 budget, enforced by the new archtest module-line
   budget with a broken example. Machine `pending -> answered|denied|
   expired`; single-use application through the machine; `GetRequest`
@@ -87,12 +87,13 @@ free while the owner decides.
 | sys.owner-request-single-use | proved | TestOwnerAnswerSingleUse |
 | sys.owner-request-timeout | proved | TestOwnerRequestExpiry |
 | sys.owner-request-self-answer | proved | TestOwnerRequestSelfAnswer |
-| sys.seam-onesided | deferred:18 | owner-request part proved: the channel side cannot settle the requester side (single-use/self-answer refusals cross only the contract) |
+| sys.seam-onesided | [deferred](../invariants.md) | Owner requests reject a late answer and retract delivery when the job finishes. See the follow-up below for this part of the invariant. |
 | cap.tools.use | proved | TestCapabilityTriples (unchanged) |
 
 ## Measurements
 
-- ownerreq module: 701 production lines (budget 800, archtest-enforced)
+- The archtest counts 795 production lines at `v0.0.10` and 783 after this
+  follow-up, against the same 800-line budget. The initial report recorded 701.
 - e2e round trips: question 14.6s, choice 17.1s on the live stack
 - proof e2e: approval outcomes 2.8s, self-answer 1.2s, single-use 1.3s,
   expiry 6.3s
@@ -112,14 +113,38 @@ free while the owner decides.
   new descriptor edges need a keydist rerun plus a service restart —
   documented here because it cost a debugging loop.
 
-## Owner questions
+## Follow-up after v0.0.10
 
-1. The first turn's final text ("asking the owner") is dropped when
-   the job waits — the settle path skips result storage for waiting
-   jobs. Should the user see it as an intermediate message?
-2. A request whose report is lost (network failure mid-turn) leaves
-   the job succeeded while the request expires unanswered — orphan
-   requests have no sweeper yet. Phase 18 seam work or earlier?
-3. Auto/bypass modes are proven at service level only; a full e2e
-   needs passport mutation machinery that phase 11's config tools will
-   make natural. Worth a scenario then?
+Each run-created request schedules a durable job check at creation. Tool-hub
+uses the signed job and run IDs to query task-engine even if the run never
+reported the request. A stopped job causes tool-hub to expire each pending
+request and queue its retraction in the same transaction. The migration arms
+the check for requests already pending at upgrade. The e2e creates two
+unreported requests, observes their retractions before their TTL and tries
+a late answer. [Lost-report scenario](../../test/e2e/channel/ownerreq_proof_test.go#TestFinishedJobRetractsUnreportedRequests)
+
+The waiting job keeps the earlier deadline. Heartbeats from the active run
+leave it in place. Once the turn releases its claim, the final model text
+introduces the question in the same channel message, ahead of any numbered
+choices. The owner's answer resumes the original job.
+[Deadline test](../../services/task-engine/internal/svc/waiting_db_test.go#TestOwnerRequestEventWaitsJob),
+[question and choice round trips](../../test/e2e/channel/ownerreq_test.go).
+
+The local [restore drill](../../tools/backup/restore-drill.sh) restored nine
+databases and answered a chat message with the pinned N−1 identity image.
+In a separate migration check, only the open request created by a run was
+scheduled for reconciliation among three pre-upgrade records.
+
+On the Windows bind mount, the local [depguard proof](../../tools/proof/proof_test.go#TestDepguardBroken)
+hit golangci-lint's process lock while another fixture was running. Both
+fixtures passed in the normal parallel suite from a local Linux Docker volume.
+
+## Phase 12 acceptance
+
+Use the live passport tools to switch `config.approvals.mode` to `auto` and
+then `bypass` in a test space. In each mode a service approval must resolve
+to `yes` without a channel prompt, a question or choice must still wait for
+the human, and a space lacking the capability must still be refused.
+Exercise the full path on the mock channel with the scripted model and real
+containers. Phase 10 covers the mode decisions at the service boundary.
+[Service tests](../../services/tool-hub/internal/svc/ownerreq_db_test.go)

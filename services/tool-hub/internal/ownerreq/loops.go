@@ -26,7 +26,7 @@ func (s *Server) Loops(ctx context.Context, l *log.L) {
 		case <-tick.C:
 			s.outboxPass(ctx, l)
 		case <-sweep.C:
-			if _, err := s.m.Sweep(ctx, s.db, s.deps.Now(), 32, s.retractOnFinal); err != nil {
+			if _, err := s.m.Sweep(ctx, s.db, s.deps.Now(), 32, retractOnFinal); err != nil {
 				l.Error(ctx, "request sweep", err)
 			}
 		}
@@ -58,6 +58,9 @@ func (s *Server) outboxPass(ctx context.Context, l *log.L) {
 
 func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) (bool, error) {
 	switch f.Topic {
+	case "check-request-job":
+		rec, err := s.loadFresh(ctx, f.MachineID)
+		return rec.state != "pending", err
 	case "deliver-request":
 		return s.deliver(ctx, f.MachineID)
 	case "retract-request":
@@ -80,12 +83,21 @@ func channelClient(ctx context.Context, deps Deps) (*cv1.Client, error) {
 // deliver hands the request to channel-hub and records the delivery
 // it landed as — the delivery side of the pair.
 func (s *Server) deliver(ctx context.Context, id string) (bool, error) {
-	rec, err := s.load(ctx, id)
+	rec, err := s.loadFresh(ctx, id)
 	if err != nil {
 		return false, err
 	}
 	if rec.state != "pending" {
 		return true, nil
+	}
+	if rec.run != "" {
+		if rec.turn.Deadline == 0 {
+			return false, nil
+		}
+		rec.conv = rec.turn.Conversation
+	}
+	if rec.turn.Introduction != "" {
+		rec.prompt = rec.turn.Introduction + "\n\n" + rec.prompt
 	}
 	cl, err := channelClient(ctx, s.deps)
 	if err != nil {

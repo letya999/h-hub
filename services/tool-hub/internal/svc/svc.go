@@ -17,6 +17,7 @@ import (
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/services/tool-hub/internal/ownerreq"
 	"github.com/letya999/h-hub/shared/edges"
@@ -35,6 +36,7 @@ type Deps struct {
 	IdentityURL string
 	SpawnURL    string
 	ChannelURL  string
+	TaskURL     string
 	Issuer      ed25519.PublicKey
 	SelfKey     ed25519.PrivateKey
 	Edges       edges.Table
@@ -58,9 +60,18 @@ func New(sub string, db *sql.DB, deps Deps, l *log.L) *Server {
 			sub: sub, now: deps.Now, cache: map[string]cached{}}}
 	s.oreq = ownerreq.New(db, ownerreq.Deps{
 		IdentityURL: deps.IdentityURL, ChannelURL: deps.ChannelURL,
-		Issuer: deps.Issuer, Now: deps.Now,
-		Tokens: s.toks, Mode: specMode{s}}, l)
+		Now:    deps.Now,
+		Tokens: s.toks, Mode: specMode{s}, RequestTurn: s.requestTurn}, l)
 	return s
+}
+
+func (s *Server) requestTurn(ctx context.Context, r tv1.RequestTurnReq) (tv1.RequestTurnResp, error) {
+	tok, err := s.toks.Token(ctx, "task-engine")
+	if err != nil {
+		return tv1.RequestTurnResp{}, err
+	}
+	cl := tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(s.deps.TaskURL, tok)}}
+	return cl.GetRequestTurn(ctx, r) //nolint:wrapcheck // preserve the task contract error
 }
 
 // specMode resolves config.approvals.mode through the same spec the

@@ -26,9 +26,11 @@ session" lives here.
 
 ## Contracts
 
-Implements `contracts/task/v1` (job ops and `ReportRun`);
-consumes `identity/v1`, `spawn/v1`, `harness/v1`. Fake at
-`contracts/task/v1/fake.go`.
+Implements `contracts/task/v1` and consumes `identity/v1`, `spawn/v1`,
+`harness/v1` and `ownerreq/v1`. The service-only `GetRequestTurn` operation
+tells tool-hub when a job has stopped. For the request a job awaits, it
+returns the deadline and introduction once the originating turn ends.
+[Job state and turn tests](internal/svc/waiting_db_test.go)
 
 ## Does not do
 
@@ -48,7 +50,8 @@ service's own sweeper.
 ## Config
 
 `HHUB_SUB`, `HHUB_DSN`, `HHUB_KEYS`, `HHUB_IDENTITY_URL`,
-`HHUB_SPAWN_URL`, `HHUB_CHANNEL_URL`; loaded once in `internal/config`.
+`HHUB_SPAWN_URL`, `HHUB_CHANNEL_URL` and `HHUB_TOOL_URL`,
+loaded once in `internal/config`.
 
 ## Runbook
 

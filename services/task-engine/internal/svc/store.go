@@ -365,7 +365,7 @@ func bindRequest(ctx context.Context, tx *sql.Tx, job, request string) error {
 // own inside the wait-owner transition — the pair's TTL is the
 // minimum of the two (sys.seam-onesided).
 func armJobDeadline(ctx context.Context, tx *sql.Tx, job string, at time.Time) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE fsm.machines SET deadline_at=$2
+	if _, err := tx.ExecContext(ctx, `UPDATE fsm.machines SET deadline_at=LEAST(deadline_at,$2)
 		WHERE kind='job' AND id=$1 AND state='waiting_owner'`, job, at); err != nil {
 		return fmt.Errorf("job deadline: %w", err)
 	}

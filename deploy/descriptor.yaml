@@ -134,6 +134,7 @@ services:
       - HHUB_IDENTITY_URL
       - HHUB_SPAWN_URL
       - HHUB_CHANNEL_URL
+      - HHUB_TASK_URL
     volumes:
       - name: keys-tool-hub
         path: /etc/hhub
@@ -144,6 +145,8 @@ services:
         ops: [Resolve]
       - to: channel-hub
         ops: [DeliverRequest, RetractRequest]
+      - to: task-engine
+        ops: [GetRequestTurn]
   - name: memory-hub
     zone: agent
     database: postgres

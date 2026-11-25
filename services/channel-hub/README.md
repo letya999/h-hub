@@ -26,9 +26,10 @@ Implements `contracts/channel/v1` (`Inject`, `ReadOutbox`) and consumes
 
 ## Does not do
 
-Task-engine owns job execution. On a successful Telegram turn the channel
-edits its progress message into the first answer part, or sends the answer
-directly when it is ready first. Telegram receives plain text.
+Task-engine owns job execution. Model execution, token issuance and tool
+execution belong to their respective services. On a successful Telegram turn
+the channel edits its progress message into the first answer part, or sends
+the answer directly when it is ready first. Telegram receives plain text.
 [Telegram delivery and replay](internal/svc/telegram_reply_db_test.go).
 
 ## Machines
@@ -53,3 +54,8 @@ The channel checks the spawn watchdog and sends a direct operator alert
 for each stale tick ([TestStaleSpawnTickRefusesHealth](../../test/e2e/lifecycle/watchdog_stale_test.go)).
 Long answers become five text parts plus a remainder file
 ([TestScriptedLongAnswer](../../test/e2e/channel/scripted_channel_test.go)).
+An owner question includes the turn introduction in one message. When the
+text exceeds Telegram's message limit, a single document carries the full
+text, a caption and the choice buttons.
+[Mock round trips](../../test/e2e/channel/ownerreq_test.go),
+[Telegram document delivery](internal/svc/telegram_test.go#TestLongRequestIsOneDocumentWithChoices).

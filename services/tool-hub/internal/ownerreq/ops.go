@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -133,10 +135,7 @@ func (s *Server) create(ctx context.Context, c caller, r orv1.CreateReq) (orv1.C
 		Deadline: now.Add(time.Duration(r.TTLSec) * time.Second).Unix()}, nil
 }
 
-// commitRequest writes the machine, the row and the mode decision in
-// one transaction: ask arms the delivery effect when the addressee
-// is already deliverable — a run-created request waits for its
-// binding — other modes resolve the request at once.
+// Run requests watch their job even if the runtime never reports the request ID.
 func (s *Server) commitRequest(ctx context.Context, rec request,
 	ttlSec int64, mode string, now time.Time) (string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -156,15 +155,17 @@ func (s *Server) commitRequest(ctx context.Context, rec request,
 		return "", err
 	}
 	state := "pending"
-	if rec.kind == orv1.KindApproval && mode != "ask" {
-		if err := s.autoAnswer(ctx, tx, rec, mode, now); err != nil {
-			return "", err
-		}
+	switch {
+	case rec.kind == orv1.KindApproval && mode != "ask":
+		err = s.autoAnswer(ctx, tx, rec, mode, now)
 		state = "answered"
-	} else if deliverable(rec) {
-		if err := armDelivery(ctx, tx, rec.id); err != nil {
-			return "", err
-		}
+	case rec.run != "":
+		err = armEffect(ctx, tx, rec.id, "check-request-job")
+	default:
+		err = armEffect(ctx, tx, rec.id, "deliver-request")
+	}
+	if err != nil {
+		return "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("request commit: %w", err)
@@ -172,72 +173,51 @@ func (s *Server) commitRequest(ctx context.Context, rec request,
 	return state, nil
 }
 
-// deliverable tells whether the row carries enough targeting for the
-// delivery effect: a conversation, or a direct channel binding.
-func deliverable(rec request) bool {
-	return rec.conv != "" || (rec.channel != "" && rec.external != "")
-}
-
-// armDelivery inserts the delivery effect row inside tx.
-func armDelivery(ctx context.Context, tx *sql.Tx, id string) error {
+func armEffect(ctx context.Context, tx *sql.Tx, id, topic string) error {
 	if _, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
-		(kind, machine_id, topic, payload) VALUES ('owner_request',$1,'deliver-request',$2)`,
-		id, id); err != nil {
+		(kind, machine_id, topic, payload) VALUES ('owner_request',$1,$2,$3)`,
+		id, topic, id); err != nil {
 		return fmt.Errorf("request effect: %w", err)
 	}
 	return nil
 }
 
-// bindRequest pins one pending request to its conversation and arms
-// the delivery effect in the same transaction. Only services bind —
-// task-engine, when the runtime's journal event names the request;
-// the run token cannot carry the conversation because the mint wire
-// stays frozen for the rollback baseline. A repeat with the same
-// conversation is the idempotent success, never a second effect.
+// bindRequest pins the conversation and schedules delivery once, under the row lock.
 func (s *Server) bindRequest(ctx context.Context, r orv1.BindReq) (orv1.BindResp, error) {
 	var out orv1.BindResp
 	if err := herrors.Require(r.Request != "" && r.Conversation != "",
 		"err.invalid-arg"); err != nil {
 		return out, err //nolint:wrapcheck // shared error form
 	}
-	c, err := callerOf(ctx)
-	if err != nil {
-		return out, err
-	}
-	if c.run {
+	if p := httpapi.PrincipalFrom(ctx); p == nil || p.Purpose != "service" {
 		return out, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
-	rec, err := s.loadFresh(ctx, r.Request)
-	if err != nil {
-		return out, err
-	}
-	if rec.state != "pending" {
-		return out, errClosed(rec.state)
-	}
-	if rec.conv == r.Conversation {
-		return orv1.BindResp{Request: rec.id, State: rec.state}, nil
-	}
-	if rec.conv != "" {
-		return out, herrors.New(herrors.CodeConflict, "err.request-bound")
-	}
-	return bindTx(ctx, s.db, r)
+	return bindTx(ctx, s.db, r, s.deps.Now())
 }
 
-// bindTx pins the conversation under the row lock and arms the
-// delivery effect in the same transaction; the lock serializes
-// racing binds, so a loser reads the winner's value as a conflict.
-func bindTx(ctx context.Context, db *sql.DB, r orv1.BindReq) (orv1.BindResp, error) {
+func bindTx(ctx context.Context, db *sql.DB, r orv1.BindReq, now time.Time) (orv1.BindResp, error) {
 	var out orv1.BindResp
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return out, fmt.Errorf("bind begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
-	var cur string
-	if err := tx.QueryRowContext(ctx,
-		`SELECT conversation FROM owner_requests WHERE id=$1 FOR UPDATE`,
-		r.Request).Scan(&cur); err != nil {
+	var cur, state string
+	var deadline sql.NullTime
+	err = tx.QueryRowContext(ctx, `SELECT q.conversation,m.state,m.deadline_at
+		FROM owner_requests q JOIN fsm.machines m ON m.kind='owner_request' AND m.id=q.id
+		WHERE q.id=$1 FOR UPDATE OF m,q`, r.Request).Scan(&cur, &state, &deadline)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, errRequestNotFound()
+	}
+	if err != nil {
 		return out, fmt.Errorf("bind lock: %w", err)
+	}
+	if state != "pending" {
+		return out, errClosed(state)
+	}
+	if !now.Before(deadline.Time) {
+		return out, errClosed("expired")
 	}
 	if cur == r.Conversation {
 		return orv1.BindResp{Request: r.Request, State: "pending"}, nil
@@ -250,7 +230,7 @@ func bindTx(ctx context.Context, db *sql.DB, r orv1.BindReq) (orv1.BindResp, err
 		r.Conversation, r.Request); err != nil {
 		return out, fmt.Errorf("bind write: %w", err)
 	}
-	if err := armDelivery(ctx, tx, r.Request); err != nil {
+	if err := armEffect(ctx, tx, r.Request, "deliver-request"); err != nil {
 		return out, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -275,39 +255,23 @@ func (s *Server) autoAnswer(ctx context.Context, tx *sql.Tx, rec request, mode s
 	return nil
 }
 
-// landed is the answer the proof admitted: the request, the
-// canonical answer and its machine event.
-type landed struct {
-	rec    request
-	answer string
-	event  string
-}
-
-// answerable proves one answer may land: the request is pending and
-// unexpired, the channel binding verifies to the addressee, and the
-// raw text maps to a canonical answer and machine event.
-func (s *Server) answerable(ctx context.Context, r orv1.AnswerReq) (landed, error) {
-	var out landed
+// answerable verifies the pending request and its addressee before mapping the reply.
+func (s *Server) answerable(ctx context.Context, r orv1.AnswerReq) (answer, event string, err error) {
 	rec, err := s.loadFresh(ctx, r.Request)
 	if err != nil {
-		return out, err
+		return "", "", err
 	}
-	if rec.state != "pending" {
-		return out, errClosed(rec.state)
+	if rec.state != "pending" || (rec.run != "" && rec.turn.Deadline == 0) {
+		return "", "", errClosed(rec.state)
 	}
 	owner, err := s.resolveOwner(ctx, r.Channel, r.External)
 	if err != nil {
-		return out, err
+		return "", "", err
 	}
 	if owner != rec.owner {
-		return out, herrors.New(herrors.CodeForbidden, "err.request-addressee")
+		return "", "", herrors.New(herrors.CodeForbidden, "err.request-addressee")
 	}
-	out.rec = rec
-	out.answer, out.event, err = orv1.CanonicalAnswer(rec.kind, rec.options, r.Answer)
-	if err != nil {
-		return landed{}, err //nolint:wrapcheck // contract error form
-	}
-	return out, nil
+	return orv1.CanonicalAnswer(rec.kind, rec.options, r.Answer) //nolint:wrapcheck // contract error form
 }
 
 // answerRequest applies the addressee's answer exactly once: the
@@ -319,32 +283,26 @@ func (s *Server) answerRequest(ctx context.Context, r orv1.AnswerReq) (orv1.Answ
 		"err.invalid-arg"); err != nil {
 		return out, err //nolint:wrapcheck // shared error form
 	}
-	l, err := s.answerable(ctx, r)
+	answer, event, err := s.answerable(ctx, r)
 	if err != nil {
 		return out, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return out, fmt.Errorf("answer begin: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck // best-effort close
 	by := r.Channel + "/" + r.External
 	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
-		return recordAnswer(ctx, tx, l.rec.id, l.answer, by)
+		return recordAnswer(ctx, tx, r.Request, answer, by)
 	}
-	err = s.m.Transition(ctx, tx, fsm.Request{ID: l.rec.id, Event: l.event, Actor: by,
-		Effects: []fsm.Effect{{Topic: "retract-request", Payload: []byte(l.rec.id)}}}, hook)
+	err = s.closeRequest(ctx, fsm.Request{ID: r.Request, Event: event, Actor: by}, hook)
+	if alreadyClosed(err) {
+		return out, herrors.New(herrors.CodeConflict, "err.request-closed")
+	}
 	if err != nil {
-		return out, errClosed("pending")
-	}
-	if err := tx.Commit(); err != nil {
-		return out, fmt.Errorf("answer commit: %w", err)
+		return out, err
 	}
 	state := "answered"
-	if l.event == "deny" {
+	if event == "deny" {
 		state = "denied"
 	}
-	return orv1.AnswerResp{Request: l.rec.id, State: state}, nil
+	return orv1.AnswerResp{Request: r.Request, State: state}, nil
 }
 
 // getRequest reads one request, firing its deadline first when due
@@ -370,35 +328,55 @@ func (s *Server) getRequest(ctx context.Context, r orv1.GetReq) (orv1.GetResp, e
 		Deadline: rec.deadline.Unix()}, nil
 }
 
-// loadFresh reads a request after firing its deadline when due — the
-// deadline is the machine's, the sweep is only the backstop.
+// loadFresh reconciles a pending request before a read, answer or delivery.
 func (s *Server) loadFresh(ctx context.Context, id string) (request, error) {
 	rec, err := s.load(ctx, id)
-	if err != nil {
+	if err != nil || rec.state != "pending" {
 		return rec, err
 	}
-	if rec.state != "pending" || s.deps.Now().Before(rec.deadline) {
+	if rec.run != "" && s.deps.Now().Before(rec.deadline) {
+		rec.turn, err = s.deps.RequestTurn(ctx, tv1.RequestTurnReq{Job: rec.job, Run: rec.run, Request: id})
+		if err != nil {
+			return rec, fmt.Errorf("request turn: %w", err)
+		}
+		if at := time.Unix(rec.turn.Deadline, 0); rec.turn.Deadline > 0 && at.Before(rec.deadline) {
+			rec.deadline = at
+		}
+	}
+	if !rec.turn.Done && s.deps.Now().Before(rec.deadline) {
 		return rec, nil
 	}
-	if _, err := s.m.SweepRow(ctx, s.db, id, s.deps.Now(), s.retractOnFinal); err != nil {
-		return rec, fmt.Errorf("request expiry: %w", err)
+	err = s.closeRequest(ctx, fsm.Request{ID: id, Event: "expire", Actor: "owner_request"}, nil)
+	if err != nil && !alreadyClosed(err) {
+		return rec, err
 	}
 	return s.load(ctx, id)
 }
 
-// retractOnFinal arms the delivery-side retraction when a deadline
-// transition lands the request in a final state.
-func (s *Server) retractOnFinal(ctx context.Context, tx *sql.Tx, ch fsm.Change) error {
-	if !s.m.Terminal(ch.To) {
-		return nil
-	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox
-		(kind, machine_id, topic, payload) VALUES ('owner_request',$1,'retract-request',$2)`,
-		ch.ID, ch.ID)
+func alreadyClosed(err error) bool {
+	return errors.Is(err, fsm.ErrBadTransition) || errors.Is(err, fsm.ErrStale)
+}
+
+func (s *Server) closeRequest(ctx context.Context, r fsm.Request, hook fsm.Hook) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("retract effect: %w", err)
+		return fmt.Errorf("request close begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // best-effort close
+	r.At = s.deps.Now()
+	r.Effects = []fsm.Effect{{Topic: "retract-request", Payload: []byte(r.ID)}}
+	if err := s.m.Transition(ctx, tx, r, hook); err != nil {
+		return fmt.Errorf("request %s: %w", r.Event, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("request close commit: %w", err)
 	}
 	return nil
+}
+
+// retractOnFinal runs inside the expiry transaction.
+func retractOnFinal(ctx context.Context, tx *sql.Tx, ch fsm.Change) error {
+	return armEffect(ctx, tx, ch.ID, "retract-request")
 }
 
 // resolveOwner maps a channel binding to its verified owner via
