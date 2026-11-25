@@ -111,8 +111,8 @@ func (d *dispatcher) runInput(ctx context.Context, j jobRow) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resume request: %w", err)
 	}
-	return fmt.Sprintf("%s\n\n[owner request %s answered: %s]",
-		j.input, j.ownerRequest, res.Answer), nil
+	return fmt.Sprintf("%s\n\n[owner request answered: %s]",
+		j.input, res.Answer), nil
 }
 
 // awaitRuntime polls EnsureRuntime until the runtime is warm and
