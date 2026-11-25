@@ -9,8 +9,8 @@ import (
 // names a capability and carries an argument schema.
 func TestRegistryLoads(t *testing.T) {
 	t.Parallel()
-	if len(registry) != 1 {
-		t.Fatalf("toolsets: got %d, want probe", len(registry))
+	if len(registry) != 2 || registry["probe"].Name == "" || registry["ownerreq"].Name == "" {
+		t.Fatalf("toolsets: got %v, want probe and ownerreq", registry)
 	}
 	for _, ts := range registry {
 		for _, td := range ts.Tools {

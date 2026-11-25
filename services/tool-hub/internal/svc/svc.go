@@ -6,6 +6,7 @@
 package svc
 
 import (
+	"context"
 	"crypto/ed25519"
 	"database/sql"
 	"embed"
@@ -15,7 +16,10 @@ import (
 	"time"
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
+	"github.com/letya999/h-hub/services/tool-hub/internal/ownerreq"
+	"github.com/letya999/h-hub/shared/edges"
 	"github.com/letya999/h-hub/shared/httpapi"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -30,8 +34,10 @@ func Migrations() fs.FS { return migrations }
 type Deps struct {
 	IdentityURL string
 	SpawnURL    string
+	ChannelURL  string
 	Issuer      ed25519.PublicKey
 	SelfKey     ed25519.PrivateKey
+	Edges       edges.Table
 	Now         func() time.Time
 }
 
@@ -41,18 +47,42 @@ type Server struct {
 	db   *sql.DB
 	deps Deps
 	toks *tokenSource
+	oreq *ownerreq.Server
 	l    *log.L
 }
 
-// New builds the server.
+// New builds the server and its owner-request module.
 func New(sub string, db *sql.DB, deps Deps, l *log.L) *Server {
-	return &Server{sub: sub, db: db, deps: deps, l: l,
+	s := &Server{sub: sub, db: db, deps: deps, l: l,
 		toks: &tokenSource{url: deps.IdentityURL, key: deps.SelfKey,
 			sub: sub, now: deps.Now, cache: map[string]cached{}}}
+	s.oreq = ownerreq.New(db, ownerreq.Deps{
+		IdentityURL: deps.IdentityURL, ChannelURL: deps.ChannelURL,
+		Issuer: deps.Issuer, Now: deps.Now,
+		Tokens: s.toks, Mode: specMode{s}}, l)
+	return s
 }
 
-// Mux mounts /v1 ops and /healthz; every op verifies a run token
-// naming tool-hub in its audience.
+// specMode resolves config.approvals.mode through the same spec the
+// admission path resolves — one policy source.
+type specMode struct{ s *Server }
+
+// ApprovalsMode returns the space's configured mode; a spec without
+// the leaf behaves as ask.
+func (m specMode) ApprovalsMode(ctx context.Context, space string) (string, error) {
+	spec, _, err := m.s.spec(ctx, space)
+	if err != nil {
+		return "", err
+	}
+	if spec.Config.Approvals.Mode == "" {
+		return "ask", nil
+	}
+	return spec.Config.Approvals.Mode, nil
+}
+
+// Mux mounts /v1 ops and /healthz. Admission ops verify run tokens;
+// owner-request ops take run or service tokens per op (the answer op
+// is service-only — an agent never answers).
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := thv1.Ops(thv1.Handlers{
@@ -65,9 +95,31 @@ func (s *Server) Mux() *http.ServeMux {
 				return s.opErr(w, r, name, op)
 			}))
 	}
+	svcVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Edges, s.deps.Now)
+	dual := func(r *http.Request) (httpapi.Principal, error) {
+		if p, err := runVer(r); err == nil {
+			return p, nil
+		}
+		return svcVer(r)
+	}
+	verOf := map[string]httpapi.Verifier{"AnswerRequest": svcVer}
+	for name, op := range orv1.Ops(s.oreq.Handlers()) {
+		op := op
+		v := verOf[name]
+		if v == nil {
+			v = dual
+		}
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(v,
+			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+				return s.opErr(w, r, name, op)
+			}))
+	}
 	mux.HandleFunc("/healthz", s.healthz)
 	return mux
 }
+
+// Loops runs the owner-request module's outbox executor and sweeper.
+func (s *Server) Loops(ctx context.Context, l *log.L) { s.oreq.Loops(ctx, l) }
 
 func (s *Server) opErr(w http.ResponseWriter, r *http.Request,
 	name string, op httpapi.Handler) error {

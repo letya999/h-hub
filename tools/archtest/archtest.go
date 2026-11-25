@@ -21,6 +21,13 @@ const (
 	brokenPrefix    = "testdata/broken"
 )
 
+// moduleBudgets pins production line ceilings for service modules
+// (internal packages) that must stay small enough to review in one
+// sitting; a module enters the table with its owning feature.
+var moduleBudgets = map[string]int{
+	"tool-hub/ownerreq": 800,
+}
+
 // Check runs all AST checks over root.
 func Check(root string) error {
 	fset := token.NewFileSet()
@@ -51,7 +58,10 @@ func Check(root string) error {
 			return err
 		}
 	}
-	return serviceLines(root, files)
+	if err := serviceLines(root, files); err != nil {
+		return err
+	}
+	return moduleLines(root, files)
 }
 
 // skip reports whether a walk path is excluded (.git, broken examples).
@@ -145,22 +155,32 @@ func info(types map[string]*typeInfo, name string) *typeInfo {
 	return t
 }
 
-// serviceLines enforces the per-service production line budget.
-func serviceLines(root string, files []string) error {
-	perSvc := map[string]int{}
+// lineCounts buckets production lines of files by keyOf; empty keys
+// are skipped.
+func lineCounts(root string, files []string, keyOf func(string, string) (string, error)) (map[string]int, error) {
+	per := map[string]int{}
 	for _, p := range files {
-		svc, err := svcOf(root, p)
+		key, err := keyOf(root, p)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if svc == "" {
+		if key == "" {
 			continue
 		}
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return fmt.Errorf("archtest read %s: %w", p, err)
+			return nil, fmt.Errorf("archtest read %s: %w", p, err)
 		}
-		perSvc[svc] += strings.Count(string(data), "\n") + 1
+		per[key] += strings.Count(string(data), "\n") + 1
+	}
+	return per, nil
+}
+
+// serviceLines enforces the per-service production line budget.
+func serviceLines(root string, files []string) error {
+	perSvc, err := lineCounts(root, files, svcOf)
+	if err != nil {
+		return err
 	}
 	for svc, n := range perSvc {
 		if n > maxServiceLines {
@@ -181,4 +201,33 @@ func svcOf(root, p string) (string, error) {
 		return "", nil
 	}
 	return parts[1], nil
+}
+
+// moduleLines enforces the pinned per-module production line budgets.
+func moduleLines(root string, files []string) error {
+	perMod, err := lineCounts(root, files, modOf)
+	if err != nil {
+		return err
+	}
+	for mod, max := range moduleBudgets {
+		if n := perMod[mod]; n > max {
+			return fmt.Errorf("archtest: module %s has %d production lines, max %d", mod, n, max)
+		}
+	}
+	return nil
+}
+
+// modOf returns "<service>/<module>" for files under a budgeted
+// internal package, or "" elsewhere.
+func modOf(root, p string) (string, error) {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return "", fmt.Errorf("archtest rel: %w", err)
+	}
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 5)
+	if len(parts) != 5 || parts[0] != "services" || parts[2] != "internal" ||
+		strings.HasSuffix(rel, "_test.go") {
+		return "", nil
+	}
+	return parts[1] + "/" + parts[3], nil
 }

@@ -13,7 +13,7 @@ import (
 // spawn-controller — the single owner of policy. A live grant change
 // lands here on the next call without a restart.
 func (s *Server) spec(ctx context.Context, space string) (specView, string, error) {
-	tok, err := s.toks.token(ctx, "spawn-controller")
+	tok, err := s.toks.Token(ctx, "spawn-controller")
 	if err != nil {
 		return specView{}, "", err
 	}
@@ -30,8 +30,8 @@ func (s *Server) spec(ctx context.Context, space string) (specView, string, erro
 	return v, res.Digest, nil
 }
 
-// token issues and caches service tokens per audience.
-func (t *tokenSource) token(ctx context.Context, aud string) (string, error) {
+// Token issues and caches service tokens per audience.
+func (t *tokenSource) Token(ctx context.Context, aud string) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c, ok := t.cache[aud]

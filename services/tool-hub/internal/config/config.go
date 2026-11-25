@@ -6,14 +6,15 @@ import (
 	"os"
 )
 
-type C struct{ Sub, DSN, Keys, IdentityURL, SpawnURL string }
+type C struct{ Sub, DSN, Keys, IdentityURL, SpawnURL, ChannelURL string }
 
 func Env() (C, error) {
 	c := C{Sub: os.Getenv("HHUB_SUB"), DSN: os.Getenv("HHUB_DSN"), Keys: os.Getenv("HHUB_KEYS"),
-		IdentityURL: os.Getenv("HHUB_IDENTITY_URL"), SpawnURL: os.Getenv("HHUB_SPAWN_URL")}
-	for _, v := range []string{c.Sub, c.DSN, c.Keys, c.IdentityURL, c.SpawnURL} {
+		IdentityURL: os.Getenv("HHUB_IDENTITY_URL"), SpawnURL: os.Getenv("HHUB_SPAWN_URL"),
+		ChannelURL: os.Getenv("HHUB_CHANNEL_URL")}
+	for _, v := range []string{c.Sub, c.DSN, c.Keys, c.IdentityURL, c.SpawnURL, c.ChannelURL} {
 		if v == "" {
-			return c, fmt.Errorf("tool config: HHUB_SUB, HHUB_DSN, HHUB_KEYS, HHUB_IDENTITY_URL, HHUB_SPAWN_URL required")
+			return c, fmt.Errorf("tool config: HHUB_SUB, HHUB_DSN, HHUB_KEYS, HHUB_IDENTITY_URL, HHUB_SPAWN_URL, HHUB_CHANNEL_URL required")
 		}
 	}
 	return c, nil

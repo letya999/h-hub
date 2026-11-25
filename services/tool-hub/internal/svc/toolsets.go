@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"gopkg.in/yaml.v3"
@@ -84,12 +85,13 @@ func checkTool(t *toolDef, names map[string]bool) {
 	t.Parameters = raw
 }
 
-// specView decodes the grants and tools blocks of the effective spec
-// owned by spawn-controller. The hub resolves it per request — no
-// local policy copy is kept (rules 3-4).
+// specView decodes the grants, tools and config blocks of the
+// effective spec owned by spawn-controller. The hub resolves it per
+// request — no local policy copy is kept (rules 3-4).
 type specView struct {
 	Grants grantsView `json:"grants"`
 	Tools  toolsView  `json:"tools"`
+	Config configView `json:"config"`
 }
 
 type grantsView struct {
@@ -99,6 +101,16 @@ type grantsView struct {
 type toolsView struct {
 	Core     []string `json:"core"`
 	Extended []string `json:"extended"`
+}
+
+// configView decodes config.approvals — the ask/auto/bypass leaf the
+// owner-request module consumes.
+type configView struct {
+	Approvals approvalsView `json:"approvals"`
+}
+
+type approvalsView struct {
+	Mode string `json:"mode"`
 }
 
 // project computes the projection for one resolved spec — a pure
@@ -152,15 +164,37 @@ func tool(tsName, name string) (toolDef, bool) {
 // executors is the executor table: the second level of the tool
 // model. Only toolhub exists in this phase; other names in the
 // closed set (harness, mcp, cli, remote) land with their phases.
-var executors = map[string]executor{
-	"toolhub": builtinEcho,
+var executors = map[string]func(context.Context, *Server, toolCall) (json.RawMessage, error){
+	"toolhub": toolhubExec,
 }
 
-type executor func(ctx context.Context, args json.RawMessage) (json.RawMessage, error)
+// toolCall bundles what an executor needs for one admitted call.
+type toolCall struct {
+	ts     toolset
+	name   string
+	claims idv1.RunClaims
+	args   json.RawMessage
+}
 
-// builtinEcho is the toolhub executor's only provider this phase: it
-// returns the received argument object unchanged — no network, no
-// files, no processes.
+// toolhubExec is the toolhub executor's provider dispatch: builtin
+// echoes, ownerreq asks the human through the request module.
+func toolhubExec(ctx context.Context, s *Server, c toolCall) (json.RawMessage, error) {
+	switch c.ts.Provider {
+	case "builtin":
+		return builtinEcho(ctx, c.args)
+	case "ownerreq":
+		res, err := s.oreq.InvokeTool(ctx, c.claims, c.name, c.args)
+		if err != nil {
+			return nil, fmt.Errorf("ownerreq invoke: %w", err)
+		}
+		return res, nil
+	}
+	return nil, herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
+										With("provider", c.ts.Provider)
+}
+
+// builtinEcho returns the received argument object unchanged — no
+// network, no files, no processes.
 func builtinEcho(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
 	if len(args) == 0 {
 		args = json.RawMessage("null")

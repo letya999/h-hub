@@ -19,7 +19,7 @@ func TestRepo(t *testing.T) {
 // TestBroken proves the AST ceilings on minimal violations.
 func TestBroken(t *testing.T) {
 	t.Parallel()
-	for _, dir := range []string{"archtest-methods", "archtest-fields"} {
+	for _, dir := range []string{"archtest-methods", "archtest-fields", "archtest-module-lines"} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 			root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "broken", dir))
