@@ -25,6 +25,7 @@ func TestStoreMissingDatabaseRefusesStartup(t *testing.T) {
 		"-e", "HHUB_IDENTITY_URL=http://identity-hub:9000",
 		"-e", "HHUB_SPAWN_URL=http://spawn-controller:9000",
 		"-e", "HHUB_CHANNEL_URL=http://channel-hub:9000",
+		"-e", "HHUB_TOOL_URL=http://tool-hub:9000",
 		"hhub-task-engine:local")
 	out, err := cmd.CombinedOutput()
 	testkit.Deny(t, "sys.store-missing", ctx.Err() == nil && err != nil &&

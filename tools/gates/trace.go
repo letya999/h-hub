@@ -23,6 +23,8 @@ var sysIDs = map[string]bool{
 	"passport-live": true, "passport-respawn": true,
 	"passport-recreate": true, "passport-rollback": true,
 	"passport-explain": true, "grant-revocation": true,
+	"owner-request-single-use": true, "owner-request-timeout": true,
+	"owner-request-self-answer": true,
 }
 
 var (
