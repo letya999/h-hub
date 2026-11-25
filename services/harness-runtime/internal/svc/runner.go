@@ -179,10 +179,15 @@ func (r *HermesRunner) modelRequest(tools []map[string]any,
 
 // projection asks tool-hub which tools the model may see under this
 // run's digest. A refused projection means no tools for the model;
-// any other failure refuses the turn. The name -> toolset map lets
-// the call path find the selected set again.
+// any other failure refuses the turn. A spec without tool_url —
+// activated before tool calling existed — has no admission edge and
+// likewise means no tools. The name -> toolset map lets the call
+// path find the selected set again.
 func (r *HermesRunner) projection(ctx context.Context, a Admission) ([]map[string]any,
 	map[string]string, error) {
+	if r.cfg.ToolURL == "" {
+		return nil, nil, nil
+	}
 	tc := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClientTimeout(
 		r.cfg.ToolURL, a.Token, time.Duration(r.cfg.TimeoutMS)*time.Millisecond)}}
 	p, err := tc.Projection(ctx, thv1.ProjectionReq{Run: a.Run, Digest: a.Digest})

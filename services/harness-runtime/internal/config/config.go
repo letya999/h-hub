@@ -53,8 +53,12 @@ func (c C) Load() (Rendered, error) {
 	if err := json.Unmarshal(data, &r); err != nil {
 		return Rendered{}, fmt.Errorf("config: %w", err)
 	}
-	if r.TaskURL == "" || r.ModelURL == "" || r.ToolURL == "" || r.TimeoutMS <= 0 {
-		return Rendered{}, fmt.Errorf("config: task_url, model_url, tool_url and timeout_ms are required")
+	// tool_url is not required: a spec activated before tool calling
+	// existed renders no value for it, and that spec legitimately
+	// runs without tools (the admission edge arrives with the first
+	// recompiled spec).
+	if r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
+		return Rendered{}, fmt.Errorf("config: task_url, model_url and timeout_ms are required")
 	}
 	return r, nil
 }
