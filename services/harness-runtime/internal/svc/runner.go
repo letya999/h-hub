@@ -115,8 +115,8 @@ type assistantMsg struct {
 	ToolCalls []struct {
 		ID       string `json:"id"`
 		Function struct {
-			Name      string          `json:"name"`
-			Arguments json.RawMessage `json:"arguments"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
 		} `json:"function"`
 	} `json:"tool_calls"`
 }
@@ -152,7 +152,7 @@ func (r *HermesRunner) turn(ctx context.Context, a Admission,
 			"role": "assistant", "content": msg.Content, "tool_calls": msg.ToolCalls})
 		for _, call := range msg.ToolCalls {
 			content := r.callTool(ctx, a, toolset, call.Function.Name,
-				call.Function.Arguments)
+				json.RawMessage(call.Function.Arguments))
 			if toolset[call.Function.Name] == "ownerreq" {
 				r.reportOwnerRequest(a, next, content)
 			}

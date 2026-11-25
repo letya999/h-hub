@@ -25,3 +25,21 @@ func TestCancelUnknownRun(t *testing.T) {
 	_, err = s.cancelRun(ctx, hv1.CancelRunReq{Run: "r"})
 	testkit.Deny(t, "adr.harness-admit.unknown-run-refused", herrors.CodeOf(err) == herrors.CodeNotFound)
 }
+
+func TestToolCallArgumentsWireString(t *testing.T) {
+	t.Parallel()
+	wire := `{"role":"assistant","tool_calls":[{"id":"c1","function":{"name":"ask","arguments":"{\"question\":\"q\"}"}}]}`
+	var msg assistantMsg
+	if err := json.Unmarshal([]byte(wire), &msg); err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Question string `json:"question"`
+	}
+	if err := json.Unmarshal(json.RawMessage(msg.ToolCalls[0].Function.Arguments), &parsed); err != nil {
+		t.Fatalf("arguments must arrive as a json string carrying the object: %v", err)
+	}
+	if parsed.Question != "q" {
+		t.Fatalf("question %q", parsed.Question)
+	}
+}
