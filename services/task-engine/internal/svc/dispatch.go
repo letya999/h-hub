@@ -9,6 +9,7 @@ import (
 
 	hv1 "github.com/letya999/h-hub/contracts/harness/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
@@ -77,7 +78,11 @@ func (d *dispatcher) dispatchInner(ctx context.Context, l *log.L, jobID string) 
 		return err
 	}
 	hc := d.s.harnessClient(rt.Endpoint, tok.Token)
-	req := hv1.SubmitRunReq{Run: runID, Job: j.id, Space: j.space, Input: j.input}
+	input, err := d.runInput(ctx, j)
+	if err != nil {
+		return err
+	}
+	req := hv1.SubmitRunReq{Run: runID, Job: j.id, Space: j.space, Input: input}
 	if j.attach != "" {
 		if err := json.Unmarshal([]byte(j.attach), &req.Attachments); err != nil {
 			return fmt.Errorf("job attachments: %w", err)
@@ -88,6 +93,26 @@ func (d *dispatcher) dispatchInner(ctx context.Context, l *log.L, jobID string) 
 		return fmt.Errorf("submit refused")
 	}
 	return nil
+}
+
+// runInput composes the input for the job's next run: the owner's
+// answer joins the original message when the job resumes from
+// waiting_owner. The answer is read from tool-hub at dispatch — the
+// one copy lives there, never in the job row (rule 3).
+func (d *dispatcher) runInput(ctx context.Context, j jobRow) (string, error) {
+	if j.ownerRequest == "" {
+		return j.input, nil
+	}
+	cl, err := d.s.toolClient(ctx)
+	if err != nil {
+		return "", err
+	}
+	res, err := cl.GetRequest(ctx, orv1.GetReq{Request: j.ownerRequest})
+	if err != nil {
+		return "", fmt.Errorf("resume request: %w", err)
+	}
+	return fmt.Sprintf("%s\n\n[owner request %s answered: %s]",
+		j.input, j.ownerRequest, res.Answer), nil
 }
 
 // awaitRuntime polls EnsureRuntime until the runtime is warm and
@@ -189,8 +214,8 @@ func (d *dispatcher) withJobTx(ctx context.Context, jobID, event, actor string,
 func getJobByID(ctx context.Context, db *sql.DB, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result, COALESCE(attachments::text,'') FROM jobs WHERE id=$1`, id).Scan(
-		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.attach)
+		input, idem, result, owner_request, COALESCE(attachments::text,'') FROM jobs WHERE id=$1`, id).Scan(
+		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.ownerRequest, &j.attach)
 	if err != nil {
 		return j, fmt.Errorf("get job %s: %w", id, err)
 	}

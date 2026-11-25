@@ -16,6 +16,7 @@ import (
 
 	hv1 "github.com/letya999/h-hub/contracts/harness/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
+	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/edges"
@@ -36,6 +37,7 @@ type Deps struct {
 	IdentityURL string
 	SpawnURL    string
 	ChannelURL  string
+	ToolURL     string
 	Issuer      ed25519.PublicKey // issuer of service/run tokens
 	SelfKey     ed25519.PrivateKey
 	EdgeTab     edges.Table // inbound edge table for this service
@@ -99,6 +101,17 @@ func (s *Server) spawnClient(ctx context.Context) (*sv1.Client, error) {
 	}
 	return &sv1.Client{T: sv1.HTTP{
 		C: httpapi.NewClient(s.deps.SpawnURL, tok)}}, nil
+}
+
+// toolClient mints a service token for tool-hub and builds the
+// owner-request client that carries it.
+func (s *Server) toolClient(ctx context.Context) (*orv1.Client, error) {
+	tok, err := s.toks.Token(ctx, "tool-hub")
+	if err != nil {
+		return nil, err
+	}
+	return &orv1.Client{T: orv1.HTTP{
+		C: httpapi.NewClient(s.deps.ToolURL, tok)}}, nil
 }
 
 // harnessClient builds a client for one runtime endpoint carrying the

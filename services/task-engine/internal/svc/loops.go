@@ -9,7 +9,9 @@ import (
 	"time"
 
 	hv1 "github.com/letya999/h-hub/contracts/harness/v1"
+	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -103,6 +105,78 @@ func (lp *loopRunner) sweepPass(ctx context.Context, l *log.L) {
 	if _, err := lp.s.runM.Sweep(ctx, lp.s.db, lp.s.deps.Now(), 32, lp.runSweepHook); err != nil {
 		l.Error(ctx, "run sweep", err)
 	}
+	lp.pollWaiting(ctx, l)
+}
+
+// pollWaiting resolves every waiting_owner job against its request:
+// an answer resumes the job into the lane, a denial or expiry fails
+// it with a clear reason — never a hang. The machine deadline at the
+// request's own TTL is the backstop for a request that never
+// resolves in tool-hub.
+func (lp *loopRunner) pollWaiting(ctx context.Context, l *log.L) {
+	waiting, err := waitingJobs(ctx, lp.s.db)
+	if err != nil {
+		l.Error(ctx, "waiting poll", err)
+		return
+	}
+	for _, w := range waiting {
+		if err := lp.resolveWaiting(ctx, w); err != nil {
+			l.Error(ctx, "waiting "+w.id, err)
+		}
+	}
+}
+
+// resolveWaiting applies one request's outcome to its job.
+func (lp *loopRunner) resolveWaiting(ctx context.Context, w waitingJob) error {
+	cl, err := lp.s.toolClient(ctx)
+	if err != nil {
+		return err
+	}
+	res, err := cl.GetRequest(ctx, orv1.GetReq{Request: w.request})
+	if herrors.CodeOf(err) == herrors.CodeNotFound {
+		return lp.finishWaiting(ctx, w.id, "expire", "owner request expired")
+	}
+	if err != nil {
+		return fmt.Errorf("get request: %w", err)
+	}
+	switch res.State {
+	case "answered":
+		return lp.finishWaiting(ctx, w.id, "resume", "")
+	case "denied":
+		return lp.finishWaiting(ctx, w.id, "settle-fail", "owner denied the request")
+	case "expired":
+		return lp.finishWaiting(ctx, w.id, "expire", "owner request expired")
+	}
+	return nil
+}
+
+// finishWaiting fires one exit event on a waiting job, storing the
+// refusal reason as its result when it fails. A job that already
+// left waiting_owner (cancelled alongside) is untouched.
+func (lp *loopRunner) finishWaiting(ctx context.Context, job, event, result string) error {
+	tx, err := lp.s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // best-effort close
+	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
+		if result == "" {
+			return nil
+		}
+		return setResult(ctx, tx, job, result)
+	}
+	err = lp.s.jobM.Transition(ctx, tx, fsm.Request{
+		ID: job, Event: event, Actor: "sweep", At: lp.s.deps.Now()}, hook)
+	if errors.Is(err, fsm.ErrBadTransition) {
+		err = nil
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", event, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }
 
 // jobSweepHook reacts to deadline-driven job transitions: a run still
