@@ -2,8 +2,13 @@ package svc
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/letya999/h-hub/shared/testkit"
@@ -18,6 +23,55 @@ func rawText(id, from, chat int64, text string) tgRawUpdate {
 		}{ID: from}}
 	u.Message.Chat.ID = chat
 	return u
+}
+
+func TestLongRequestIsOneDocumentWithChoices(t *testing.T) {
+	t.Parallel()
+	text := strings.Repeat("Ц", 4096) + "\n\nPick a color\n1. blue\n2. red"
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Path != "/bottest/sendDocument" {
+			t.Errorf("long request used %s", r.URL.Path)
+		} else {
+			checkQuestionDocument(t, r, text)
+		}
+		io.WriteString(w, `{"ok":true,"result":{"message_id":1}}`) //nolint:errcheck // test response
+	}))
+	defer srv.Close()
+	err := NewTGAPI(srv.URL).sendRequest(context.Background(), "test", tgRequestMsg{
+		Chat: 73, Topic: "thr:17", Text: text, RequestID: "req-1", Options: []string{"blue", "red"}})
+	if err != nil || calls.Load() != 1 {
+		t.Fatalf("sent %d requests: %v", calls.Load(), err)
+	}
+}
+
+func checkQuestionDocument(t *testing.T, r *http.Request, want string) {
+	t.Helper()
+	f, _, err := r.FormFile("document")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer f.Close() //nolint:errcheck // test upload
+	b, err := io.ReadAll(f)
+	if err != nil || string(b) != want {
+		t.Errorf("document did not preserve the full question: %v", err)
+	}
+	if r.FormValue("chat_id") != "73" || r.FormValue("message_thread_id") != "17" ||
+		!strings.Contains(r.FormValue("caption"), "Pick a color") {
+		t.Error("question or thread missing from document message")
+	}
+	var keys struct {
+		Rows [][]map[string]string `json:"inline_keyboard"`
+	}
+	wantKeys := [][]map[string]string{
+		{{"text": "blue", "callback_data": "a:req-1:1"}},
+		{{"text": "red", "callback_data": "a:req-1:2"}},
+	}
+	if err := json.Unmarshal([]byte(r.FormValue("reply_markup")), &keys); err != nil || !reflect.DeepEqual(keys.Rows, wantKeys) {
+		t.Errorf("choice buttons: %+v %v", keys, err)
+	}
 }
 
 func TestNormalizeUpdateKinds(t *testing.T) {

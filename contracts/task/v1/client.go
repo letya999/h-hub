@@ -89,6 +89,13 @@ func (c *Client) GetRun(ctx context.Context, r GetRunReq) (GetRunResp, error) {
 	return out, err
 }
 
+// GetRequestTurn reads a run-created request's job context for tool-hub.
+func (c *Client) GetRequestTurn(ctx context.Context, r RequestTurnReq) (RequestTurnResp, error) {
+	var out RequestTurnResp
+	err := c.call(ctx, "GetRequestTurn", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

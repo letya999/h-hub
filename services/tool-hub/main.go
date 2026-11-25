@@ -68,6 +68,7 @@ func run(ctx context.Context, l *log.L) error {
 		IdentityURL: cfg.IdentityURL,
 		SpawnURL:    cfg.SpawnURL,
 		ChannelURL:  cfg.ChannelURL,
+		TaskURL:     cfg.TaskURL,
 		Issuer:      issuer,
 		SelfKey:     key,
 		Edges:       tab.For(cfg.Sub),

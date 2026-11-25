@@ -14,8 +14,7 @@ const (
 	jobAdmittedTTL  = 2 * time.Minute
 	jobRunningTTL   = 10 * time.Minute
 	jobUncertainTTL = 15 * time.Minute
-	// waiting is re-armed to the request's own deadline at entry;
-	// the machine TTL is only the backstop above the request ceiling.
+	// At entry, waiting also inherits the earlier job or request deadline.
 	jobWaitingTTL = 6 * time.Minute
 
 	runDispatchedTTL = 30 * time.Second

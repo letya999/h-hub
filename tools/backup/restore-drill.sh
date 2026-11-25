@@ -148,6 +148,7 @@ docker run -d --rm --name "$toolhub" --network "$net" --network-alias tool-hub \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -e HHUB_CHANNEL_URL=http://channel-hub:9000 \
+  -e HHUB_TASK_URL=http://task-engine:9000 \
   -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" hhub-tool-hub:local >/dev/null
 # credential-broker boots only after its key opens the restored
 # snapshot and PRAGMA cipher_version answers (open.go), so a green

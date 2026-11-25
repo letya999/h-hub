@@ -120,6 +120,9 @@ func (rep *runReporter) touchJob(ctx context.Context, tx *sql.Tx, runID string) 
 	if err != nil {
 		return err
 	}
+	if waiting, err := jobWaiting(ctx, tx, job); err != nil || waiting {
+		return err // run heartbeats cannot extend a human's deadline
+	}
 	if err := rep.s.jobM.Touch(ctx, tx, job, rep.s.deps.Now()); err != nil {
 		return fmt.Errorf("job touch: %w", err)
 	}
@@ -134,12 +137,8 @@ type waitEvent struct {
 	Deadline int64  `json:"deadline"`
 }
 
-// waitOwner binds the job to the request its run is waiting on: the
-// machine moves to waiting_owner, the deadline re-arms to the
-// request's own, and a repeated event (the agent asked again)
-// supersedes — the newest request owns the wait, matching the
-// channel link rule. A job that already left running ignores the
-// late event.
+// waitOwner binds the newest request and keeps the earlier job or request deadline.
+// A job that already left running or waiting ignores a late report.
 func (rep *runReporter) waitOwner(ctx context.Context, tx *sql.Tx, runID string, e tv1.RunEvent) error {
 	var w waitEvent
 	if err := json.Unmarshal([]byte(e.Data), &w); err != nil || w.Request == "" || w.Deadline <= 0 {
@@ -149,11 +148,16 @@ func (rep *runReporter) waitOwner(ctx context.Context, tx *sql.Tx, runID string,
 	if err != nil {
 		return err
 	}
+	var at time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT LEAST(deadline_at,$2) FROM fsm.machines
+		WHERE kind='job' AND id=$1 FOR UPDATE`, job, time.Unix(w.Deadline, 0)).Scan(&at); err != nil {
+		return fmt.Errorf("waiting deadline: %w", err)
+	}
 	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
 		if err := bindRequest(ctx, tx, job, w.Request); err != nil {
 			return err
 		}
-		return armJobDeadline(ctx, tx, job, time.Unix(w.Deadline, 0))
+		return armJobDeadline(ctx, tx, job, at)
 	}
 	err = rep.s.jobM.Transition(ctx, tx, fsm.Request{
 		ID: job, Event: "wait-owner", Actor: "runtime", At: rep.s.deps.Now()}, hook)
@@ -213,7 +217,7 @@ func (rep *runReporter) settle(ctx context.Context, tx *sql.Tx, runID string, e 
 func jobWaiting(ctx context.Context, tx *sql.Tx, job string) (bool, error) {
 	var state string
 	if err := tx.QueryRowContext(ctx,
-		"SELECT state FROM fsm.machines WHERE kind='job' AND id=$1", job).Scan(&state); err != nil {
+		"SELECT state FROM fsm.machines WHERE kind='job' AND id=$1 FOR UPDATE", job).Scan(&state); err != nil {
 		return false, fmt.Errorf("job state: %w", err)
 	}
 	return state == "waiting_owner", nil

@@ -6,17 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 )
 
 // request is one owner_requests row joined with its machine row.
 type request struct {
 	id, owner, space, channel, external string
 	chat, topic, conv, job, run         string
-	kind, prompt, answer, answeredBy    string
-	delivery                            string
+	kind, prompt, answer                string
 	options                             []string
 	state                               string
 	deadline                            time.Time
+	turn                                tv1.RequestTurnResp
 }
 
 // insert writes the request row inside the create transaction.
@@ -43,13 +45,11 @@ func (s *Server) load(ctx context.Context, id string) (request, error) {
 	var deadline sql.NullTime
 	err := s.db.QueryRowContext(ctx, `SELECT q.id,q.owner,q.space,q.channel,
 		q.external_id,q.chat_id,q.topic,q.conversation,q.job,q.run,q.kind,
-		q.prompt,q.options,q.answer,q.answered_by,q.delivery_id,
-		m.state,m.deadline_at FROM owner_requests q
+		q.prompt,q.options,q.answer,m.state,m.deadline_at FROM owner_requests q
 		JOIN fsm.machines m ON m.kind='owner_request' AND m.id=q.id
 		WHERE q.id=$1`, id).Scan(&r.id, &r.owner, &r.space, &r.channel,
 		&r.external, &r.chat, &r.topic, &r.conv, &r.job, &r.run, &r.kind,
-		&r.prompt, &opts, &r.answer, &r.answeredBy, &r.delivery,
-		&r.state, &deadline)
+		&r.prompt, &opts, &r.answer, &r.state, &deadline)
 	if err == sql.ErrNoRows {
 		return r, errRequestNotFound()
 	}
@@ -59,9 +59,7 @@ func (s *Server) load(ctx context.Context, id string) (request, error) {
 	if err := json.Unmarshal(opts, &r.options); err != nil {
 		return r, fmt.Errorf("request options: %w", err)
 	}
-	if deadline.Valid {
-		r.deadline = deadline.Time
-	}
+	r.deadline = deadline.Time
 	return r, nil
 }
 

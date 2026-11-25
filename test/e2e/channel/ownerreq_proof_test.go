@@ -10,6 +10,7 @@ import (
 	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/auth"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -36,7 +37,7 @@ func svcToolClient(t *testing.T, service, mark string) *orv1.Client {
 
 // runReqClient mints a run token — the agent's identity — and builds
 // the owner-request client with it.
-func runReqClient(t *testing.T, scope OwnerSpace, run string) *orv1.Client {
+func runReqClient(t *testing.T, scope OwnerSpace, job, run string) *orv1.Client {
 	t.Helper()
 	key, err := auth.LoadPrivateKey("/etc/hhub/services/task-engine/service.key")
 	if err != nil {
@@ -51,7 +52,7 @@ func runReqClient(t *testing.T, scope OwnerSpace, run string) *orv1.Client {
 	}
 	mint := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, svc.Token)}}
 	tok, err := mint.MintRunToken(ctx, idv1.MintRunTokenReq{
-		Job: Idem("job", run), Run: run, Space: scope.Space, Owner: scope.Owner,
+		Job: job, Run: run, Space: scope.Space, Owner: scope.Owner,
 		Digest: "digest", Aud: []string{"tool-hub"}})
 	if err != nil {
 		t.Fatalf("run token: %v", err)
@@ -116,11 +117,56 @@ func TestOwnerRequestSelfAnswer(t *testing.T) {
 	owner, space := linkedOwner(t, mark)
 	cl := svcToolClient(t, "task-engine", mark)
 	id := createRequest(t, cl, owner, space, "question", "pick?", 300)
-	agent := runReqClient(t, OwnerSpace{Owner: owner, Space: space}, Idem("run", owner))
+	agent := runReqClient(t, OwnerSpace{Owner: owner, Space: space}, Idem("job", owner), Idem("run", owner))
 	_, err := agent.AnswerRequest(context.Background(), orv1.AnswerReq{
 		Request: id, Channel: "mock", External: owner, Answer: "blue"})
 	testkit.Deny(t, "sys.owner-request-self-answer",
 		herrors.CodeOf(err) == herrors.CodeForbidden || herrors.CodeOf(err) == herrors.CodeUnauthorized)
+}
+
+// The run creates requests but never reports their IDs to task-engine.
+func TestFinishedJobRetractsUnreportedRequests(t *testing.T) {
+	t.Parallel()
+	testkit.Req(t, "sys.seam-onesided")
+	ctx := context.Background()
+	owner, space := linkedOwner(t, "orphan")
+	scope := OwnerSpace{Owner: owner, Space: space}
+	job, err := TaskClient(t, scope).CreateJob(ctx, tv1.CreateJobReq{Space: space,
+		Conversation: Idem("orphan"), Input: "slow:12000 finished", Idem: Idem("orphan")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	WaitJob(t, scope, job.ID, "running", 2*time.Minute)
+	var run string
+	if err := AdminDB(t, "task_engine").QueryRowContext(ctx,
+		"SELECT id FROM runs WHERE job=$1", job.ID).Scan(&run); err != nil {
+		t.Fatal(err)
+	}
+	agent := runReqClient(t, scope, job.ID, run)
+	for range 2 {
+		r, err := agent.CreateRequest(ctx, orv1.CreateReq{Kind: "question", Prompt: "still needed?", TTLSec: 300})
+		if err != nil || r.State != "pending" {
+			t.Fatalf("create request: %+v %v", r, err)
+		}
+	}
+	if j := WaitJob(t, scope, job.ID, "succeeded", time.Minute); j.Result != "answer: finished" {
+		t.Fatalf("unexpected job result: %+v", j)
+	}
+	db := AdminDB(t, "tool_hub")
+	var id string
+	testkit.Poll(t, 15*time.Second, 250*time.Millisecond, func() bool {
+		var n int
+		if err := db.QueryRowContext(ctx, `SELECT count(DISTINCT q.id), COALESCE(min(q.id),'')
+			FROM owner_requests q JOIN fsm.machines m ON m.kind='owner_request' AND m.id=q.id
+			JOIN fsm.outbox f ON f.machine_id=q.id AND f.topic='retract-request' AND f.done_at IS NOT NULL
+			WHERE q.job=$1 AND m.state='expired'`, job.ID).Scan(&n, &id); err != nil {
+			t.Fatal(err)
+		}
+		return n == 2
+	})
+	_, err = svcToolClient(t, "channel-hub", "orphan").AnswerRequest(ctx,
+		orv1.AnswerReq{Request: id, Channel: "mock", External: owner, Answer: "too late"})
+	testkit.Deny(t, "sys.seam-onesided", herrors.CodeOf(err) == herrors.CodeConflict)
 }
 
 func TestOwnerAnswerSingleUse(t *testing.T) {

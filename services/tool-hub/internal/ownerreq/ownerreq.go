@@ -9,10 +9,10 @@ package ownerreq
 
 import (
 	"context"
-	"crypto/ed25519"
 	"database/sql"
 	"time"
 
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -44,10 +44,10 @@ type ModeResolver interface {
 type Deps struct {
 	IdentityURL string
 	ChannelURL  string
-	Issuer      ed25519.PublicKey
 	Now         func() time.Time
 	Tokens      TokenSource
 	Mode        ModeResolver
+	RequestTurn func(context.Context, tv1.RequestTurnReq) (tv1.RequestTurnResp, error)
 }
 
 // Server is the module: the request machine, the request table and

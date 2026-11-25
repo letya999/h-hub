@@ -384,9 +384,10 @@ func (o *requestOps) answerLink(ctx context.Context, r inputRow, l linkRow, raw 
 	}
 	_, err = client.AnswerRequest(ctx, orv1.AnswerReq{
 		Request: l.request, Channel: r.channel, External: r.external, Answer: raw})
-	switch herrors.CodeOf(err) {
-	case "":
+	if err == nil {
 		return o.completeAnswer(ctx, r, l, "channel.request-accepted")
+	}
+	switch herrors.CodeOf(err) {
 	case herrors.CodeInvalid:
 		return o.completeText(ctx, r, locale.T(locale.EN, "channel.request-invalid"),
 			"channel.phase.refused")

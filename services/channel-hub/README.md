@@ -26,8 +26,8 @@ Implements `contracts/channel/v1` (`Inject`, `ReadOutbox`) and consumes
 
 ## Does not do
 
-Does not run a model, issue tokens, or execute tools. Telegram is outside
-this phase.
+Model execution, token issuance and tool execution belong to their respective
+services.
 
 ## Machines
 
@@ -51,3 +51,8 @@ The channel checks the spawn watchdog and sends a direct operator alert
 for each stale tick ([TestStaleSpawnTickRefusesHealth](../../test/e2e/lifecycle/watchdog_stale_test.go)).
 Long answers become five text parts plus a remainder file
 ([TestScriptedLongAnswer](../../test/e2e/channel/scripted_channel_test.go)).
+An owner question includes the turn introduction in one message. When the
+text exceeds Telegram's message limit, a single document carries the full
+text, a caption and the choice buttons.
+[Mock round trips](../../test/e2e/channel/ownerreq_test.go),
+[Telegram document delivery](internal/svc/telegram_test.go#TestLongRequestIsOneDocumentWithChoices).

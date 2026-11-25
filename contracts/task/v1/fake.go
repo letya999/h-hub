@@ -43,7 +43,16 @@ func (f *Fake) Handlers() Handlers {
 		SetHold:         f.hold,
 		ReportRun:       f.report,
 		GetRun:          f.runEvents,
+		GetRequestTurn:  requestTurn,
 	}
+}
+
+// The fake has no dispatcher, so it never attaches a run to a job.
+func requestTurn(_ context.Context, r RequestTurnReq) (RequestTurnResp, error) {
+	if err := r.Validate(); err != nil {
+		return RequestTurnResp{}, err
+	}
+	return RequestTurnResp{Done: true}, nil
 }
 
 func (f *Fake) create(_ context.Context, r CreateJobReq) (CreateJobResp, error) {
