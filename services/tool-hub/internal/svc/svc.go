@@ -102,7 +102,7 @@ func (s *Server) Mux() *http.ServeMux {
 		}
 		return svcVer(r)
 	}
-	verOf := map[string]httpapi.Verifier{"AnswerRequest": svcVer}
+	verOf := map[string]httpapi.Verifier{"AnswerRequest": svcVer, "BindRequest": svcVer}
 	for name, op := range orv1.Ops(s.oreq.Handlers()) {
 		op := op
 		v := verOf[name]

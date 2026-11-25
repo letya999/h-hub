@@ -34,6 +34,9 @@ var cases = []Case{
 	{"choice_bad_index", caseChoiceBadIndex},
 	{"approval_yes_no", caseApprovalYesNo},
 	{"answer_once", caseAnswerOnce},
+	{"bind_idempotent", caseBindIdempotent},
+	{"bind_conflict", caseBindConflict},
+	{"bind_closed", caseBindClosed},
 	{"answer_wrong_addressee", caseAnswerWrongAddressee},
 	{"invalid_input", caseInvalidInput},
 }
@@ -169,5 +172,47 @@ func caseInvalidInput(t *testing.T, ctx context.Context, c *Client) {
 		Kind: KindChoice, Prompt: "no options", TTLSec: 60})
 	if herrors.CodeOf(err) != herrors.CodeInvalid {
 		t.Fatalf("choice without options: got %v, want invalid", err)
+	}
+}
+
+// caseBindIdempotent pins the conversation once; a repeat with the
+// same value is the idempotent success, not a second effect.
+func caseBindIdempotent(t *testing.T, ctx context.Context, c *Client) {
+	res := create(t, ctx, c, KindQuestion, nil)
+	for range 2 {
+		b, err := c.BindRequest(ctx, BindReq{Request: res.Request, Conversation: "cv_1"})
+		if err != nil {
+			t.Fatalf("bind: %v", err)
+		}
+		if b.State != StatePending {
+			t.Fatalf("bind state: %+v", b)
+		}
+	}
+}
+
+// caseBindConflict refuses a second, different conversation — the
+// first binding owns the request.
+func caseBindConflict(t *testing.T, ctx context.Context, c *Client) {
+	res := create(t, ctx, c, KindQuestion, nil)
+	if _, err := c.BindRequest(ctx, BindReq{Request: res.Request, Conversation: "cv_1"}); err != nil {
+		t.Fatalf("first bind: %v", err)
+	}
+	_, err := c.BindRequest(ctx, BindReq{Request: res.Request, Conversation: "cv_2"})
+	if herrors.CodeOf(err) != herrors.CodeConflict {
+		t.Fatalf("rebind: got %v, want conflict", err)
+	}
+}
+
+// caseBindClosed refuses binding a request that already answered —
+// a late journal event must not rearm delivery.
+func caseBindClosed(t *testing.T, ctx context.Context, c *Client) {
+	res := create(t, ctx, c, KindQuestion, nil)
+	if _, err := c.AnswerRequest(ctx, AnswerReq{
+		Request: res.Request, Channel: "mock", External: "alice", Answer: "done"}); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	_, err := c.BindRequest(ctx, BindReq{Request: res.Request, Conversation: "cv_1"})
+	if herrors.CodeOf(err) != herrors.CodeConflict {
+		t.Fatalf("bind closed: got %v, want conflict", err)
 	}
 }

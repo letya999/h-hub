@@ -126,11 +126,21 @@ func (lp *loopRunner) pollWaiting(ctx context.Context, l *log.L) {
 	}
 }
 
-// resolveWaiting applies one request's outcome to its job.
+// resolveWaiting applies one request's outcome to its job. The poll
+// also carries the conversation binding: the runtime cannot mint it
+// into the run token — the mint wire stays frozen for the rollback
+// baseline — so the binding rides this poll until it lands; the
+// delivery effect arms inside tool-hub at that moment.
 func (lp *loopRunner) resolveWaiting(ctx context.Context, w waitingJob) error {
 	cl, err := lp.s.toolClient(ctx)
 	if err != nil {
 		return err
+	}
+	if _, err := cl.BindRequest(ctx, orv1.BindReq{
+		Request: w.request, Conversation: w.conv}); err != nil &&
+		herrors.CodeOf(err) != herrors.CodeConflict &&
+		herrors.CodeOf(err) != herrors.CodeNotFound {
+		return fmt.Errorf("bind request: %w", err)
 	}
 	res, err := cl.GetRequest(ctx, orv1.GetReq{Request: w.request})
 	if herrors.CodeOf(err) == herrors.CodeNotFound {

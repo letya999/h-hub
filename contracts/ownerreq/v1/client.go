@@ -49,6 +49,13 @@ func (c *Client) GetRequest(ctx context.Context, r GetReq) (GetResp, error) {
 	return out, err
 }
 
+// BindRequest pins one pending request to its conversation.
+func (c *Client) BindRequest(ctx context.Context, r BindReq) (BindResp, error) {
+	var out BindResp
+	err := c.call(ctx, "BindRequest", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

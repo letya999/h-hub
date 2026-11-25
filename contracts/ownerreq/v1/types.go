@@ -91,11 +91,28 @@ type GetResp struct {
 	Deadline int64  `json:"deadline"`
 }
 
+// BindReq pins one pending request to its conversation. Only a
+// service may bind: the run token cannot carry the conversation —
+// the mint wire stays frozen for the rollback baseline — so
+// task-engine binds the job's conversation when the runtime reports
+// the request. Binding is idempotent and arms the delivery effect.
+type BindReq struct {
+	Request      string `json:"request"`
+	Conversation string `json:"conversation"`
+}
+
+// BindResp reports the state the request is in.
+type BindResp struct {
+	Request string `json:"request"`
+	State   string `json:"state"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateRequest func(context.Context, CreateReq) (CreateResp, error)
 	AnswerRequest func(context.Context, AnswerReq) (AnswerResp, error)
 	GetRequest    func(context.Context, GetReq) (GetResp, error)
+	BindRequest   func(context.Context, BindReq) (BindResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -104,6 +121,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"CreateRequest": op(h.CreateRequest),
 		"AnswerRequest": op(h.AnswerRequest),
 		"GetRequest":    op(h.GetRequest),
+		"BindRequest":   op(h.BindRequest),
 	}
 }
 

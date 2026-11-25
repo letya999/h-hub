@@ -107,6 +107,7 @@ func (f *Fake) Handlers() Handlers {
 		CreateRequest: f.create,
 		AnswerRequest: f.answer,
 		GetRequest:    f.get,
+		BindRequest:   f.bind,
 	}
 }
 
@@ -182,6 +183,32 @@ func (f *Fake) get(_ context.Context, r GetReq) (GetResp, error) {
 	out = GetResp{Request: q.id, Kind: q.Kind, Owner: q.Owner, Space: q.Space,
 		State: q.state, Answer: q.answer, Deadline: q.deadline.Unix()}
 	return out, nil
+}
+
+// bind pins the conversation once: a repeat with the same value is
+// the idempotent success, a different one conflicts.
+func (f *Fake) bind(_ context.Context, r BindReq) (BindResp, error) {
+	var out BindResp
+	if err := herrors.Require(r.Request != "" && r.Conversation != "",
+		"err.invalid-arg"); err != nil {
+		return out, err //nolint:wrapcheck // shared error form
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	q, ok := f.reqs[r.Request]
+	if !ok {
+		return out, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	f.expireLocked(q)
+	if q.state != StatePending {
+		return out, herrors.New(herrors.CodeConflict, "err.request-closed"). //nolint:wrapcheck // shared error form
+											With("state", q.state)
+	}
+	if q.Conversation != "" && q.Conversation != r.Conversation {
+		return out, herrors.New(herrors.CodeConflict, "err.request-bound")
+	}
+	q.Conversation = r.Conversation
+	return BindResp{Request: q.id, State: q.state}, nil
 }
 
 // expireLocked applies the lazy deadline: past its deadline a pending
