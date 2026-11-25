@@ -16,6 +16,7 @@ leaves:
   - {path: config.model_url, class: invariant, consumer: harness-runtime, effect: respawn}
   - {path: config.tool_url, class: invariant, consumer: harness-runtime, effect: respawn}
   - {path: config.timeout_ms, class: narrow, consumer: harness-runtime, effect: respawn}
+  - {path: config.approvals.mode, class: choice, consumer: tool-hub, effect: live, proven: true}
   - {path: models.default, class: choice, consumer: model-gateway, effect: live, proven: true}
   - {path: models.routes, class: narrow, consumer: model-gateway, effect: live, proven: true}
   - {path: models.daily_tokens, class: narrow, consumer: model-gateway, effect: live, proven: true}

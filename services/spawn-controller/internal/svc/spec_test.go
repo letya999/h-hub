@@ -111,3 +111,51 @@ func TestPlatformLayerHonestVision(t *testing.T) {
 	testkit.Deny(t, "sys.model-route", !routeVision(m, "devin"))
 	testkit.Deny(t, "sys.model-route", routeVision(m, "devin-vision"))
 }
+
+// TestApprovalsModeLeaf proves the config.approvals.mode leaf: the
+// platform layer pins ask, a lower layer may choose inside the
+// domain, and a value outside it is refused at compile — whoever
+// wrote it.
+func TestApprovalsModeLeaf(t *testing.T) {
+	t.Parallel()
+	platform, err := layerDocs("platform/layer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := namedDocs{role: "platform", rev: "p1", docs: platform}
+	out, err := compileSet(layerSet{base})
+	if err != nil {
+		t.Fatalf("platform compile: %v", err)
+	}
+	if out.spec.Config.Approvals.Mode != "ask" {
+		t.Fatalf("platform mode = %q, want ask", out.spec.Config.Approvals.Mode)
+	}
+	userDocs := func(mode string) DocSet {
+		return DocSet{"config": map[string]any{
+			"approvals": map[string]any{"mode": mode}}}
+	}
+	for _, mode := range []string{"auto", "bypass"} {
+		out, err := compileSet(layerSet{base,
+			{role: "user", rev: "u1", docs: userDocs(mode)}})
+		if err != nil {
+			t.Fatalf("user chooses %s: %v", mode, err)
+		}
+		if out.spec.Config.Approvals.Mode != mode {
+			t.Fatalf("merged mode = %q, want %s", out.spec.Config.Approvals.Mode, mode)
+		}
+	}
+	bogus := userDocs("sometimes")
+	if _, err := compileSet(layerSet{base,
+		{role: "user", rev: "u1", docs: bogus}}); err == nil {
+		t.Fatal("user layer wrote a mode outside the domain")
+	}
+	badDocs, err := layerDocs("platform/layer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setLeaf(badDocs, "config.approvals.mode", "sometimes")
+	badBase := namedDocs{role: "platform", rev: "p2", docs: badDocs}
+	if _, err := compileSet(layerSet{badBase}); err == nil {
+		t.Fatal("platform layer wrote a mode outside the domain")
+	}
+}
