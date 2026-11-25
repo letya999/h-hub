@@ -4,6 +4,11 @@ set -eu
 dir=$(ls -dt /backup/*/ | head -n 1)
 test -n "$dir"
 (cd "$dir" && sha256sum -c SHA256SUMS >/dev/null)
+# The sealed secrets base is the backup's most valuable payload: a
+# missing key, snapshot or recorded listing fails the drill outright.
+for f in broker-db-key broker-snapshot.db broker-connections.txt; do
+  if test ! -f "$dir/$f"; then echo "backup misses $f" >&2; exit 1; fi
+done
 id="$(date -u +%s)-$$"
 net="hhub-restore-$id"
 pg="hhub-restore-pg-$id"
@@ -14,11 +19,13 @@ spawn="hhub-restore-spawn-$id"
 model="hhub-restore-model-$id"
 gateway="hhub-restore-gateway-$id"
 toolhub="hhub-restore-toolhub-$id"
+broker="hhub-restore-broker-$id"
+brokerdata="hhub-restore-broker-data-$id"
 render="hhub-restore-render-$id"
 operator_conf="hhub-restore-conf-$id"
-services="identity-hub task-engine channel-hub spawn-controller model-gateway tool-hub"
+services="identity-hub task-engine channel-hub spawn-controller model-gateway tool-hub credential-broker"
 cleanup() {
-  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$toolhub" "$pg" >/dev/null 2>&1 || true
+  docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$toolhub" "$broker" "$pg" >/dev/null 2>&1 || true
   for runtime in $(docker ps -aq --filter "network=$net" --filter label=hhub.managed=true); do
     docker rm -f "$runtime" >/dev/null 2>&1 || true
   done
@@ -26,6 +33,7 @@ cleanup() {
     docker rm -f "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
     docker volume rm "hhub-restore-keys-$service-$id" >/dev/null 2>&1 || true
   done
+  docker volume rm "$brokerdata" >/dev/null 2>&1 || true
   docker volume rm "$render" >/dev/null 2>&1 || true
   docker rm -f "$operator_conf" >/dev/null 2>&1 || true
   docker volume rm "$operator_conf" >/dev/null 2>&1 || true
@@ -85,6 +93,11 @@ for service in $services; do
   docker rm "$holder" >/dev/null
 done
 docker volume create "$render" >/dev/null
+docker volume create "$brokerdata" >/dev/null
+docker create --name "$brokerdata" -v "$brokerdata:/data" \
+  --entrypoint /bin/true "$issuer_image" >/dev/null
+docker cp "$dir/broker-snapshot.db" "$brokerdata:/data/broker.db"
+docker rm "$brokerdata" >/dev/null
 docker volume create "$operator_conf" >/dev/null
 docker create --name "$operator_conf" -v "$operator_conf:/etc/hhub" \
   --entrypoint /bin/true hhub-hubctl:local >/dev/null
@@ -133,7 +146,20 @@ docker run -d --rm --name "$toolhub" --network "$net" --network-alias tool-hub \
   -e HHUB_KEYS=/etc/hhub -e HHUB_IDENTITY_URL=http://identity-hub:9000 \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" hhub-tool-hub:local >/dev/null
-for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn" "model-gateway:$gateway" "tool-hub:$toolhub"; do
+# credential-broker boots only after its key opens the restored
+# snapshot and PRAGMA cipher_version answers (open.go), so a green
+# healthz is the cipher+open proof; the listing diff below is the
+# content proof. The key travels via docker cp, never a mount.
+docker create --name "$broker" --network "$net" --network-alias credential-broker \
+  -e HHUB_SUB=credential-broker -e HHUB_KEYS=/etc/hhub \
+  -e HHUB_DB_PATH=/data/broker.db -e HHUB_DB_KEY=/tmp/broker-db-key \
+  -e HHUB_KEK_PATH=/tmp/seal-kek \
+  -v "hhub-restore-keys-credential-broker-$id:/etc/hhub:ro" \
+  -v "$brokerdata:/data" hhub-credential-broker:local >/dev/null
+docker cp "$dir/broker-db-key" "$broker:/tmp/broker-db-key"
+docker cp "$dir/seal-kek" "$broker:/tmp/seal-kek"
+docker start "$broker" >/dev/null
+for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "spawn-controller:$spawn" "model-gateway:$gateway" "tool-hub:$toolhub" "credential-broker:$broker"; do
   host=${pair%%:*}
   container=${pair#*:}
   ready=0
@@ -147,6 +173,11 @@ for pair in "identity-hub:$issuer" "task-engine:$task" "channel-hub:$channel" "s
   done
   if test "$ready" -ne 1; then docker logs "$container" >&2; exit 1; fi
 done
+conns=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
+  hhub-hubctl:local secret list)
+if test "$conns" != "$(cat "$dir/broker-connections.txt")"; then
+  echo 'restored broker connections differ from backup' >&2; exit 1
+fi
 probe="restoreprobe-$id"
 registration=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
   hhub-hubctl:local user add "$probe")
@@ -158,4 +189,5 @@ case "$linked" in *"Account linked"*) ;; *) echo 'restore link produced no answe
 answer=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
   hhub-hubctl:local chat "$probe" 'restore probe')
 case "$answer" in *"answer: restore probe"*) ;; *) echo 'restore message produced no answer' >&2; exit 1 ;; esac
-printf 'restore drill: %s databases restored; backed-up KEK decrypted; message answered\n' "$(wc -l < "$dir/databases")"
+printf 'restore drill: %s databases restored; backed-up KEK decrypted; broker snapshot opened (%s connections); message answered\n' \
+  "$(wc -l < "$dir/databases")" "$(printf '%s' "$conns" | grep -c .)"
