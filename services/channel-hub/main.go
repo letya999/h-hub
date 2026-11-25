@@ -83,7 +83,8 @@ func loadDeps(cfg config.C) (svc.Deps, error) {
 		return svc.Deps{}, fmt.Errorf("edge table: %w", err)
 	}
 	return svc.Deps{IdentityURL: cfg.IdentityURL, TaskURL: cfg.TaskURL,
-		SpawnURL: cfg.SpawnURL, ModelURL: cfg.ModelURL, BrokerURL: cfg.BrokerURL, Issuer: issuer,
+		SpawnURL: cfg.SpawnURL, ModelURL: cfg.ModelURL, BrokerURL: cfg.BrokerURL,
+		ToolURL: cfg.ToolURL, Issuer: issuer,
 		OperatorPub: opPub, SelfKey: key, Edges: tab.For(cfg.Sub),
 		TG: svc.NewTGAPI("https://api.telegram.org"), Now: time.Now}, nil
 }

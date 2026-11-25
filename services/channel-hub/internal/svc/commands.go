@@ -50,7 +50,7 @@ func (s *commandOps) newCommand(ctx context.Context, r inputRow) error {
 	if _, _, err := s.taskClient(ctx, r.channel, r.external); err != nil {
 		return s.linkError(ctx, r, err)
 	}
-	if err := s.newConversation(ctx, r); err != nil {
+	if err := (&threadOps{s.Server}).newConversation(ctx, r); err != nil {
 		return err
 	}
 	return s.completeText(ctx, r, locale.T(locale.EN, "channel.new"))

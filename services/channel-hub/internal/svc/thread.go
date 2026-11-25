@@ -8,11 +8,16 @@ import (
 	"github.com/letya999/h-hub/shared/fsm"
 )
 
+// threadOps is the conversation-key path's method set, kept off
+// Server for the method cap (commandOps and requestOps follow the
+// same shape).
+type threadOps struct{ *Server }
+
 // conversation resolves the durable conversation id for the row's
 // channel key: mock keys on the external handle, telegram on
 // (chat, topic) — the blueprint conversation key.
-func (s *Server) conversation(ctx context.Context, r inputRow) (string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (o *threadOps) conversation(ctx context.Context, r inputRow) (string, error) {
+	tx, err := o.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("thread begin: %w", err)
 	}
@@ -21,7 +26,7 @@ func (s *Server) conversation(ctx context.Context, r inputRow) (string, error) {
 	if r.channel == "telegram" {
 		conv, err = tgConversation(ctx, tx, r)
 	} else {
-		conv, err = s.mockConversation(ctx, tx, r)
+		conv, err = o.mockConversation(ctx, tx, r)
 	}
 	if err != nil {
 		return "", err
@@ -51,7 +56,7 @@ func tgConversation(ctx context.Context, tx *sql.Tx, r inputRow) (string, error)
 
 // mockConversation keys mock threads on the external handle and
 // creates the thread machine on first sight.
-func (s *Server) mockConversation(ctx context.Context, tx *sql.Tx, r inputRow) (string, error) {
+func (o *threadOps) mockConversation(ctx context.Context, tx *sql.Tx, r inputRow) (string, error) {
 	var conv string
 	res, err := tx.ExecContext(ctx, `INSERT INTO mock_threads(external_id,conversation_id) VALUES($1,$2)
 		ON CONFLICT(external_id) DO NOTHING`, r.external, "mock-"+r.external)
@@ -63,7 +68,7 @@ func (s *Server) mockConversation(ctx context.Context, tx *sql.Tx, r inputRow) (
 		return "", fmt.Errorf("thread rows: %w", err)
 	}
 	if n > 0 {
-		if err := s.thread.Create(ctx, tx, clock{s.deps.Now},
+		if err := o.thread.Create(ctx, tx, clock{o.deps.Now},
 			fsm.CreateReq{ID: "thread-" + r.external, Initial: "active", Actor: "channel-hub"}); err != nil {
 			return "", fmt.Errorf("thread create: %w", err)
 		}
@@ -77,11 +82,11 @@ func (s *Server) mockConversation(ctx context.Context, tx *sql.Tx, r inputRow) (
 // newConversation rotates the conversation id for the row's channel
 // key. Mock threads ride their machine; telegram rows are plain data
 // with no lifecycle (rule 16 concerns state, a rotation marker is not).
-func (s *Server) newConversation(ctx context.Context, r inputRow) error {
-	if _, err := s.conversation(ctx, r); err != nil {
+func (o *threadOps) newConversation(ctx context.Context, r inputRow) error {
+	if _, err := o.conversation(ctx, r); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := o.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("new thread begin: %w", err)
 	}
@@ -102,7 +107,7 @@ func (s *Server) newConversation(ctx context.Context, r inputRow) error {
 		}
 		return nil
 	}
-	if err := s.thread.Transition(ctx, tx, fsm.Request{ID: "thread-" + r.external, Event: "new", Actor: "channel-hub"}, hook); err != nil {
+	if err := o.thread.Transition(ctx, tx, fsm.Request{ID: "thread-" + r.external, Event: "new", Actor: "channel-hub"}, hook); err != nil {
 		return fmt.Errorf("thread new: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

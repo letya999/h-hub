@@ -34,10 +34,13 @@ type tgUpdate struct {
 	FromID    int64
 	ChatID    int64
 	Topic     string // "thr:<id>" for forum threads, "dm:<id>" for DM topics, "" otherwise
-	Kind      string // text | photo | secret | ignore
+	Kind      string // text | photo | secret | answer | ignore
 	Text      string
 	FileID    string
 	FileSize  int64
+	RequestID string // answer kind: the request its button carried
+	Choice    int    // answer kind: 1-based option index
+	QueryID   string // answer kind: callback query to acknowledge
 }
 
 type tgEnvelope struct {
@@ -85,29 +88,52 @@ func (a *tgAPI) call(ctx context.Context, token, method string,
 
 // tgRawUpdate is the wire shape of one update.
 type tgRawUpdate struct {
-	UpdateID int64 `json:"update_id"`
-	Message  *struct {
-		MessageID           int64  `json:"message_id"`
-		MessageThreadID     *int64 `json:"message_thread_id"`
-		Text                string `json:"text"`
-		Caption             string `json:"caption"`
-		DirectMessagesTopic *struct {
-			TopicID int64 `json:"topic_id"`
-		} `json:"direct_messages_topic"`
-		From *struct {
-			ID int64 `json:"id"`
-		} `json:"from"`
+	UpdateID      int64          `json:"update_id"`
+	Message       *tgRawMessage  `json:"message"`
+	CallbackQuery *tgRawCallback `json:"callback_query"`
+}
+
+// tgRawMessage is the wire shape of one message update.
+type tgRawMessage struct {
+	MessageID           int64  `json:"message_id"`
+	MessageThreadID     *int64 `json:"message_thread_id"`
+	Text                string `json:"text"`
+	Caption             string `json:"caption"`
+	DirectMessagesTopic *struct {
+		TopicID int64 `json:"topic_id"`
+	} `json:"direct_messages_topic"`
+	From *struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Chat struct {
+		ID      int64  `json:"id"`
+		Type    string `json:"type"`
+		IsForum bool   `json:"is_forum"`
+	} `json:"chat"`
+	Photo []tgRawPhoto `json:"photo"`
+}
+
+// tgRawPhoto is one resolution variant of a photo update.
+type tgRawPhoto struct {
+	FileID   string `json:"file_id"`
+	FileSize int64  `json:"file_size"`
+	Width    int64  `json:"width"`
+	Height   int64  `json:"height"`
+}
+
+// tgRawCallback is the wire shape of a button press.
+type tgRawCallback struct {
+	ID   string `json:"id"`
+	Data string `json:"data"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Message *struct {
 		Chat struct {
-			ID      int64  `json:"id"`
-			Type    string `json:"type"`
-			IsForum bool   `json:"is_forum"`
+			ID      int64 `json:"id"`
+			IsForum bool  `json:"is_forum"`
 		} `json:"chat"`
-		Photo []struct {
-			FileID   string `json:"file_id"`
-			FileSize int64  `json:"file_size"`
-			Width    int64  `json:"width"`
-			Height   int64  `json:"height"`
-		} `json:"photo"`
+		MessageThreadID *int64 `json:"message_thread_id"`
 	} `json:"message"`
 }
 
@@ -118,7 +144,7 @@ func (a *tgAPI) getUpdates(ctx context.Context, token string,
 	err := a.call(ctx, token, "getUpdates", map[string]any{
 		"offset":          offset,
 		"timeout":         timeoutSec,
-		"allowed_updates": []string{"message"},
+		"allowed_updates": []string{"message", "callback_query"},
 	}, &out)
 	return out, err
 }
@@ -144,6 +170,43 @@ func (a *tgAPI) editMessageText(ctx context.Context, token string,
 func (a *tgAPI) deleteMessage(ctx context.Context, token string, chat, msg int64) error {
 	return a.call(ctx, token, "deleteMessage", map[string]any{
 		"chat_id": chat, "message_id": msg}, nil)
+}
+
+// tgRequestMsg is one owner request bound for the wire: its prompt
+// text and the option labels its buttons carry.
+type tgRequestMsg struct {
+	Chat      int64
+	Topic     string
+	Text      string
+	RequestID string
+	Options   []string
+}
+
+// sendRequest posts one owner request with an inline keyboard — one
+// button per option, callback_data "a:<request>:<1-based index>".
+// The same index a mock user types is what the button reports.
+func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) (int64, error) {
+	body := map[string]any{"chat_id": m.Chat, "text": m.Text}
+	topicJSON(body, m.Topic)
+	var rows [][]map[string]any
+	for i, o := range m.Options {
+		rows = append(rows, []map[string]any{{
+			"text":          o,
+			"callback_data": fmt.Sprintf("a:%s:%d", m.RequestID, i+1)}})
+	}
+	body["reply_markup"] = map[string]any{"inline_keyboard": rows}
+	var out struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := a.call(ctx, token, "sendMessage", body, &out)
+	return out.MessageID, err
+}
+
+// answerCallbackQuery stops the button's spinner; the reply itself
+// arrives as the intake's completion notice.
+func (a *tgAPI) answerCallbackQuery(ctx context.Context, token, queryID string) error {
+	return a.call(ctx, token, "answerCallbackQuery",
+		map[string]any{"callback_query_id": queryID}, nil)
 }
 
 // filePath resolves a file_id to a download path.
