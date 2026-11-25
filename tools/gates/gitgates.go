@@ -194,13 +194,21 @@ func checkRange(root string) error {
 	if err != nil {
 		return err
 	}
-	// Layout: "", sha, subject, files, sha, subject, files, ...
+	// Layout per commit: "\x01 sha \x01 subject \n file1 \n file2 \n\n",
+	// so the split yields sha, subject-with-files pairs.
 	parts := strings.Split(string(out), "\x01")
 	var bad []string
-	for i := 1; i+2 < len(parts); i += 3 {
-		sha, subject, files := parts[i], parts[i+1], strings.Fields(parts[i+2])
+	for i := 1; i+1 < len(parts); i += 2 {
+		lines := strings.Split(parts[i+1], "\n")
+		subject := lines[0]
+		var files []string
+		for _, f := range lines[1:] {
+			if f = strings.TrimSpace(f); f != "" {
+				files = append(files, f)
+			}
+		}
 		if err := checkCommit(subject, files); err != nil {
-			bad = append(bad, sha[:12]+" "+subject)
+			bad = append(bad, parts[i][:12]+" "+subject)
 		}
 	}
 	if len(bad) > 0 {
