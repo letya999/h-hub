@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rule 21 gate on the commit being created: git hands this hook the
+# prepared message file as $1 (a path relative to the repo root); the
+# gate resolves it against the mounted tree and reads the file list
+# from the staged tree. The branch range is verified by just check / CI.
+HHUB_COMMIT_MSG_FILE="$1" just check-commit

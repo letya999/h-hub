@@ -91,14 +91,21 @@ func tracked(root string) ([]string, error) {
 var fixSubjectRe = regexp.MustCompile(`^fix[:(]`)
 
 // FixNeedsTest rejects a fix commit that changes no test (rule 21).
-// It checks HEAD in a git repo; a fixture dir provides subject.txt and
-// files.txt instead.
+// Three inputs: a fixture dir (subject.txt/files.txt), the commit being
+// created (checkStaged, driven by .githooks/commit-msg through the
+// -commit-msg test flag), or the range origin/main..HEAD that CI merges.
 func FixNeedsTest(root string) error {
-	subject, files, err := commitInfo(root)
-	if err != nil {
-		return err
+	if _, err := os.Stat(filepath.Join(root, "subject.txt")); err == nil {
+		subject, files, err := fixtureCommit(root)
+		if err != nil {
+			return err
+		}
+		return checkCommit(subject, files)
 	}
-	return checkCommit(subject, files)
+	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
+		return nil
+	}
+	return checkRange(root)
 }
 
 func checkCommit(subject string, files []string) error {
@@ -113,24 +120,113 @@ func checkCommit(subject string, files []string) error {
 	return fmt.Errorf("fix-needs-test: %q changes no *_test.go", subject)
 }
 
-func commitInfo(root string) (string, []string, error) {
-	if b, err := os.ReadFile(filepath.Join(root, "subject.txt")); err == nil {
-		f, err := os.ReadFile(filepath.Join(root, "files.txt"))
+// fixtureCommit reads a broken example's recorded commit metadata.
+func fixtureCommit(root string) (string, []string, error) {
+	b, err := os.ReadFile(filepath.Join(root, "subject.txt"))
+	if err != nil {
+		return "", nil, fmt.Errorf("commit subject.txt: %w", err)
+	}
+	f, err := os.ReadFile(filepath.Join(root, "files.txt"))
+	if err != nil {
+		return "", nil, fmt.Errorf("commit files.txt: %w", err)
+	}
+	return strings.TrimSpace(string(b)), strings.Fields(string(f)), nil
+}
+
+// checkStaged verifies the commit a commit-msg hook is validating:
+// subject from the prepared message file, files from the staged tree.
+// A relative msgFile resolves against root. An amend/reword commit
+// stages nothing; the resulting commit keeps HEAD's file list, so the
+// check falls back to it.
+func checkStaged(root, msgFile string) error {
+	if !filepath.IsAbs(msgFile) {
+		msgFile = filepath.Join(root, msgFile)
+	}
+	subject, err := msgSubject(msgFile)
+	if err != nil {
+		return err
+	}
+	out, err := gitOut(root, "diff", "--cached", "--name-only")
+	if err != nil {
+		return err
+	}
+	files := strings.Fields(out)
+	if len(files) == 0 {
+		out, err = gitOut(root, "show", "--name-only", "--format=", "HEAD")
 		if err != nil {
-			return "", nil, fmt.Errorf("commit files.txt: %w", err)
+			return err
 		}
-		return strings.TrimSpace(string(b)), strings.Fields(string(f)), nil
+		files = strings.Fields(out)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
-		return "", nil, nil
-	}
-	subj, err := exec.Command("git", "-C", root, "show", "-s", "--format=%s", "HEAD").Output()
+	return checkCommit(subject, files)
+}
+
+// msgSubject returns the first non-empty, non-comment line of the
+// prepared commit message.
+func msgSubject(msgFile string) (string, error) {
+	b, err := os.ReadFile(msgFile)
 	if err != nil {
-		return "", nil, fmt.Errorf("commit info: %w", err)
+		return "", fmt.Errorf("fix-needs-test: read %s: %w", msgFile, err)
 	}
-	names, err := exec.Command("git", "-C", root, "show", "--name-only", "--format=", "HEAD").Output()
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line != "" && !strings.HasPrefix(line, "#") {
+			return line, nil
+		}
+	}
+	return "", fmt.Errorf("fix-needs-test: %s has no subject", msgFile)
+}
+
+// checkRange verifies every non-merge commit the branch adds over
+// origin/main. Without the upstream ref (a clone with no remote) the
+// gate can see only HEAD.
+func checkRange(root string) error {
+	if err := exec.Command("git", "-C", root,
+		"rev-parse", "--verify", "--quiet", "origin/main").Run(); err != nil {
+		subject, files, err := commitInfo(root, "HEAD")
+		if err != nil {
+			return err
+		}
+		return checkCommit(subject, files)
+	}
+	out, err := gitOut(root, "log", "--no-merges",
+		"--format=%x01%H%x01%s", "--name-only", "origin/main..HEAD")
 	if err != nil {
-		return "", nil, fmt.Errorf("commit files: %w", err)
+		return err
 	}
-	return strings.TrimSpace(string(subj)), strings.Fields(string(names)), nil
+	// Layout: "", sha, subject, files, sha, subject, files, ...
+	parts := strings.Split(string(out), "\x01")
+	var bad []string
+	for i := 1; i+2 < len(parts); i += 3 {
+		sha, subject, files := parts[i], parts[i+1], strings.Fields(parts[i+2])
+		if err := checkCommit(subject, files); err != nil {
+			bad = append(bad, sha[:12]+" "+subject)
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("fix-needs-test: commits change no *_test.go: %s",
+			strings.Join(bad, "; "))
+	}
+	return nil
+}
+
+// commitInfo reads the subject and changed files of one revision.
+func commitInfo(root, rev string) (string, []string, error) {
+	subj, err := gitOut(root, "show", "-s", "--format=%s", rev)
+	if err != nil {
+		return "", nil, err
+	}
+	names, err := gitOut(root, "show", "--name-only", "--format=", rev)
+	if err != nil {
+		return "", nil, err
+	}
+	return strings.TrimSpace(subj), strings.Fields(names), nil
+}
+
+func gitOut(root string, args ...string) (string, error) {
+	b, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	if err != nil {
+		return "", fmt.Errorf("fix-needs-test: git %s: %w", args[0], err)
+	}
+	return string(b), nil
 }
