@@ -31,6 +31,19 @@ func TestRuntimeDeadlineReapsContainer(t *testing.T) {
 			WHERE r.space=$1 ORDER BY r.created DESC LIMIT 1`, space).Scan(&runtime, &state)
 		return err == nil && state == "warm"
 	})
+	// Job settle commits the release-runtime effect in the same tx,
+	// but the outbox applies it later; a release on a warm runtime
+	// re-arms the idle deadline via Touch (busy is never entered).
+	// Draining the effect first keeps the UPDATE below the last
+	// deadline writer — a late Touch would silently undo the pin.
+	taskDB := AdminDB(t, "task_engine")
+	testkit.Poll(t, 20*time.Second, 250*time.Millisecond, func() bool {
+		var pending int
+		err := taskDB.QueryRowContext(context.Background(), `SELECT count(*) FROM fsm.outbox
+			WHERE topic='release-runtime' AND done_at IS NULL
+			AND convert_from(payload,'UTF8')::jsonb->>'runtime'=$1`, runtime).Scan(&pending)
+		return err == nil && pending == 0
+	})
 	if _, err := db.ExecContext(context.Background(), `UPDATE fsm.machines
 		SET deadline_at=now()-interval '1 second' WHERE kind='runtime' AND id=$1`, runtime); err != nil {
 		t.Fatal(err)
