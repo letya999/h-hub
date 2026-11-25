@@ -21,7 +21,7 @@ type capabilityEntry struct {
 }
 
 // capName is the closed identifier form: lowercase words joined by
-// dots (tools.use, observability.read_own_logs).
+// dots (tools.use, workspace.read).
 var capName = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
 
 // Capabilities enforces the single-vocabulary rule for grants: the
