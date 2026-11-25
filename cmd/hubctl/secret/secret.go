@@ -22,7 +22,7 @@ const operatorKey = "/etc/hhub/keys/operator.key"
 // tests; stdin is the real stream in production.
 func Run(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: hubctl secret <set|snapshot>")
+		return fmt.Errorf("usage: hubctl secret <set|list|snapshot>")
 	}
 	switch args[0] {
 	case "set":
@@ -30,11 +30,32 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 			return fmt.Errorf("usage: hubctl secret set <name> [--from-file PATH]")
 		}
 		return set(ctx, args[1:], in, out)
+	case "list":
+		return list(ctx, out)
 	case "snapshot":
 		return snapshot(ctx, out)
 	default:
-		return fmt.Errorf("usage: hubctl secret <set|snapshot>")
+		return fmt.Errorf("usage: hubctl secret <set|list|snapshot>")
 	}
+}
+
+// list prints the registered connections — name, type, ref, newest
+// version — never any value. Backup stores this listing so a restore
+// drill can diff it against what the snapshot answers.
+func list(ctx context.Context, out io.Writer) error {
+	tok, err := operator.Token("", "", "ListConnections", "credential-broker", operatorKey)
+	if err != nil {
+		return fmt.Errorf("secret token: %w", err)
+	}
+	c := &credv1.Client{T: credv1.HTTP{C: httpapi.NewClient(brokerURL, tok)}}
+	res, err := c.ListConnections(ctx, credv1.ListConnectionsReq{})
+	if err != nil {
+		return fmt.Errorf("broker list: %w", err)
+	}
+	for _, conn := range res.Connections {
+		fmt.Fprintf(out, "%s %s %s %d\n", conn.Name, conn.Type, conn.Ref, conn.Version) //nolint:errcheck // report is best effort
+	}
+	return nil
 }
 
 // snapshot asks the broker to VACUUM INTO a consistent encrypted copy

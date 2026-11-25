@@ -23,6 +23,8 @@ done < "$dest/databases"
 docker run --rm --network hhub -v hhub-conf:/etc/hhub:ro \
   hhub-hubctl:local secret snapshot
 docker cp credential-broker:/data/broker-snapshot.db "$dest/broker-snapshot.db"
+docker run --rm --network hhub -v hhub-conf:/etc/hhub:ro \
+  hhub-hubctl:local secret list > "$dest/broker-connections.txt"
 
-(cd "$dest" && sha256sum db/*.dump seal-kek broker-db-key globals.sql broker-snapshot.db > SHA256SUMS)
+(cd "$dest" && sha256sum db/*.dump seal-kek broker-db-key globals.sql broker-snapshot.db broker-connections.txt > SHA256SUMS)
 printf 'backup: %s (%s databases)\n' "$dest" "$(wc -l < "$dest/databases")"
