@@ -91,6 +91,15 @@ func TestFixNeedsTestRange(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	t.Run("parses subjects and file lists apart", func(t *testing.T) {
+		t.Parallel()
+		dir, commit := gitRepo(t)
+		commit("fix(x): repair", "x.go", "x_test.go")
+		commit("docs(y): note", "z.go")
+		if err := FixNeedsTest(dir); err != nil {
+			t.Error(err)
+		}
+	})
 	t.Run("skips merge commits", func(t *testing.T) {
 		t.Parallel()
 		dir, commit := gitRepo(t)
