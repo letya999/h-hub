@@ -167,10 +167,12 @@ func tool(tsName, name string) (toolDef, bool) {
 
 // toolCall bundles what an executor needs for one admitted call.
 type toolCall struct {
-	ts     toolset
-	name   string
-	claims idv1.RunClaims
-	args   json.RawMessage
+	ts         toolset
+	name       string
+	claims     idv1.RunClaims
+	args       json.RawMessage
+	receipt    thv1.Receipt
+	specDigest string
 }
 
 // toolhubExec is the toolhub executor's provider dispatch: builtin
@@ -179,6 +181,8 @@ func toolhubExec(ctx context.Context, s *Server, c toolCall) (json.RawMessage, e
 	switch c.ts.Provider {
 	case "builtin":
 		return builtinEcho(ctx, c.args)
+	case "files":
+		return s.invokeFiles(ctx, c)
 	case "ownerreq":
 		res, err := s.oreq.InvokeTool(ctx, c.claims, c.name, c.args)
 		if err != nil {

@@ -13,12 +13,10 @@ import (
 // spawn-controller — the single owner of policy. A live grant change
 // lands here on the next call without a restart.
 func (s *Server) spec(ctx context.Context, space string) (specView, string, error) {
-	tok, err := s.toks.Token(ctx, "spawn-controller")
+	sc, err := s.spawnClient(ctx)
 	if err != nil {
 		return specView{}, "", err
 	}
-	sc := &sv1.Client{T: sv1.HTTP{
-		C: httpapi.NewClient(s.deps.SpawnURL, tok)}}
 	res, err := sc.ResolveSpec(ctx, sv1.ResolveSpecReq{Space: space})
 	if err != nil {
 		return specView{}, "", fmt.Errorf("resolve spec: %w", err)
@@ -28,6 +26,14 @@ func (s *Server) spec(ctx context.Context, space string) (specView, string, erro
 		return specView{}, "", fmt.Errorf("spec decode: %w", err)
 	}
 	return v, res.Digest, nil
+}
+
+func (s *Server) spawnClient(ctx context.Context) (*sv1.Client, error) {
+	tok, err := s.toks.Token(ctx, "spawn-controller")
+	if err != nil {
+		return nil, err
+	}
+	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(s.deps.SpawnURL, tok)}}, nil
 }
 
 // Token issues and caches service tokens per audience.

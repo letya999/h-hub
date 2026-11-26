@@ -12,6 +12,7 @@ import (
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/locale"
 )
 
 // Bridge is served exclusively on loopback. Its callers supply only an upstream
@@ -178,7 +179,7 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 	c := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClient(s.deps.Rendered.ToolURL, a.Token)}}
 	res, err := c.Invoke(a.ctx, thv1.InvokeReq{Run: a.Run, Digest: a.Digest, Toolset: set, Tool: call.Name, Arguments: call.Arguments})
 	if err != nil {
-		return fmt.Errorf("tool hub: %w", err)
+		return writeToolRefusal(w, err)
 	}
 	if set == "ownerreq" {
 		if err := s.ownerEvent(a, res.Result); err != nil {
@@ -186,6 +187,15 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 		}
 	}
 	httpapi.WriteJSON(w, res.Result)
+	return nil
+}
+
+func writeToolRefusal(w http.ResponseWriter, err error) error {
+	var refusal *herrors.Error
+	if !errors.As(err, &refusal) || refusal.Code == herrors.CodeUnavailable {
+		return fmt.Errorf("tool hub: %w", err)
+	}
+	httpapi.WriteJSON(w, map[string]string{"reason": refusal.Key, "error": locale.T(locale.EN, refusal.Key)})
 	return nil
 }
 

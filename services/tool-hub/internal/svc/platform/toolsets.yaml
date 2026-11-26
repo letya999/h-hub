@@ -39,3 +39,73 @@ toolsets:
               items:
                 type: string
           required: [question, options]
+  - name: files
+    provider: files
+    tools:
+      - name: files_list
+        description: List entries at a relative path, or use . to list the layout.
+        capability: workspace.read
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+          required: [path]
+      - name: files_read
+        description: Read UTF-8 text from a workspace file.
+        capability: workspace.read
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+          required: [path]
+      - name: files_write
+        description: Replace or create a text file under a writable workspace path.
+        capability: workspace.write
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+            text: {type: string}
+          required: [path, text]
+      - name: files_edit
+        description: Replace one matching text fragment in a workspace file.
+        capability: workspace.write
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+            before: {type: string}
+            text: {type: string}
+          required: [path, before, text]
+      - name: files_mkdir
+        description: Create an empty workspace directory under an existing parent.
+        capability: workspace.write
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+          required: [path]
+      - name: files_search
+        description: Find UTF-8 files containing a literal string under a workspace directory.
+        capability: workspace.read
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+            query: {type: string}
+          required: [path, query]
+      - name: files_remove
+        description: Remove a workspace file or an empty directory.
+        capability: workspace.write
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+          required: [path]
