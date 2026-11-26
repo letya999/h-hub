@@ -31,6 +31,10 @@ func TestHermesPinnedProcess(t *testing.T) {
 	}
 	ref := strings.TrimSpace(string(raw))
 	image := strings.TrimSpace(string(DockerOutput(t, "inspect", "--format", "{{.Config.Image}}", cid)))
+	memory := strings.TrimSpace(string(DockerOutput(t, "inspect", "--format", "{{.HostConfig.Memory}}", cid)))
+	if memory != strconv.Itoa(384<<20) {
+		t.Fatalf("base passport memory limit in Docker: %s bytes", memory)
+	}
 	top := string(DockerOutput(t, "top", cid, "-eo", "pid,args"))
 	if image != ref || !strings.Contains(top, "/opt/hermes/.venv/bin/python -P -m hermes_cli.main gateway run") {
 		t.Fatalf("expected a pinned, running upstream process, got %s\n%s", image, top)
