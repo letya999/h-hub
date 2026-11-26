@@ -119,12 +119,12 @@ load:
       {{ img }} go test -tags hhube2e,hhubload -run '^TestThreeUserLoad$' -v -count=1 -timeout 10m ./test/e2e/channel
 
 # capture all databases, installation config and host KEK outside git
-backup:
+backup mode="plain":
     docker run --rm --network hhub -v /var/run/docker.sock:/var/run/docker.sock \
       -v {{ src }}:/src:ro -v {{ data }}/backups:/backup \
       -v {{ data }}/secrets:/run/hhub-secrets:ro -v hhub-conf:/etc/hhub:ro \
       -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} sh /src/tools/backup/backup.sh
+      {{ img }} sh /src/tools/backup/backup.sh {{ mode }}
 
 # restore the latest backup into fresh, isolated Docker resources
 restore-drill:

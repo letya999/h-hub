@@ -51,7 +51,7 @@ jobs:
           GHCR_TOKEN: ${{ github.token }}
         run: |
           just load
-          just backup
+          just backup with-session
           just restore-drill
           just nminus1-smoke
       - name: Alert on failure

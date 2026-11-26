@@ -58,5 +58,5 @@ jobs:
           GHCR_TOKEN: ${{ github.token }}
         run: |
           export PATH="$RUNNER_TEMP:$PATH"
-          "$RUNNER_TEMP/just" backup
+          "$RUNNER_TEMP/just" backup with-session
           "$RUNNER_TEMP/just" nminus1-smoke
