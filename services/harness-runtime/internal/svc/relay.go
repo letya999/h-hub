@@ -40,20 +40,28 @@ func (s *Server) scoped(call func(http.ResponseWriter, *http.Request, *Admission
 			return
 		}
 		if err := call(w, r, a); err != nil {
-			s.mu.Lock()
-			if a.fault == nil {
-				cause := err
-				var refusal *herrors.Error
-				if errors.As(err, &refusal) {
-					cause = errors.New(refusal.Error())
-				}
-				a.fault = cause
+			if a.probe != nil {
+				a.probeResult(err)
+				http.Error(w, "inventory request finished", http.StatusForbidden)
+				return
 			}
-			s.mu.Unlock()
-			a.stop()
+			s.refuse(a, err)
 			http.Error(w, "admitted request refused", http.StatusForbidden)
 		}
 	}
+}
+
+func (s *Server) refuse(a *Admission, err error) {
+	var refusal *herrors.Error
+	if errors.As(err, &refusal) {
+		err = errors.New(refusal.Error())
+	}
+	s.mu.Lock()
+	if a.fault == nil {
+		a.fault = err
+	}
+	s.mu.Unlock()
+	a.stop()
 }
 
 func (s *Server) lookupExecution(ctx context.Context, id string) *Admission {
@@ -61,6 +69,10 @@ func (s *Server) lookupExecution(ctx context.Context, id string) *Admission {
 	defer cancel()
 	for {
 		s.mu.Lock()
+		if a := s.probeAdmission; a != nil && a.native.Admission == id {
+			s.mu.Unlock()
+			return a
+		}
 		for _, a := range s.admit {
 			if a.native.Admission == id && !a.done && a.ctx.Err() == nil {
 				s.mu.Unlock()
@@ -82,8 +94,17 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request, a *Admission
 	if err := httpapi.Decode(r, &request); err != nil {
 		return fmt.Errorf("decode Hermes model request: %w", err)
 	}
-	if err := modelTools(request["tools"], a.allowed); err != nil {
+	offered, err := modelTools(request["tools"], a.allowed)
+	if err != nil {
 		return err
+	}
+	if a.probe != nil {
+		if len(offered) != len(a.allowed) {
+			return fmt.Errorf("hermes tool list is missing a projected tool")
+		}
+		a.probeResult(nil)
+		http.Error(w, "startup inventory complete", http.StatusForbidden)
+		return nil
 	}
 	stream := string(request["stream"]) == "true"
 	delete(request, "stream")
@@ -98,34 +119,32 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request, a *Admission
 	if err != nil {
 		return fmt.Errorf("model gateway: %w", err)
 	}
-	if err := checkReturnedTools(res.Response, a.allowed); err != nil {
+	if err := checkReturnedTools(res.Response, offered); err != nil {
 		return err
 	}
 	return writeCompletion(w, res.Response, stream)
 }
 
-func modelTools(raw json.RawMessage, allowed map[string]string) error {
+// A child may offer fewer tools than its parent. Each response is bound to its own request.
+func modelTools(raw json.RawMessage, allowed map[string]string) (map[string]bool, error) {
 	var definitions []struct{ Function struct{ Name string } }
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &definitions); err != nil {
-			return fmt.Errorf("decode Hermes tool definitions: %w", err)
+			return nil, fmt.Errorf("decode Hermes tool definitions: %w", err)
 		}
 	}
 	seen := map[string]bool{}
 	for _, def := range definitions {
 		name := def.Function.Name
 		if _, ok := allowed[name]; !ok || seen[name] {
-			return fmt.Errorf("unexpected Hermes tool %q", name)
+			return nil, fmt.Errorf("unexpected Hermes tool %q", name)
 		}
 		seen[name] = true
 	}
-	if len(seen) != len(allowed) {
-		return fmt.Errorf("hermes tool list is missing a projected tool")
-	}
-	return nil
+	return seen, nil
 }
 
-func checkReturnedTools(raw json.RawMessage, allowed map[string]string) error {
+func checkReturnedTools(raw json.RawMessage, offered map[string]bool) error {
 	var res struct {
 		Choices []struct {
 			Message struct {
@@ -138,7 +157,7 @@ func checkReturnedTools(raw json.RawMessage, allowed map[string]string) error {
 	}
 	for _, choice := range res.Choices {
 		for _, call := range choice.Message.ToolCalls {
-			if _, ok := allowed[call.Function.Name]; !ok {
+			if !offered[call.Function.Name] {
 				return fmt.Errorf("model requested an unprojected tool %q", call.Function.Name)
 			}
 		}
@@ -155,7 +174,7 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 		return fmt.Errorf("decode Hermes tool request: %w", err)
 	}
 	set, ok := a.allowed[call.Name]
-	if !ok {
+	if !ok || set == "" || a.probe != nil {
 		return fmt.Errorf("tool is outside the admitted projection")
 	}
 	c := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClient(s.deps.Rendered.ToolURL, a.Token)}}

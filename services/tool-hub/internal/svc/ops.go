@@ -55,7 +55,7 @@ func (s *Server) projection(ctx context.Context, r thv1.ProjectionReq) (thv1.Pro
 	if err != nil {
 		return thv1.ProjectionResp{}, err
 	}
-	if len(p.Core)+len(p.Extended) == 0 {
+	if len(p.Core)+len(p.Extended)+len(p.Native) == 0 {
 		return thv1.ProjectionResp{}, thv1.EmptyProjection() //nolint:wrapcheck // preserve the typed contract refusal
 	}
 	p.Digest = specDigest

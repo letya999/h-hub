@@ -19,7 +19,7 @@ import (
 
 const (
 	dispatchEvery = 250 * time.Millisecond
-	dispatchSlots = 4
+	dispatchSlots = 8
 	sweepEvery    = time.Second
 	outboxEvery   = 250 * time.Millisecond
 	tickEvery     = 5 * time.Second

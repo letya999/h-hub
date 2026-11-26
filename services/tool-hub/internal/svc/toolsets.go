@@ -99,6 +99,7 @@ type grantsView struct {
 }
 
 type toolsView struct {
+	Native   []string `json:"native"`
 	Core     []string `json:"core"`
 	Extended []string `json:"extended"`
 }
@@ -125,6 +126,9 @@ func project(spec specView) (thv1.ProjectionResp, error) {
 		grants[g] = true
 	}
 	var out thv1.ProjectionResp
+	if grants["tools.use"] {
+		out.Native = spec.Tools.Native
+	}
 	for _, tsName := range spec.Tools.Core {
 		for _, t := range registry[tsName].Tools {
 			if grants[t.Capability] {

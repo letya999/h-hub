@@ -145,8 +145,5 @@ func (s *Server) projection(ctx context.Context, a *Admission) (map[string]strin
 		}
 		return nil, fmt.Errorf("project admitted tools: %w", err)
 	}
-	for _, tool := range append(p.Core, p.Extended...) {
-		allowed[tool.Name] = tool.Toolset
-	}
-	return allowed, nil
+	return approvedTools(p)
 }

@@ -5,16 +5,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Run names both records Hermes owns: the stream handle and the execution claim.
 type Run struct {
 	ID        string `json:"run_id"`
 	Admission string `json:"admission_id"`
+	Session   string `json:"session_id"`
+	Status    string `json:"status"`
 }
 
 type Event struct {
@@ -42,11 +46,7 @@ func (g *Gateway) Submit(ctx context.Context, key, session string, input any) (R
 	if err != nil {
 		return Run{}, err
 	}
-	state, err := g.call(ctx, http.MethodGet, runPath(submitted.ID), nil, headers{})
-	if err != nil {
-		return submitted, err
-	}
-	run, err := readRun(state)
+	run, err := g.state(ctx, submitted.ID)
 	if err != nil {
 		return submitted, err
 	}
@@ -70,6 +70,14 @@ func readRun(resp *http.Response) (Run, error) {
 
 func runPath(id string) string { return "/v1/runs/" + url.PathEscape(id) }
 
+func (g *Gateway) state(ctx context.Context, id string) (Run, error) {
+	resp, err := g.call(ctx, http.MethodGet, runPath(id), nil, headers{})
+	if err != nil {
+		return Run{}, err
+	}
+	return readRun(resp)
+}
+
 type headers struct{ key, session string }
 
 func (g *Gateway) call(ctx context.Context, method, path string, data []byte, h headers) (*http.Response, error) {
@@ -91,9 +99,48 @@ func (g *Gateway) call(ctx context.Context, method, path string, data []byte, h 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close() //nolint:errcheck // only the status is reported
-		return nil, fmt.Errorf("hermes %s %s returned %d", method, path, resp.StatusCode)
+		return nil, fmt.Errorf("hermes %s %s: %w", method, path, statusCode(resp.StatusCode))
 	}
 	return resp, nil
+}
+
+type statusCode int
+
+func (s statusCode) Error() string { return fmt.Sprintf("HTTP %d", int(s)) }
+
+// CloseProbe retires the new run-scoped session created by the private boot probe.
+func (g *Gateway) CloseProbe(ctx context.Context, run Run) error {
+	if run.Session == "" {
+		return nil
+	}
+	if run.Session != run.ID {
+		return fmt.Errorf("inventory session was not created for this probe")
+	}
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		state, err := g.state(ctx, run.ID)
+		if err != nil {
+			return err
+		}
+		switch state.Status {
+		case "completed", "cancelled", "failed", "interrupted":
+			return g.retireSession(ctx, run.ID)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("retire inventory session: %w", ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func (g *Gateway) retireSession(ctx context.Context, id string) error {
+	err := finish(g.call(ctx, http.MethodDelete, "/api/sessions/"+url.PathEscape(id), nil, headers{}))
+	if errors.Is(err, statusCode(http.StatusNotFound)) {
+		return nil
+	}
+	return err
 }
 
 // Events consumes the native SSE stream until Hermes records a terminal result.
@@ -146,12 +193,15 @@ func (e Event) outcome() (bool, error) {
 }
 
 func (g *Gateway) Cancel(ctx context.Context, id string) error {
-	resp, err := g.call(ctx, http.MethodPost, runPath(id)+"/stop", []byte("{}"), headers{})
+	return finish(g.call(ctx, http.MethodPost, runPath(id)+"/stop", []byte("{}"), headers{}))
+}
+
+func finish(resp *http.Response, err error) error {
 	if err != nil {
 		return err
 	}
 	if err := resp.Body.Close(); err != nil {
-		return fmt.Errorf("finish Hermes stop: %w", err)
+		return fmt.Errorf("close Hermes response: %w", err)
 	}
 	return nil
 }
