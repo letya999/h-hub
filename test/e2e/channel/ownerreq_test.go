@@ -62,7 +62,7 @@ func ownerRoundTrip(t *testing.T, mark, tool, args, question, reply, answer, fin
 		t.Fatalf("expected one question with the turn introduction, got %+v (%v)", messages, err)
 	}
 	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("answer", mark), Text: reply}); err != nil {
+		cv1.InjectReq{External: owner, UpdateID: Idem("answer", mark), Text: reply, ReplyTo: cursor}); err != nil {
 		t.Fatalf("answer inject: %v", err)
 	}
 	WaitMock(t, owner, cursor, final, 3*time.Minute)

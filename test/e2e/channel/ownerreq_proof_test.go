@@ -14,6 +14,7 @@ import (
 	"github.com/letya999/h-hub/shared/auth"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/locale"
 	"github.com/letya999/h-hub/shared/testkit"
 	. "github.com/letya999/h-hub/test/e2e/harness"
 )
@@ -90,18 +91,28 @@ func TestOwnerApprovalOutcomes(t *testing.T) {
 	cl := svcToolClient(t, "task-engine", mark)
 	yesID := createRequest(t, cl, owner, space, "approval", "format the disk?", 300)
 	cursor := WaitMock(t, owner, 0, "format the disk?", 30*time.Second)
+	noID := createRequest(t, cl, owner, space, "approval", "wipe the archive?", 300)
+	next := WaitMock(t, owner, cursor, "wipe the archive?", 30*time.Second)
 	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("yes"), Text: "1"}); err != nil {
+		cv1.InjectReq{External: owner, UpdateID: Idem("yes"), Text: "1", ReplyTo: cursor}); err != nil {
 		t.Fatal(err)
 	}
 	testkit.Poll(t, 30*time.Second, 250*time.Millisecond, func() bool {
 		res, err := cl.GetRequest(context.Background(), orv1.GetReq{Request: yesID})
 		return err == nil && res.State == "answered" && res.Answer == "yes"
 	})
-	noID := createRequest(t, cl, owner, space, "approval", "wipe the archive?", 300)
-	WaitMock(t, owner, cursor, "wipe the archive?", 30*time.Second)
+	accepted := WaitMock(t, owner, next, locale.T(locale.EN, "channel.request-accepted"), 30*time.Second)
 	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("no"), Text: "2"}); err != nil {
+		cv1.InjectReq{External: owner, UpdateID: Idem("repeated-yes"), Text: "1", ReplyTo: cursor}); err != nil {
+		t.Fatal(err)
+	}
+	WaitMock(t, owner, accepted, locale.T(locale.EN, "channel.request-closed"), 30*time.Second)
+	pending, err := cl.GetRequest(context.Background(), orv1.GetReq{Request: noID})
+	if err != nil || pending.State != "pending" {
+		t.Fatalf("repeated answer touched the next request: %+v %v", pending, err)
+	}
+	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
+		cv1.InjectReq{External: owner, UpdateID: Idem("no"), Text: "2", ReplyTo: next}); err != nil {
 		t.Fatal(err)
 	}
 	testkit.Poll(t, 30*time.Second, 250*time.Millisecond, func() bool {

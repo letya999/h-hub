@@ -13,7 +13,13 @@ type InjectReq struct {
 	External string `json:"external"`
 	UpdateID string `json:"update_id"`
 	Text     string `json:"text"`
+	ReplyTo  int64  `json:"reply_to,omitempty"`
 }
+
+func (r InjectReq) Valid() bool {
+	return r.External != "" && r.UpdateID != "" && r.Text != "" && r.ReplyTo >= 0
+}
+
 type InjectResp struct {
 	ID string `json:"id"`
 }

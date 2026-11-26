@@ -37,7 +37,7 @@ type reqTarget struct {
 // deliverRequest admits one owner request: resolves its channel
 // target, verifies the addressee's binding when an external handle
 // is known, and queues the delivery with the link that routes the
-// reply. A newer link on the same target supersedes an open one.
+// reply.
 func (o *requestOps) deliverRequest(ctx context.Context, r cv1.DeliverRequestReq) (cv1.DeliverRequestResp, error) {
 	if err := validDeliver(r); err != nil {
 		return cv1.DeliverRequestResp{}, err
@@ -182,16 +182,9 @@ func (o *requestOps) insertRequestDelivery(ctx context.Context, tx *sql.Tx,
 	return nil
 }
 
-// insertRequestLink supersedes any open link on the same target and
-// writes the new one — the newest request owns the next reply.
+// insertRequestLink records the exact delivery that can receive the answer.
 func insertRequestLink(ctx context.Context, tx *sql.Tx,
 	deliveryID string, t reqTarget, r cv1.DeliverRequestReq) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE request_links SET deadline_at=now()
-		WHERE channel=$1 AND external_id=$2 AND chat_id=$3 AND topic=$4
-		  AND answered_at IS NULL AND deadline_at > now()`,
-		t.channel, t.external, t.chat, t.topic); err != nil {
-		return fmt.Errorf("link supersede: %w", err)
-	}
 	opts, err := json.Marshal(r.Options)
 	if err != nil {
 		return fmt.Errorf("link options: %w", err)
@@ -255,116 +248,80 @@ func (o *requestOps) retireDelivery(ctx context.Context, tx *sql.Tx, id string) 
 	return nil
 }
 
-// linkRow is one open request_links row joined to its target.
 type linkRow struct {
-	request, owner, external string
-	options                  []string
+	request, owner string
+	open           bool
 }
 
-// openLink finds the newest link still accepting replies on the
-// update's target: mock binds on the external handle, telegram on
-// (chat, topic) — the answerer's handle is verified separately.
-func (o *requestOps) openLink(ctx context.Context, r inputRow) (linkRow, bool, error) {
-	var (
-		l    linkRow
-		opts []byte
-	)
-	err := o.db.QueryRowContext(ctx, `SELECT request_id,owner,external_id,options
-		FROM request_links
-		WHERE channel=$1 AND answered_at IS NULL AND deadline_at > $2
-		  AND ((external_id <> '' AND external_id = $3)
-		    OR (external_id = '' AND chat_id = $4 AND topic = $5))
-		ORDER BY created_at DESC LIMIT 1`,
-		r.channel, o.now(), r.external, r.chat, r.topic).
-		Scan(&l.request, &l.owner, &l.external, &opts)
-	if errors.Is(err, sql.ErrNoRows) {
-		return l, false, nil
-	}
-	if err != nil {
-		return l, false, fmt.Errorf("link lookup: %w", err)
-	}
-	if err := json.Unmarshal(opts, &l.options); err != nil {
-		return l, false, fmt.Errorf("link options: %w", err)
-	}
-	return l, true, nil
+type replyReceipt struct {
+	Request string `json:"request"`
+	Choice  int    `json:"choice"`
+	ReplyTo int64  `json:"reply_to"`
 }
 
-// tryAnswer routes a plain-text update to an open request link when
-// one exists. Telegram verifies the answerer's binding is the
-// addressee — in a shared topic another member's text is an ordinary
-// message, not an answer.
+// tryAnswer looks up the original delivery, even if its request is closed.
 func (o *requestOps) tryAnswer(ctx context.Context, r inputRow) (bool, error) {
-	l, ok, err := o.openLink(ctx, r)
-	if err != nil || !ok {
-		return ok, err
-	}
-	if l.external == "" {
-		resolved, err := (&commandOps{o.Server}).resolveExternal(ctx, r.channel, r.external)
-		if err != nil {
-			return false, err
-		}
-		if resolved.Owner != l.owner {
-			return false, nil
+	var receipt replyReceipt
+	if r.payload != "" {
+		if err := json.Unmarshal([]byte(r.payload), &receipt); err != nil {
+			return false, fmt.Errorf("reply receipt: %w", err)
 		}
 	}
-	return true, o.answerLink(ctx, r, l, r.body)
+	if receipt.ReplyTo <= 0 {
+		return o.unmatchedAnswer(ctx, r)
+	}
+	l, err := o.replyLink(ctx, r, receipt.ReplyTo)
+	if errors.Is(err, sql.ErrNoRows) {
+		return o.unmatchedAnswer(ctx, r)
+	}
+	if err != nil {
+		return false, fmt.Errorf("reply link: %w", err)
+	}
+	return true, o.answerReceipt(ctx, r, l, receipt)
 }
 
-// answerByID routes a telegram callback to the request its button
-// carried. The button names the request; the link still must be
-// open and the presser must be the addressee.
-func (o *requestOps) answerByID(ctx context.Context, r inputRow) error {
-	req, choice := answerPayload(r.payload)
-	if req == "" {
-		return o.refuseClosed(ctx, r)
+func (o *requestOps) unmatchedAnswer(ctx context.Context, r inputRow) (bool, error) {
+	if r.kind == "answer" || (r.channel == "mock" && r.payload != "") {
+		return true, o.refuseClosed(ctx, r)
 	}
-	owner, open, err := o.linkByID(ctx, req, r.channel, r.chat)
-	if err != nil {
-		return err
+	return false, nil
+}
+
+func (o *requestOps) answerReceipt(ctx context.Context, r inputRow, l linkRow, receipt replyReceipt) error {
+	if !l.open || (r.kind == "answer" && receipt.Request != l.request) {
+		return o.refuseClosed(ctx, r)
 	}
 	resolved, err := (&commandOps{o.Server}).resolveExternal(ctx, r.channel, r.external)
 	if err != nil {
 		return err
 	}
-	if !open || resolved.Owner != owner {
+	if resolved.Owner != l.owner {
 		return o.refuseClosed(ctx, r)
 	}
-	l := linkRow{request: req, external: r.external}
-	return o.answerLink(ctx, r, l, strconv.Itoa(choice))
+	raw := r.body
+	if r.kind == "answer" {
+		raw = strconv.Itoa(receipt.Choice)
+	}
+	return o.answerLink(ctx, r, l, raw)
 }
 
-// answerPayload unpacks the callback payload the intake row carries;
-// anything that does not name a request yields "".
-func answerPayload(raw string) (string, int) {
-	var p struct {
-		Request string `json:"request"`
-		Choice  int    `json:"choice"`
+func (o *requestOps) replyLink(ctx context.Context, r inputRow, receipt int64) (linkRow, error) {
+	var l linkRow
+	query := `SELECT request_id,owner,(answered_at IS NULL AND deadline_at > $1)
+		FROM request_links l JOIN mock_outbox m ON m.delivery_id=l.delivery_id
+		WHERE l.channel='mock' AND l.external_id=$2 AND m.external_id=$2 AND m.seq=$3`
+	args := []any{o.now(), r.external, receipt}
+	if r.channel == "telegram" {
+		query = `SELECT request_id,owner,(answered_at IS NULL AND deadline_at > $1)
+			FROM request_links l JOIN deliveries d ON d.id=l.delivery_id
+			WHERE l.channel='telegram' AND l.chat_id=$2 AND l.topic=$4 AND d.telegram_message_id=$3`
+		args = []any{o.now(), r.chat, receipt, r.topic}
 	}
-	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return "", 0
-	}
-	return p.Request, p.Choice
-}
-
-// linkByID reads one link's owner and openness for the callback
-// path — the button names the request, the chat confirms where.
-func (o *requestOps) linkByID(ctx context.Context, request, channel, chat string) (string, bool, error) {
-	var (
-		owner string
-		open  bool
-	)
-	err := o.db.QueryRowContext(ctx, `SELECT owner,
-		(answered_at IS NULL AND deadline_at > $4) FROM request_links
-		WHERE request_id=$1 AND channel=$2 AND chat_id=$3`,
-		request, channel, chat, o.now()).
-		Scan(&owner, &open)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
+	err := o.db.QueryRowContext(ctx, query, args...).Scan(&l.request, &l.owner, &l.open)
 	if err != nil {
-		return "", false, fmt.Errorf("callback link: %w", err)
+		return l, fmt.Errorf("delivery receipt: %w", err)
 	}
-	return owner, open, nil
+	return l, nil
 }
 
 // refuseClosed completes the intake with the closed-request notice.

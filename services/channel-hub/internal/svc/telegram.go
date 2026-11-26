@@ -140,14 +140,12 @@ func normalizeUpdate(u tgRawUpdate) tgUpdate {
 		return out
 	}
 	out.MessageID = m.MessageID
+	if m.ReplyToMessage != nil {
+		out.ReplyTo = m.ReplyToMessage.MessageID
+	}
 	out.FromID = m.From.ID
 	out.ChatID = m.Chat.ID
-	switch {
-	case m.MessageThreadID != nil && m.Chat.IsForum:
-		out.Topic = "thr:" + strconv.FormatInt(*m.MessageThreadID, 10)
-	case m.DirectMessagesTopic != nil:
-		out.Topic = "dm:" + strconv.FormatInt(m.DirectMessagesTopic.TopicID, 10)
-	}
+	out.Topic = messageTopic(m)
 	switch {
 	case len(m.Photo) > 0:
 		big := largestPhoto(m)
@@ -158,6 +156,16 @@ func normalizeUpdate(u tgRawUpdate) tgUpdate {
 		out.Kind, out.Text = "text", m.Text
 	}
 	return out
+}
+
+func messageTopic(m *tgRawMessage) string {
+	switch {
+	case m.MessageThreadID != nil && m.Chat.IsForum:
+		return "thr:" + strconv.FormatInt(*m.MessageThreadID, 10)
+	case m.DirectMessagesTopic != nil:
+		return "dm:" + strconv.FormatInt(m.DirectMessagesTopic.TopicID, 10)
+	}
+	return ""
 }
 
 // largestPhoto picks the highest-resolution variant telegram sent.
@@ -179,9 +187,8 @@ func normalizeCallback(out tgUpdate, cq *tgRawCallback) tgUpdate {
 	out.FromID, out.QueryID = cq.From.ID, cq.ID
 	if cq.Message != nil {
 		out.ChatID = cq.Message.Chat.ID
-		if cq.Message.MessageThreadID != nil && cq.Message.Chat.IsForum {
-			out.Topic = "thr:" + strconv.FormatInt(*cq.Message.MessageThreadID, 10)
-		}
+		out.Topic = messageTopic(cq.Message)
+		out.ReplyTo = cq.Message.MessageID
 	}
 	parts := strings.Split(cq.Data, ":")
 	if len(parts) != 3 || parts[0] != "a" {
@@ -211,11 +218,11 @@ func (ad *tgAdapter) admitUpdate(ctx context.Context, u tgUpdate) error {
 		return fmt.Errorf("tg intake begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
-	payload := fmt.Sprintf(`{"message_id":%d,"file_id":%q,"file_size":%d}`,
-		u.MessageID, u.FileID, u.FileSize)
+	payload := fmt.Sprintf(`{"message_id":%d,"file_id":%q,"file_size":%d,"reply_to":%d}`,
+		u.MessageID, u.FileID, u.FileSize, u.ReplyTo)
 	if u.Kind == "answer" {
-		payload = fmt.Sprintf(`{"request":%q,"choice":%d,"query":%q}`,
-			u.RequestID, u.Choice, u.QueryID)
+		payload = fmt.Sprintf(`{"request":%q,"choice":%d,"reply_to":%d}`,
+			u.RequestID, u.Choice, u.ReplyTo)
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO inbound_updates(
 		id,channel,update_id,external_id,body,kind,chat_id,topic,payload)
