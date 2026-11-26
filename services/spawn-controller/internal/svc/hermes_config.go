@@ -16,7 +16,7 @@ import (
 )
 
 func (s *Server) projectTools(ctx context.Context, sp spaceRow, p Passports) (thv1.ProjectionResp, error) {
-	if len(p.Tools.Core)+len(p.Tools.Extended)+len(p.Tools.Native) == 0 {
+	if len(p.Tools.Core)+len(p.Tools.Extended) == 0 {
 		return thv1.ProjectionResp{Digest: sp.digest}, nil
 	}
 	issuer := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(s.deps.Identity, "")}}

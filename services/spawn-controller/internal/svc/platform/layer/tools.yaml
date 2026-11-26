@@ -1,3 +1,5 @@
 core: [probe, ownerreq]
 extended: []
-native: []
+executors:
+  probe: {executor: toolhub}
+  ownerreq: {executor: toolhub}

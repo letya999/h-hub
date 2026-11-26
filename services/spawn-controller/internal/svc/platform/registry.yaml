@@ -26,5 +26,5 @@ leaves:
   - {path: workspace.files, class: user_data, consumer: spawn-controller, effect: recreate}
   - {path: tools.core, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.extended, class: narrow, consumer: tool-hub, effect: respawn}
-  - {path: tools.native, class: narrow, consumer: harness-runtime, effect: respawn}
+  - {path: tools.executors, class: keyset-narrow, consumer: tool-hub, effect: respawn}
   - {path: grants.allow, class: narrow, consumer: tool-hub, effect: live}

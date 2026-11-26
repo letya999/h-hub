@@ -6,6 +6,7 @@ var catalogs = map[Lang]map[string]string{
 	EN: { //nolint:dupl // translations mirror the same keys per language
 		"err.invalid":                "invalid request",
 		"err.invalid-arg":            "invalid argument {field}",
+		"err.native-limits":          "Native execution requires accepting delayed revocation and missing per-call audit.",
 		"err.not-found":              "not found",
 		"err.unauthorized":           "unauthorized",
 		"err.forbidden":              "forbidden",
@@ -58,6 +59,7 @@ var catalogs = map[Lang]map[string]string{
 	RU: { //nolint:dupl // translations mirror the same keys per language
 		"err.invalid":                "некорректный запрос",
 		"err.invalid-arg":            "некорректный аргумент {field}",
+		"err.native-limits":          "Для нативного исполнения нужно принять задержку отзыва и отсутствие аудита вызовов.",
 		"err.not-found":              "не найдено",
 		"err.unauthorized":           "не авторизован",
 		"err.forbidden":              "запрещено",

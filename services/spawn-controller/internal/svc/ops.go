@@ -303,7 +303,7 @@ func (s *Server) requireImage(image string) error {
 // tool admission url — fail closed, never a quiet tool-less mode. A
 // spec selecting nothing runs without tools by design.
 func toolAdmission(p Passports) error {
-	if len(p.Tools.Core)+len(p.Tools.Extended)+len(p.Tools.Native) > 0 && p.Config.ToolURL == "" {
+	if len(p.Tools.Core)+len(p.Tools.Extended) > 0 && p.Config.ToolURL == "" {
 		return herrors.New(herrors.CodeInvalid, "err.tool-admission-missing")
 	}
 	return nil
