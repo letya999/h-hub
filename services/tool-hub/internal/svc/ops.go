@@ -5,6 +5,7 @@ import (
 
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
+	"github.com/letya999/h-hub/shared/httpapi"
 )
 
 // admitCall answers whether one call is allowed. A denial is a
@@ -31,8 +32,11 @@ func (s *Server) admitCall(ctx context.Context, r thv1.AdmitCallReq) (thv1.Admit
 // grants. An ungranted tool does not exist for the model — it is
 // absent, not refused. An empty projection is itself a refusal.
 func (s *Server) projection(ctx context.Context, r thv1.ProjectionReq) (thv1.ProjectionResp, error) {
-	if err := herrors.Require(r.Run != "" && r.Digest != "", "err.invalid-arg"); err != nil {
-		return thv1.ProjectionResp{}, err //nolint:wrapcheck // shared error form
+	if err := r.Validate(); err != nil {
+		return thv1.ProjectionResp{}, err //nolint:wrapcheck // contract error
+	}
+	if r.Space != "" {
+		return s.launchProjection(ctx, r)
 	}
 	claims, err := s.runClaims(ctx, r.Run, r.Digest)
 	if err != nil {
@@ -52,12 +56,36 @@ func (s *Server) projection(ctx context.Context, r thv1.ProjectionReq) (thv1.Pro
 		return thv1.ProjectionResp{}, err
 	}
 	if len(p.Core)+len(p.Extended) == 0 {
-		return thv1.ProjectionResp{}, herrors.New(herrors.CodeForbidden,
-			"err.tool-projection-empty")
+		return thv1.ProjectionResp{}, thv1.EmptyProjection() //nolint:wrapcheck // preserve the typed contract refusal
 	}
 	p.Digest = specDigest
 	if err := s.cacheProjection(ctx, claims.Space, specDigest, p); err != nil {
 		return thv1.ProjectionResp{}, err
+	}
+	return p, nil
+}
+
+func (s *Server) launchProjection(ctx context.Context, r thv1.ProjectionReq) (thv1.ProjectionResp, error) {
+	principal := httpapi.PrincipalFrom(ctx)
+	if principal == nil || principal.Purpose != "service" || principal.Sub != "spawn-controller" {
+		return thv1.ProjectionResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	spec, digest, err := s.spec(ctx, r.Space)
+	if err != nil {
+		return thv1.ProjectionResp{}, err
+	}
+	if digest != r.Digest {
+		return thv1.ProjectionResp{}, herrors.New(herrors.CodeStale, "err.stale")
+	}
+	p, err := project(spec)
+	if err != nil {
+		return thv1.ProjectionResp{}, err
+	}
+	p.Digest = digest
+	for _, name := range append(append([]string{}, spec.Tools.Core...), spec.Tools.Extended...) {
+		for _, definition := range registry[name].Tools {
+			p.Catalog = append(p.Catalog, toolInfo(name, definition))
+		}
 	}
 	return p, nil
 }

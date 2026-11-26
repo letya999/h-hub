@@ -1,0 +1,3 @@
+name: hhub
+version: 1.0.0
+description: Routes scoped model and tool requests to the local h-hub adapter.

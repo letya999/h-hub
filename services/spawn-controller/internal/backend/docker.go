@@ -169,6 +169,7 @@ func runtimeSpec(l Launch) createReq {
 			Init: true,
 			Mounts: []mount{
 				{Type: "image", Source: l.Adapter, Target: "/hhub-adapter", ReadOnly: true, ImageOptions: &mountPath{"svc"}},
+				{Type: "image", Source: l.Adapter, Target: "/opt/data/plugins", ReadOnly: true, ImageOptions: &mountPath{"hhub-plugins"}},
 				{Type: "volume", Source: l.RenderVol, Target: "/etc/hhub/render", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir}},
 				{Type: "volume", Source: l.RenderVol, Target: "/opt/data/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
 			},

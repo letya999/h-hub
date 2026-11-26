@@ -139,7 +139,7 @@ docker run -d --rm --name "$spawn" --network "$net" --network-alias spawn-contro
   -e HHUB_KEYS=/etc/hhub -e HHUB_RUNTIME_IMAGE=hhub-harness-runtime:local \
   -e HHUB_DOCKER_SOCK=/var/run/docker.sock -e HHUB_TASK_URL=http://task-engine:9000 \
   -e HHUB_MODEL_URL=http://model-gateway:9000 -e "HHUB_RENDER_VOL=$render" \
-  -e HHUB_RENDER_DIR=/render -e "HHUB_NETWORK=$net" \
+  -e HHUB_RENDER_DIR=/render -e HHUB_IDENTITY_URL=http://identity-hub:9000 -e "HHUB_NETWORK=$net" \
   -v "hhub-restore-keys-spawn-controller-$id:/etc/hhub:ro" -v "$render:/render" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   hhub-spawn-controller:local >/dev/null

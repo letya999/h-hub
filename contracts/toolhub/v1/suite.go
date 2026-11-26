@@ -34,6 +34,7 @@ var cases = []Case{
 	{"admit_allowed", caseAdmitAllowed},
 	{"admit_denied", caseAdmitDenied},
 	{"projection_sections", caseProjection},
+	{"launch_projection", caseLaunchProjection},
 	{"projection_empty_refused", caseProjectionEmpty},
 	{"invoke_echo", caseInvoke},
 	{"invoke_denied", caseInvokeDenied},
@@ -93,10 +94,26 @@ func caseProjection(t *testing.T, ctx context.Context, c *Client) {
 	if len(res.Extended) == 0 {
 		t.Fatal("extended empty despite grant")
 	}
+	if len(res.Catalog) != 0 {
+		t.Fatal("run received the launch catalog")
+	}
 	for _, ti := range res.Core {
 		if ti.Name == "" || len(ti.Parameters) == 0 {
 			t.Fatalf("tool without name or schema: %+v", ti)
 		}
+	}
+}
+
+func caseLaunchProjection(t *testing.T, ctx context.Context, _ *Client) {
+	c := ungrantedClient(t)
+	r := ProjectionReq{Space: "space_1", Digest: "dg_1"}
+	p, err := c.Projection(ctx, r)
+	if err != nil || p.Digest != r.Digest || len(p.Catalog) != 2 || len(p.Core)+len(p.Extended) != 0 {
+		t.Fatalf("launch projection without grants: %+v, %v", p, err)
+	}
+	r.Run = "run_1"
+	if _, err := c.Projection(ctx, r); herrors.CodeOf(err) != herrors.CodeForbidden {
+		t.Fatalf("mixed run and launch scope: %v", err)
 	}
 }
 
@@ -106,8 +123,8 @@ func caseProjectionEmpty(t *testing.T, ctx context.Context, _ *Client) {
 	if err == nil {
 		t.Fatalf("empty projection answered: %+v", res)
 	}
-	if herrors.CodeOf(err) == herrors.CodeInvalid {
-		t.Fatalf("empty projection is a refusal, not bad input: %v", err)
+	if !IsEmptyProjection(err) || IsEmptyProjection(herrors.New(herrors.CodeForbidden, "err.forbidden")) {
+		t.Fatalf("empty projection must carry its own refusal reason: %v", err)
 	}
 }
 

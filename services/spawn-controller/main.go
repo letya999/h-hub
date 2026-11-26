@@ -53,6 +53,10 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("issuer key: %w", err)
 	}
+	key, err := auth.LoadPrivateKey(filepath.Join(cfg.Keys, "service.key"))
+	if err != nil {
+		return fmt.Errorf("service key: %w", err)
+	}
 	edgeData, err := os.ReadFile(filepath.Join(cfg.Keys, "edges"))
 	if err != nil {
 		return fmt.Errorf("edges: %w", err)
@@ -68,7 +72,9 @@ func run(ctx context.Context, l *log.L) error {
 		ModelURL:  cfg.ModelURL,
 		TaskURL:   cfg.TaskURL,
 		RenderVol: cfg.RenderVol,
-		RenderDir: cfg.RenderDir,
+		RenderDir: "/render",
+		Identity:  cfg.IdentityURL,
+		SelfKey:   key,
 		Network:   cfg.NetworkName,
 		Issuer:    issuer,
 		EdgeTab:   tab.For(cfg.Sub),

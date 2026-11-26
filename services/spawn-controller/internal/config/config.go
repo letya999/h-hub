@@ -20,7 +20,7 @@ type C struct {
 	ModelURL    string // HHUB_MODEL_URL: models passport route
 	TaskURL     string // HHUB_TASK_URL: report-back address for runtimes
 	RenderVol   string // HHUB_RENDER_VOL: volume for rendered configs
-	RenderDir   string // HHUB_RENDER_DIR: local mount of that volume
+	IdentityURL string // HHUB_IDENTITY_URL: service-token issuer
 	NetworkName string // HHUB_NETWORK: internal network for runtimes
 }
 
@@ -36,11 +36,11 @@ func Env() (C, error) {
 		ModelURL:    os.Getenv("HHUB_MODEL_URL"),
 		TaskURL:     os.Getenv("HHUB_TASK_URL"),
 		RenderVol:   os.Getenv("HHUB_RENDER_VOL"),
-		RenderDir:   os.Getenv("HHUB_RENDER_DIR"),
+		IdentityURL: os.Getenv("HHUB_IDENTITY_URL"),
 		NetworkName: os.Getenv("HHUB_NETWORK"),
 	}
 	vals := []string{c.Sub, c.DSN, c.Keys, c.DockerSock, c.RuntimeImg,
-		c.ModelURL, c.TaskURL, c.RenderVol, c.RenderDir, c.NetworkName}
+		c.ModelURL, c.TaskURL, c.RenderVol, c.IdentityURL, c.NetworkName}
 	for _, v := range vals {
 		if v == "" {
 			return c, fmt.Errorf("config: all declared HHUB_* values are required")

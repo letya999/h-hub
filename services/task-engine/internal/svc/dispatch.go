@@ -11,6 +11,7 @@ import (
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	orv1 "github.com/letya999/h-hub/contracts/ownerreq/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -124,10 +125,10 @@ func (d *dispatcher) awaitRuntime(ctx context.Context, sc *sv1.Client,
 	for {
 		rt, err := sc.EnsureRuntime(ctx,
 			sv1.EnsureRuntimeReq{Space: space, Digest: digest})
-		if err != nil {
+		if err != nil && (herrors.CodeOf(err) != herrors.CodeUnavailable || d.s.deps.Now().After(deadline)) {
 			return rt, fmt.Errorf("ensure runtime: %w", err)
 		}
-		if rt.Ready {
+		if err == nil && rt.Ready {
 			return rt, nil
 		}
 		if d.s.deps.Now().After(deadline) {

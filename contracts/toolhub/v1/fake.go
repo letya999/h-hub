@@ -71,8 +71,8 @@ func (f *Fake) admit(_ context.Context, r AdmitCallReq) (AdmitCallResp, error) {
 
 func (f *Fake) projection(_ context.Context, r ProjectionReq) (ProjectionResp, error) {
 	var out ProjectionResp
-	if err := herrors.Require(r.Run != "" && r.Digest != "", "err.invalid-arg"); err != nil {
-		return out, err //nolint:wrapcheck // shared error form
+	if err := r.Validate(); err != nil {
+		return out, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -80,6 +80,9 @@ func (f *Fake) projection(_ context.Context, r ProjectionReq) (ProjectionResp, e
 		return out, herrors.New(herrors.CodeNotFound, "err.not-found")
 	}
 	for _, t := range f.table {
+		if r.Space != "" {
+			out.Catalog = append(out.Catalog, t.info)
+		}
 		if !f.grants[t.cap] {
 			continue
 		}
@@ -89,8 +92,8 @@ func (f *Fake) projection(_ context.Context, r ProjectionReq) (ProjectionResp, e
 			out.Extended = append(out.Extended, t.info)
 		}
 	}
-	if len(out.Core)+len(out.Extended) == 0 {
-		return out, herrors.New(herrors.CodeForbidden, "err.tool-projection-empty")
+	if r.Space == "" && len(out.Core)+len(out.Extended) == 0 {
+		return out, EmptyProjection()
 	}
 	out.Digest = f.digest
 	return out, nil

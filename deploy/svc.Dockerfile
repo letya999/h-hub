@@ -11,5 +11,6 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trim
 FROM alpine:3.21@sha256:bc21487101ae47172509130ee1092cc273a831968d64b617776d1f69c81e42ab
 COPY --from=build /out/svc /svc
 COPY deploy/hermes-image.ref /usr/share/hhub/hermes-image.ref
+COPY services/harness-runtime/plugins /hhub-plugins
 EXPOSE 9000
 ENTRYPOINT ["/svc"]

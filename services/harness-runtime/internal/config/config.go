@@ -23,6 +23,7 @@ type C struct {
 // Rendered is the config file shape the controller renders and
 // mounts read-only.
 type Rendered struct {
+	Space     string `json:"space"`
 	Sub       string `json:"sub"`
 	TaskURL   string `json:"task_url"`
 	ModelURL  string `json:"model_url"`
@@ -64,8 +65,8 @@ func (c C) Load() (Rendered, error) {
 	// existed renders no value for it, and that spec legitimately
 	// runs without tools (the admission edge arrives with the first
 	// recompiled spec).
-	if r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
-		return Rendered{}, fmt.Errorf("config: task_url, model_url and timeout_ms are required")
+	if r.Space == "" || r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
+		return Rendered{}, fmt.Errorf("config: space, task_url, model_url and timeout_ms are required")
 	}
 	return r, nil
 }

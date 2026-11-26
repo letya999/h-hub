@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/services/spawn-controller/internal/backend"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
@@ -162,7 +163,11 @@ func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p P
 		return "", fmt.Errorf("resolve adapter image: %w", err)
 	}
 	dir := filepath.Join(sp.id, sp.digest)
-	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, dir, p); err != nil {
+	tools, err := s.projectTools(ctx, sp, p)
+	if err != nil {
+		return "", err
+	}
+	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, sp, p, tools); err != nil {
 		return "", err
 	}
 	cid, err := s.deps.Docker.CreateAndStart(ctx, backend.Launch{
@@ -189,15 +194,18 @@ func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p P
 // renderConfig writes the space's effective harness config and the
 // issuer public key into the shared render volume; runtimes mount
 // the directory read-only.
-func renderConfig(renderDir string, issuer ed25519.PublicKey, space string, p Passports) error {
-	dir := filepath.Join(renderDir, space)
+func renderConfig(renderDir string, issuer ed25519.PublicKey, sp spaceRow, p Passports, tools thv1.ProjectionResp) error {
+	dir := filepath.Join(renderDir, sp.id, sp.digest)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("render dir: %w", err)
 	}
-	if err := writeHermesConfig(dir); err != nil {
+	if err := writeHermesConfig(dir, tools); err != nil {
 		return err
 	}
-	data, err := json.Marshal(p.Config)
+	data, err := json.Marshal(struct {
+		ConfigPassport
+		Space string `json:"space"`
+	}{p.Config, sp.id})
 	if err != nil {
 		return fmt.Errorf("render config: %w", err)
 	}

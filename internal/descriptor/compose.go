@@ -228,7 +228,6 @@ var envFixed = map[string]string{
 	"HHUB_DB_PATH":       "/data/broker.db",
 	// Compose prefixes volume names with the project name "hhub".
 	"HHUB_RENDER_VOL": "hhub_hhub-render",
-	"HHUB_RENDER_DIR": "/render",
 	"HHUB_NETWORK":    "hhub-space",
 }
 

@@ -37,7 +37,7 @@ services:
       - HHUB_TASK_URL
       - HHUB_MODEL_URL
       - HHUB_RENDER_VOL
-      - HHUB_RENDER_DIR
+      - HHUB_IDENTITY_URL
       - HHUB_NETWORK
     volumes:
       - name: keys-spawn-controller
@@ -45,7 +45,9 @@ services:
       - name: hhub-render
         path: /render
         rw: true
-    edges: []
+    edges:
+      - to: tool-hub
+        ops: [Projection]
   - name: identity-hub
     zone: control
     deploy: true
