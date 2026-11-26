@@ -38,7 +38,7 @@ survived eight phases.
 | 9 | v0.0.9 | capability catalog, admission, projection, triples | done |
 | 10 | v0.0.10 | owner request, approval modes, `job.waiting_owner` | done |
 | 11 | v0.0.11 | **Hermes in the loop: adapter over the pinned image** | done |
-| 12 | v0.0.12 | native harness tools, `workspace`, reviewed self-edit, [approval mode end-to-end tests](10-report.md#phase-12-acceptance) | planned |
+| 12 | v0.0.12 | [Tool-hub files, workspace layout, reviewed self-edit, idle respawn, and approval mode tests](12-report.md) | done |
 | 13 | v0.0.13 | skills | planned |
 | 14 | v0.0.14 | worker machine, terminal, cellinit, janitor | planned |
 | 15 | v0.0.15 | MCP and CLI in a worker, `oci` recipes | planned |
