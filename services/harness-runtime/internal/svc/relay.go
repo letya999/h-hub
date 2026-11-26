@@ -181,7 +181,7 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 	if err != nil {
 		return writeToolRefusal(w, err)
 	}
-	if set == "ownerreq" {
+	if set == "ownerreq" || set == "files" {
 		if err := s.ownerEvent(a, res.Result); err != nil {
 			return err
 		}

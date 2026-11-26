@@ -186,11 +186,7 @@ func toolhubExec(ctx context.Context, s *Server, c toolCall) (json.RawMessage, e
 	case "config":
 		return s.invokeConfigEdit(ctx, c)
 	case "ownerreq":
-		res, err := s.oreq.InvokeTool(ctx, c.claims, c.name, c.args)
-		if err != nil {
-			return nil, fmt.Errorf("ownerreq invoke: %w", err)
-		}
-		return res, nil
+		return invokeOwnerRequest(ctx, s, c)
 	}
 	return nil, herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
 										With("provider", c.ts.Provider)
