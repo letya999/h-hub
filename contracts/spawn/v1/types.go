@@ -228,6 +228,7 @@ type Handlers struct {
 	Rollback       func(context.Context, RollbackReq) (RollbackResp, error)
 	Explain        func(context.Context, ExplainReq) (ExplainResp, error)
 	Workspace      func(context.Context, WorkspaceReq) (WorkspaceResp, error)
+	EditConfig     func(context.Context, EditConfigReq) (ActivateResp, error)
 }
 
 // Ops maps operation names to request handlers.

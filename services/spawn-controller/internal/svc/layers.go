@@ -84,6 +84,9 @@ func submitLayersOp(s *Server, ctx context.Context, r sv1.SubmitLayersReq) (sv1.
 // storeRevision overlays patch leaves onto the role's latest
 // revision and inserts the result as a new immutable revision.
 func storeRevision(s *Server, ctx context.Context, tx *sql.Tx, r revRow, patch DocSet) (string, int, error) {
+	if _, err := spaceForUpdate(ctx, tx, r.space); err != nil {
+		return "", 0, err
+	}
 	base, err := latestRoleDocs(ctx, tx, r.space, r.role)
 	if err != nil {
 		return "", 0, err
@@ -180,21 +183,27 @@ func applyCandidate(s *Server, ctx context.Context, tx *sql.Tx, cur spaceRow,
 	if cand.digest != req.target {
 		return "", "", staleErr("candidate", req.target)
 	}
-	_, effect, err := specDiff(cur, cand.spec, chain)
-	if err != nil {
-		return "", "", err
-	}
-	err = applySpecTx(s, ctx, tx, cur, specApply{
+	effect, err := applyCompiled(s, ctx, tx, cur, specApply{
 		chain: chain, spec: cand.spec, digest: cand.digest,
-		explain: cand.explain, effect: effect, author: req.author,
+		explain: cand.explain, author: req.author,
 	})
+	return cand.digest, effect, err
+}
+
+func applyCompiled(s *Server, ctx context.Context, tx *sql.Tx, cur spaceRow, candidate specApply) (string, error) {
+	_, effect, err := specDiff(cur, candidate.spec, candidate.chain)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
+	candidate.effect = effect
+	if err := applySpecTx(s, ctx, tx, cur, candidate); err != nil {
+		return "", err
+	}
+	cur.digest = candidate.digest
 	if err := applyEffectTx(s, ctx, tx, cur, effect); err != nil {
-		return "", "", err
+		return "", err
 	}
-	return cand.digest, effect, nil
+	return effect, nil
 }
 
 // rollbackOp re-activates a previous digest: the stored revision set
@@ -248,21 +257,11 @@ func applyRollback(s *Server, ctx context.Context, tx *sql.Tx, cur spaceRow,
 	if cand.digest != req.target {
 		return "", "", staleErr("digest", req.target)
 	}
-	_, effect, err := specDiff(cur, cand.spec, chain)
-	if err != nil {
-		return "", "", err
-	}
-	err = applySpecTx(s, ctx, tx, cur, specApply{
+	effect, err := applyCompiled(s, ctx, tx, cur, specApply{
 		chain: chain, spec: cand.spec, digest: cand.digest,
-		explain: cand.explain, effect: effect, author: req.author,
+		explain: cand.explain, author: req.author,
 	})
-	if err != nil {
-		return "", "", err
-	}
-	if err := applyEffectTx(s, ctx, tx, cur, effect); err != nil {
-		return "", "", err
-	}
-	return cand.digest, effect, nil
+	return cand.digest, effect, err
 }
 
 // explainOp reads the persisted attribution of the active digest.

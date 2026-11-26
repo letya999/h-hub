@@ -140,7 +140,7 @@ services:
         path: /etc/hhub
     edges:
       - to: spawn-controller
-        ops: [ResolveSpec, Workspace]
+        ops: [ResolveSpec, Workspace, EditConfig]
       - to: identity-hub
         ops: [Resolve]
       - to: channel-hub

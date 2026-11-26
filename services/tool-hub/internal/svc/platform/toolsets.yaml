@@ -39,6 +39,19 @@ toolsets:
               items:
                 type: string
           required: [question, options]
+  - name: config
+    provider: config
+    tools:
+      - name: config_edit
+        description: Change a reviewed setting in the space configuration.
+        capability: config.edit_own
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            key: {type: string}
+            value: {}
+          required: [key, value]
   - name: files
     provider: files
     tools:
