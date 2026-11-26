@@ -9,6 +9,7 @@ from tools.registry import registry
 from toolsets import get_toolset_names, resolve_toolset
 
 surface = {
+    "source_pin": sys.argv[1],
     "platforms": sorted(platform.value for platform in Platform),
     "tools": sorted(registry.get_all_tool_names()),
     "toolsets": {name: sorted(resolve_toolset(name)) for name in sorted(get_toolset_names())},

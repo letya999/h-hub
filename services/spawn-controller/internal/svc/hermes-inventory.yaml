@@ -1,5 +1,6 @@
 source_pin: "docker.io/nousresearch/hermes-agent:v0.23.4@sha256:ef0650d523ee1b5ab32c779acabc446d9936869a9932591553688a62bcf0c42f"
-inventory_sha256: 552e031fbec2a61986483a8ab9e6e5cbaeb2fc83580aaf9c10c09f9cee281d09
+inventory_sha256: 3e54b0df6287faf3a204dccee9c7454a244bde34be31fb4fa6e14cbe6ccf3d94
+reviewed_inventory_sha256: 3e54b0df6287faf3a204dccee9c7454a244bde34be31fb4fa6e14cbe6ccf3d94
 platforms:
   - "api_server"
   - "bluebubbles"
@@ -85,76 +86,76 @@ toolsets:
   - "web"
   - "x_search"
 tools:
-  - "a2a_call"
-  - "a2a_discover"
-  - "a2a_history"
-  - "a2a_list"
-  - "a2a_orchestrate"
-  - "annotate_preview"
-  - "browser_cdp"
-  - "browser_dialog"
-  - "browser_exec"
-  - "browser_vault"
-  - "clarify"
-  - "close_terminal"
-  - "computer_use"
-  - "cronjob_manage"
-  - "delegate_task"
-  - "desktop_preview"
-  - "desktop_project"
-  - "discord"
-  - "discord_admin"
-  - "drive_preview"
-  - "execute_code"
-  - "feishu_doc_read"
-  - "feishu_drive_add_comment"
-  - "feishu_drive_list_comment_replies"
-  - "feishu_drive_list_comments"
-  - "feishu_drive_reply_comment"
-  - "focus_pane"
-  - "gui_tour"
-  - "image_generate"
-  - "kanban_attach"
-  - "kanban_attach_url"
-  - "kanban_attachments"
-  - "kanban_block"
-  - "kanban_comment"
-  - "kanban_complete"
-  - "kanban_create"
-  - "kanban_heartbeat"
-  - "kanban_link"
-  - "kanban_list"
-  - "kanban_request_changes"
-  - "kanban_request_review"
-  - "kanban_schedule"
-  - "kanban_show"
-  - "kanban_unblock"
-  - "manage_catalog"
-  - "manage_connections"
-  - "memory"
-  - "patch"
-  - "process_manage"
-  - "react_to_message"
-  - "read_file"
-  - "read_terminal"
-  - "read_window_below"
-  - "search_files"
-  - "session_search"
-  - "set_theme"
-  - "setup_beat"
-  - "show_tip"
-  - "skill_manage"
-  - "skill_view"
-  - "skills_list"
-  - "terminal"
-  - "text_to_speech"
-  - "todo_list"
-  - "video_analyze"
-  - "video_generate"
-  - "vision_analyze"
-  - "web_extract"
-  - "web_search"
-  - "write_file"
-  - "x_search"
-  - "xai_video_edit"
-  - "xai_video_extend"
+  - {name: "a2a_call", effect: external-service}
+  - {name: "a2a_discover", effect: external-service}
+  - {name: "a2a_history", effect: external-service}
+  - {name: "a2a_list", effect: external-service}
+  - {name: "a2a_orchestrate", effect: external-service}
+  - {name: "annotate_preview", effect: external-service}
+  - {name: "browser_cdp", effect: external-service}
+  - {name: "browser_dialog", effect: external-service}
+  - {name: "browser_exec", effect: external-service}
+  - {name: "browser_vault", effect: external-service}
+  - {name: "clarify", effect: external-service}
+  - {name: "close_terminal", effect: process}
+  - {name: "computer_use", effect: process}
+  - {name: "cronjob_manage", effect: process}
+  - {name: "delegate_task", effect: process}
+  - {name: "desktop_preview", effect: external-service}
+  - {name: "desktop_project", effect: external-service}
+  - {name: "discord", effect: external-service}
+  - {name: "discord_admin", effect: external-service}
+  - {name: "drive_preview", effect: external-service}
+  - {name: "execute_code", effect: process}
+  - {name: "feishu_doc_read", effect: external-service}
+  - {name: "feishu_drive_add_comment", effect: external-service}
+  - {name: "feishu_drive_list_comment_replies", effect: external-service}
+  - {name: "feishu_drive_list_comments", effect: external-service}
+  - {name: "feishu_drive_reply_comment", effect: external-service}
+  - {name: "focus_pane", effect: process}
+  - {name: "gui_tour", effect: external-service}
+  - {name: "image_generate", effect: external-service}
+  - {name: "kanban_attach", effect: external-service}
+  - {name: "kanban_attach_url", effect: external-service}
+  - {name: "kanban_attachments", effect: external-service}
+  - {name: "kanban_block", effect: external-service}
+  - {name: "kanban_comment", effect: external-service}
+  - {name: "kanban_complete", effect: external-service}
+  - {name: "kanban_create", effect: external-service}
+  - {name: "kanban_heartbeat", effect: external-service}
+  - {name: "kanban_link", effect: external-service}
+  - {name: "kanban_list", effect: external-service}
+  - {name: "kanban_request_changes", effect: external-service}
+  - {name: "kanban_request_review", effect: external-service}
+  - {name: "kanban_schedule", effect: external-service}
+  - {name: "kanban_show", effect: external-service}
+  - {name: "kanban_unblock", effect: external-service}
+  - {name: "manage_catalog", effect: external-service}
+  - {name: "manage_connections", effect: external-service}
+  - {name: "memory", effect: external-service}
+  - {name: "patch", effect: process}
+  - {name: "process_manage", effect: process}
+  - {name: "react_to_message", effect: external-service}
+  - {name: "read_file", effect: external-service}
+  - {name: "read_terminal", effect: process}
+  - {name: "read_window_below", effect: external-service}
+  - {name: "search_files", effect: external-service}
+  - {name: "session_search", effect: external-service}
+  - {name: "set_theme", effect: external-service}
+  - {name: "setup_beat", effect: external-service}
+  - {name: "show_tip", effect: nothing}
+  - {name: "skill_manage", effect: external-service}
+  - {name: "skill_view", effect: external-service}
+  - {name: "skills_list", effect: external-service}
+  - {name: "terminal", effect: process}
+  - {name: "text_to_speech", effect: external-service}
+  - {name: "todo_list", effect: external-service}
+  - {name: "video_analyze", effect: external-service}
+  - {name: "video_generate", effect: external-service}
+  - {name: "vision_analyze", effect: external-service}
+  - {name: "web_extract", effect: network}
+  - {name: "web_search", effect: network}
+  - {name: "write_file", effect: process}
+  - {name: "x_search", effect: external-service}
+  - {name: "xai_video_edit", effect: external-service}
+  - {name: "xai_video_extend", effect: external-service}

@@ -67,25 +67,36 @@ func writeHermesConfig(dir string, projection thv1.ProjectionResp) error {
 //go:embed hermes-inventory.yaml
 var pinnedInventory []byte
 
+type hermesTool struct {
+	Name   string
+	Effect string
+}
+
+var hermesTools = mustHermesTools()
+
+func mustHermesTools() []hermesTool {
+	var inventory struct{ Tools []hermesTool }
+	if err := yaml.Unmarshal(pinnedInventory, &inventory); err != nil {
+		panic(fmt.Sprintf("decode pinned Hermes inventory: %v", err))
+	}
+	return inventory.Tools
+}
+
 type renderedTools struct {
 	thv1.ProjectionResp
 	Denied []string `json:"denied_native"`
 }
 
 func nativeRules(p thv1.ProjectionResp) (renderedTools, error) {
-	var inventory struct{ Tools []string }
-	if err := yaml.Unmarshal(pinnedInventory, &inventory); err != nil {
-		return renderedTools{}, fmt.Errorf("decode pinned Hermes inventory: %w", err)
-	}
 	out := renderedTools{ProjectionResp: p}
 	for _, name := range p.Native {
-		if !slices.Contains(inventory.Tools, name) {
+		if !slices.ContainsFunc(hermesTools, func(t hermesTool) bool { return t.Name == name }) {
 			return renderedTools{}, fmt.Errorf("unknown native Hermes tool %q", name)
 		}
 	}
-	for _, name := range inventory.Tools {
-		if !slices.Contains(p.Native, name) {
-			out.Denied = append(out.Denied, name)
+	for _, tool := range hermesTools {
+		if !slices.Contains(p.Native, tool.Name) {
+			out.Denied = append(out.Denied, tool.Name)
 		}
 	}
 	return out, nil
