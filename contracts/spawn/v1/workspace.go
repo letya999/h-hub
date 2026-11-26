@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 )
 
 // WorkspaceReq carries the admitted file call to the owner of the workspace.
@@ -26,5 +27,20 @@ type WorkspaceResp struct {
 func (c *Client) Workspace(ctx context.Context, req WorkspaceReq) (WorkspaceResp, error) {
 	var out WorkspaceResp
 	err := c.call(ctx, "Workspace", req, &out)
+	return out, err
+}
+
+type EditConfigReq struct {
+	Owner   string          `json:"owner"`
+	Space   string          `json:"space"`
+	Digest  string          `json:"digest"`
+	Key     string          `json:"key"`
+	Setting string          `json:"setting"`
+	Value   json.RawMessage `json:"value"`
+}
+
+func (c *Client) EditConfig(ctx context.Context, req EditConfigReq) (ActivateResp, error) {
+	var out ActivateResp
+	err := c.call(ctx, "EditConfig", req, &out)
 	return out, err
 }

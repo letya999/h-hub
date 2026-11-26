@@ -42,6 +42,9 @@ func compileSet(chain layerSet) (compiled, error) {
 		if err := validateLayerGrants(l); err != nil {
 			return out, err
 		}
+		if err := validateReviewedConfig(l.docs); err != nil {
+			return out, err
+		}
 		if err := applyLayer(merged, out.explain, l, i == 0); err != nil {
 			return out, err
 		}
