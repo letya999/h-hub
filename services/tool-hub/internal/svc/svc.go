@@ -88,19 +88,22 @@ func (s *Server) Mux() *http.ServeMux {
 	ops := thv1.Ops(thv1.Handlers{
 		AdmitCall: s.admitCall, Projection: s.projection, Invoke: s.invoke})
 	runVer := httpapi.RunVerifier(s.deps.Issuer, s.deps.Now)
-	for name, op := range ops {
-		op := op
-		mux.Handle("/v1/"+name, httpapi.HandleAuth(runVer,
-			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
-				return s.opErr(w, r, name, op)
-			}))
-	}
 	svcVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Edges, s.deps.Now)
 	dual := func(r *http.Request) (httpapi.Principal, error) {
 		if p, err := runVer(r); err == nil {
 			return p, nil
 		}
 		return svcVer(r)
+	}
+	for name, op := range ops {
+		v := runVer
+		if name == "Projection" {
+			v = dual
+		}
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(v,
+			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+				return s.opErr(w, r, name, op)
+			}))
 	}
 	verOf := map[string]httpapi.Verifier{"AnswerRequest": svcVer, "BindRequest": svcVer}
 	for name, op := range orv1.Ops(s.oreq.Handlers()) {

@@ -3,7 +3,10 @@ package hermes
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,16 +23,22 @@ const gatewayURL = "http://127.0.0.1:8642"
 type Gateway struct {
 	key    string
 	client *http.Client
+	stream *http.Client
 }
 
 // Start runs the upstream executable with only the environment it needs.
 // A gateway exit brings the adapter down with it.
 func Start(ctx context.Context, stop context.CancelCauseFunc) (*Gateway, <-chan struct{}, error) {
-	g := &Gateway{key: rand.Text(), client: &http.Client{Timeout: 5 * time.Second}}
-	cmd := exec.CommandContext(ctx, "/opt/hermes/.venv/bin/hermes", "gateway", "run")
+	g := &Gateway{key: rand.Text(), client: &http.Client{Timeout: 5 * time.Second}, stream: &http.Client{
+		Transport:     &http.Transport{ResponseHeaderTimeout: 20 * time.Second},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+	// The pinned CLI entry point reads dependency bytecode from the immutable image.
+	cmd := exec.CommandContext(ctx, "/opt/hermes/.venv/bin/python", "-P", "-m", "hermes_cli.main", "gateway", "run")
 	cmd.Env = []string{
 		"PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 		"HOME=/opt/data", "HERMES_HOME=/opt/data", "HERMES_ENABLE_PROJECT_PLUGINS=0",
+		"HERMES_WRITE_SAFE_ROOT=/opt/data",
 		"PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1", "XDG_RUNTIME_DIR=/tmp/hermes-runtime",
 		"API_SERVER_ENABLED=true", "API_SERVER_HOST=127.0.0.1", "API_SERVER_KEY=" + g.key,
 	}
@@ -50,6 +59,18 @@ func Start(ctx context.Context, stop context.CancelCauseFunc) (*Gateway, <-chan 
 		}
 	}()
 	return g, done, nil
+}
+
+// Authentic checks the proof from the immutable in-process bridge. The claim
+// is only a lookup handle; the hub credential stays in the admission table.
+func (g *Gateway) Authentic(claim, proof string) bool {
+	mac, err := hex.DecodeString(proof)
+	if err != nil || len(claim) == 0 || len(claim) > 128 {
+		return false
+	}
+	want := hmac.New(sha256.New, []byte(g.key))
+	want.Write([]byte(claim))
+	return hmac.Equal(mac, want.Sum(nil))
 }
 
 // Ready requires a response from the upstream gateway itself.

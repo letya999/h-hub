@@ -228,12 +228,8 @@ func destroySpaceOp(s *Server, ctx context.Context, r sv1.DestroySpaceReq) (sv1.
 		return sv1.DestroySpaceResp{}, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
-	if rt, ok, err := runtimeForSpace(ctx, tx, sp.id); err != nil {
+	if _, err := drainRuntimeTx(s, ctx, tx, sp.id, "api"); err != nil {
 		return sv1.DestroySpaceResp{}, err
-	} else if ok {
-		if err := drainRuntime(s, ctx, tx, rt); err != nil {
-			return sv1.DestroySpaceResp{}, err
-		}
 	}
 	if err := deleteSpace(ctx, tx, sp.id); err != nil {
 		return sv1.DestroySpaceResp{}, err
@@ -242,22 +238,6 @@ func destroySpaceOp(s *Server, ctx context.Context, r sv1.DestroySpaceReq) (sv1.
 		return sv1.DestroySpaceResp{}, fmt.Errorf("commit: %w", err)
 	}
 	return sv1.DestroySpaceResp{OK: true}, nil
-}
-
-// drainRuntime moves an active runtime to draining with a docker-rm
-// effect; already-idle states are left to their own deadlines.
-func drainRuntime(s *Server, ctx context.Context, tx *sql.Tx, rt runtimeRow) error {
-	payload := mustJSON(rmEffect{Runtime: rt.id, Container: rt.container})
-	err := s.runM.Transition(ctx, tx, fsm.Request{
-		ID: rt.id, Event: "drain", Actor: "api", At: s.deps.Now(),
-		Effects: []fsm.Effect{{Topic: "docker-rm", Payload: payload}}}, nil)
-	if errors.Is(err, fsm.ErrBadTransition) {
-		return nil // absent/quarantined/etc: nothing running to drain
-	}
-	if err != nil {
-		return fmt.Errorf("drain: %w", err)
-	}
-	return nil
 }
 
 // resolveSpec reads the persisted effective spec, upgrading a
@@ -429,8 +409,10 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 		if rt.digest != sp.digest {
 			return notReady, claimRuntime(s, ctx, tx, sp)
 		}
-		// A reaped or lost container is re-claimed in place; the
-		// machine edge carries it to starting.
+		// Reconciliation must not observe the previous container while the new create is pending.
+		if err := setContainer(ctx, tx, rt.id, "", ""); err != nil {
+			return notReady, err
+		}
 		if err := s.runM.Transition(ctx, tx, fsm.Request{
 			ID: rt.id, Event: "claim", Actor: "api", At: s.deps.Now(),
 			Effects: []fsm.Effect{{Topic: "docker-create",

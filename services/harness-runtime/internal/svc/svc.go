@@ -1,6 +1,5 @@
-// Package svc is the harness runtime: strict run admission in memory
-// only, the Hermes turn against the scripted model, and report-back
-// to task-engine. There is no database in the space zone.
+// Package svc admits runs, drives the native Hermes gateway and reports its events to task-engine.
+// The hub credentials for admitted runs live in memory.
 package svc
 
 import (
@@ -14,49 +13,52 @@ import (
 	hv1 "github.com/letya999/h-hub/contracts/harness/v1"
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	"github.com/letya999/h-hub/services/harness-runtime/internal/config"
+	"github.com/letya999/h-hub/services/harness-runtime/internal/hermes"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
+	"github.com/letya999/h-hub/shared/log"
 )
 
 // Deps are the runtime's collaborators.
 type Deps struct {
 	Issuer   ed25519.PublicKey // run-token issuer
 	Now      func() time.Time
-	Runner   Runner
+	Gateway  *hermes.Gateway
+	Log      *log.L
 	Rendered config.Rendered
-}
-
-// Runner executes one admitted turn; the production runner calls the
-// scripted model and reports through the task contract.
-type Runner interface {
-	Run(ctx context.Context, a Admission)
 }
 
 // Admission is the in-memory admit row: created only by SubmitRun,
 // keyed by run id, never persisted (space zone has no database).
 type Admission struct {
-	Run         string
-	Job         string
-	Space       string
-	Digest      string // the spec digest the run was admitted under
-	Input       string
-	Attachments []hv1.Attachment
-	Token       string // the run token, reused for report-back
-	ctx         context.Context
-	stop        context.CancelFunc
+	Run      string
+	Job      string
+	Space    string
+	Digest   string // the spec digest the run was admitted under
+	Token    string // the run token, reused for report-back
+	ctx      context.Context
+	stop     context.CancelFunc
+	native   hermes.Run
+	allowed  map[string]string
+	fault    error
+	done     bool
+	expires  int64
+	eventMu  sync.Mutex
+	sequence int64
 }
 
 // Server owns the operation table and the admission registry.
 type Server struct {
-	sub   string
-	deps  Deps
-	mu    sync.Mutex
-	admit map[string]*Admission
+	sub     string
+	deps    Deps
+	mu      sync.Mutex
+	admit   map[string]*Admission
+	changed chan struct{}
 }
 
 // New builds the server.
 func New(sub string, deps Deps) *Server {
-	return &Server{sub: sub, deps: deps, admit: map[string]*Admission{}}
+	return &Server{sub: sub, deps: deps, admit: map[string]*Admission{}, changed: make(chan struct{})}
 }
 
 // Mux mounts /v1 ops and /healthz. Every op is run-token verified.
@@ -96,7 +98,7 @@ func (s *Server) claims(ctx context.Context, run string) (idv1.RunClaims, error)
 		return idv1.RunClaims{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	c, err := idv1.ParseRunClaims(p.Payload)
-	if err != nil || c.Run != run {
+	if err != nil || c.Run != run || c.Space == "" || c.Space != s.deps.Rendered.Space {
 		return idv1.RunClaims{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	return c, nil
@@ -119,12 +121,17 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 		return hv1.SubmitRunResp{Accepted: true}, nil // idempotent
 	}
 	rctx, stop := context.WithCancel(context.Background())
-	s.admit[r.Run] = &Admission{
+	for id, previous := range s.admit {
+		if previous.done && previous.expires <= s.deps.Now().Unix() {
+			delete(s.admit, id)
+		}
+	}
+	a := &Admission{
 		Run: r.Run, Job: r.Job, Space: r.Space, Digest: c.Digest,
-		Input: r.Input, Attachments: r.Attachments,
-		Token: tok, ctx: rctx, stop: stop}
+		Token: tok, ctx: rctx, stop: stop, expires: c.Exp}
+	s.admit[r.Run] = a
 	s.mu.Unlock()
-	go s.deps.Runner.Run(s.admit[r.Run].ctx, *s.admit[r.Run])
+	go s.runAdmission(a, r)
 	return hv1.SubmitRunResp{Accepted: true}, nil
 }
 

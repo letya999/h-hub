@@ -9,7 +9,6 @@ import (
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
-	"github.com/letya999/h-hub/shared/fsm"
 )
 
 // layerAuth checks the caller may touch the space's layers: the
@@ -344,7 +343,7 @@ func applyEffectTx(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow, effe
 	if effect == "live" || effect == "" {
 		return nil
 	}
-	if err := drainRuntimeTx(s, ctx, tx, sp.id); err != nil {
+	if _, err := drainRuntimeTx(s, ctx, tx, sp.id, "passport"); err != nil {
 		return err
 	}
 	if effect == "recreate" {
@@ -353,30 +352,6 @@ func applyEffectTx(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow, effe
 			sp.id, mustJSON(resetEffect{Space: sp.id})); err != nil {
 			return fmt.Errorf("effect reset: %w", err)
 		}
-	}
-	return nil
-}
-
-// drainRuntimeTx moves a live runtime machine to draining, emitting
-// the docker-rm effect in the same transaction.
-func drainRuntimeTx(s *Server, ctx context.Context, tx *sql.Tx, space string) error {
-	rt, ok, err := runtimeForSpace(ctx, tx, space)
-	if err != nil || !ok {
-		return err
-	}
-	var state string
-	if err := tx.QueryRowContext(ctx, `SELECT state FROM fsm.machines
-		WHERE kind='runtime' AND id=$1`, rt.id).Scan(&state); err != nil {
-		return fmt.Errorf("runtime state: %w", err)
-	}
-	if state == "absent" || state == "draining" {
-		return nil
-	}
-	if err := s.runM.Transition(ctx, tx, fsm.Request{ID: rt.id,
-		Event: "drain", Actor: "passport", At: s.deps.Now(),
-		Effects: []fsm.Effect{{Topic: "docker-rm",
-			Payload: mustJSON(rmEffect{Runtime: rt.id, Container: rt.container})}}}, nil); err != nil {
-		return fmt.Errorf("effect drain: %w", err)
 	}
 	return nil
 }

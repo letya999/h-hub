@@ -7,10 +7,12 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
@@ -51,8 +53,27 @@ type AdmitCallResp struct {
 
 // ProjectionReq asks for the tools the model may see under digest.
 type ProjectionReq struct {
-	Run    string `json:"run"`
+	Run    string `json:"run,omitempty"`
+	Space  string `json:"space,omitempty"` // service-authorized container preparation
 	Digest string `json:"digest"`
+}
+
+// Validate requires exactly one scope for a projection.
+func (r ProjectionReq) Validate() error {
+	if r.Run != "" && r.Space != "" {
+		return herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	return herrors.Require(r.Digest != "" && (r.Run != "" || r.Space != ""), "err.invalid-arg") //nolint:wrapcheck // contract error
+}
+
+// EmptyProjection preserves the reason for a tools-only refusal across HTTP.
+func EmptyProjection() *herrors.Error {
+	return herrors.New(herrors.CodeForbidden, "err.tool-projection-empty").With("empty_projection", true)
+}
+
+func IsEmptyProjection(err error) bool {
+	var e *herrors.Error
+	return errors.As(err, &e) && e.Code == herrors.CodeForbidden && e.Details["empty_projection"] == true
 }
 
 // ProjectionResp lists the projected tools in the two sections of
@@ -60,6 +81,7 @@ type ProjectionReq struct {
 // a run can see its spec moved under it. An empty projection is
 // refused by the service rather than answered with two empty lists.
 type ProjectionResp struct {
+	Catalog  []ToolInfo `json:"catalog,omitempty"` // selected definitions for the host renderer
 	Digest   string     `json:"digest"`
 	Core     []ToolInfo `json:"core"`
 	Extended []ToolInfo `json:"extended"`

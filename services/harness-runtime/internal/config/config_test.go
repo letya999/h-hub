@@ -12,7 +12,7 @@ import (
 func TestLoadWithoutToolURL(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.json")
-	body := []byte(`{"sub":"harness-runtime","task_url":"http://task:9000",` +
+	body := []byte(`{"space":"s","sub":"harness-runtime","task_url":"http://task:9000",` +
 		`"model_url":"http://model:9000","timeout_ms":5000}`)
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)

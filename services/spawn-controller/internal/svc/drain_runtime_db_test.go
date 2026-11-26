@@ -99,6 +99,59 @@ func seedRuntimeState(t *testing.T, ctx context.Context, s *Server, space, runti
 	seedRuntimeActor(t, ctx, s, space, runtime, state, "test")
 }
 
+func TestDrainDuringFinalJobRelease(t *testing.T) {
+	t.Parallel()
+	for _, actor := range []string{"api", "operator", "passport"} {
+		t.Run(actor, func(t *testing.T) {
+			t.Parallel()
+			drainAfterFinalRelease(t, actor)
+		})
+	}
+}
+
+func drainAfterFinalRelease(t *testing.T, actor string) {
+	t.Helper()
+	ctx := context.Background()
+	fixture, db, _ := ensureSvc(t, ctx)
+	s := fixture.s
+	space, rt := newID("space"), newID("rt")
+	seedRuntimeState(t, ctx, s, space, rt, "warm")
+	release, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release.Rollback() //nolint:errcheck // release the lock on test failure
+	var holder int
+	if err := release.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&holder); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runM.Touch(ctx, release, rt, s.deps.Now()); err != nil {
+		t.Fatal(err)
+	}
+	drain, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { drain.Rollback() }) //nolint:errcheck // after releasing the blocker
+	done := make(chan error, 1)
+	go func() {
+		_, err := drainRuntimeTx(s, ctx, drain, space, actor)
+		done <- err
+	}()
+	testkit.Poll(t, 5*time.Second, 20*time.Millisecond, func() bool {
+		var waiting bool
+		err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+			WHERE $1=ANY(pg_blocking_pids(pid)))`, holder).Scan(&waiting)
+		return err == nil && waiting
+	})
+	if err := release.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("drain raced a committed final release: %v", err)
+	}
+}
+
 // seedRuntimeActor lands the machine in state recording actor as the
 // last transition's actor — the marker EnsureRuntime reads to tell a
 // deliberate drain from a sweep or passport one.
@@ -137,4 +190,28 @@ func drainTestClient(t *testing.T, url string, key ed25519.PrivateKey, owner, sp
 		t.Fatal(err)
 	}
 	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(url, tok)}}
+}
+
+func TestReclaimDropsMissingContainer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fx, db, _ := ensureSvc(t, ctx)
+	space, id := newID("space"), newID("rt")
+	seedRuntimeState(t, ctx, fx.s, space, id, "missing")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck // the test owns this transaction
+	if err := setContainer(ctx, tx, id, "dead", "http://dead"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := fx.s.runtimeForLaunch(ctx, tx, spaceRow{id: space, digest: "digest"})
+	if err != nil || result.Ready {
+		t.Fatalf("reclaim: %+v, %v", result, err)
+	}
+	row, ok, err := runtimeForSpace(ctx, tx, space)
+	if err != nil || !ok || row.container != "" || row.endpoint != "" {
+		t.Fatalf("reclaimed runtime still points at the missing process: %+v, %v", row, err)
+	}
 }

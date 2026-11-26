@@ -37,6 +37,8 @@ type Deps struct {
 	RenderDir string // local path where configs are rendered
 	Network   string // internal network for runtimes
 	Issuer    ed25519.PublicKey
+	SelfKey   ed25519.PrivateKey
+	Identity  string
 	EdgeTab   edges.Table // inbound edge table for this service
 	Log       *log.L      // op errors are logged, never swallowed
 	Now       func() time.Time

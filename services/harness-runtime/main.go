@@ -50,17 +50,19 @@ func run(ctx context.Context, l *log.L) error {
 		return fmt.Errorf("upstream: %w", err)
 	}
 	defer func() { quit(nil); <-done }()
+	s := svc.New(cfg.Sub, svc.Deps{
+		Issuer:   issuer,
+		Now:      time.Now,
+		Gateway:  gateway,
+		Log:      l,
+		Rendered: rendered,
+	})
+	go serveBridge(sctx, s.Bridge(), quit)
 	probe, cancel := context.WithTimeout(sctx, 85*time.Second)
 	defer cancel()
 	if err := gateway.Ready(probe); err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
-	s := svc.New(cfg.Sub, svc.Deps{
-		Issuer:   issuer,
-		Now:      time.Now,
-		Runner:   svc.NewRunner(rendered, l),
-		Rendered: rendered,
-	})
 	srv := &http.Server{Addr: listenAddr, Handler: s.Mux(), ReadHeaderTimeout: 5 * time.Second}
 	l.Info(sctx, "listening", "addr", listenAddr)
 	if err := lifecycle.Serve(sctx, srv, 5*time.Second); err != nil {
@@ -70,4 +72,11 @@ func run(ctx context.Context, l *log.L) error {
 		return fmt.Errorf("upstream: %w", context.Cause(sctx))
 	}
 	return nil
+}
+
+func serveBridge(ctx context.Context, handler http.Handler, stop context.CancelCauseFunc) {
+	bridge := &http.Server{Addr: "127.0.0.1:8643", Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	if err := lifecycle.Serve(ctx, bridge, 5*time.Second); err != nil {
+		stop(fmt.Errorf("model and tool bridge: %w", err))
+	}
 }

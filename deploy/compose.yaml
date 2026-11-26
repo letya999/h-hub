@@ -50,7 +50,7 @@ services:
       HHUB_TASK_URL: http://task-engine:9000
       HHUB_MODEL_URL: http://model-gateway:9000
       HHUB_RENDER_VOL: hhub_hhub-render
-      HHUB_RENDER_DIR: /render
+      HHUB_IDENTITY_URL: http://identity-hub:9000
       HHUB_NETWORK: hhub-space
     volumes:
       - keys-spawn-controller:/etc/hhub:ro
