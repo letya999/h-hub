@@ -9,8 +9,8 @@ import (
 // names a capability and carries an argument schema.
 func TestRegistryLoads(t *testing.T) {
 	t.Parallel()
-	if len(registry) != 2 || registry["probe"].Name == "" || registry["ownerreq"].Name == "" {
-		t.Fatalf("toolsets: got %v, want probe and ownerreq", registry)
+	if registry["probe"].Name == "" || registry["ownerreq"].Name == "" || registry["files"].Name == "" {
+		t.Fatalf("toolsets: got %v, want probe, ownerreq and files", registry)
 	}
 	for _, ts := range registry {
 		for _, td := range ts.Tools {

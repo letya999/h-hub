@@ -33,7 +33,7 @@ func (s *Server) admit(ctx context.Context, run, digest,
 	if err != nil {
 		return admission{}, err
 	}
-	selected, err := selectedToolsets(spec.Tools.Core, spec.Tools.Extended)
+	selected, err := selectedToolsets(spec.Tools)
 	if err != nil {
 		return admission{}, err
 	}

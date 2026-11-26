@@ -21,12 +21,10 @@ type toolsetFile struct {
 	Toolsets []toolset `yaml:"toolsets"`
 }
 
-// toolset is the first level of the tool model: the set the model
-// sees. Executor names the admission path (rule: toolset -> executor
-// -> provider); provider names the backing implementation inside it.
+// toolset defines the model surface and the implementation available
+// when the tools passport selects the tool-hub executor.
 type toolset struct {
 	Name     string    `yaml:"name"`
-	Executor string    `yaml:"executor"`
 	Provider string    `yaml:"provider"`
 	Tools    []toolDef `yaml:"tools"`
 }
@@ -60,9 +58,6 @@ func mustToolsets() map[string]toolset {
 	for _, ts := range f.Toolsets {
 		if ts.Name == "" || out[ts.Name].Name != "" {
 			panic(fmt.Sprintf("toolsets: bad or duplicate %q", ts.Name))
-		}
-		if _, ok := executors[ts.Executor]; !ok {
-			panic(fmt.Sprintf("toolsets: %s unknown executor %q", ts.Name, ts.Executor))
 		}
 		for i := range ts.Tools {
 			checkTool(&ts.Tools[i], toolNames)
@@ -98,11 +93,7 @@ type grantsView struct {
 	Allow []string `json:"allow"`
 }
 
-type toolsView struct {
-	Native   []string `json:"native"`
-	Core     []string `json:"core"`
-	Extended []string `json:"extended"`
-}
+type toolsView = thv1.Selection
 
 // configView decodes config.approvals — the ask/auto/bypass leaf the
 // owner-request module consumes.
@@ -118,32 +109,41 @@ type approvalsView struct {
 // function, so the cache row keyed by digest is always safe. A tool
 // whose capability is not granted is absent, not refused in place.
 func project(spec specView) (thv1.ProjectionResp, error) {
-	if _, err := selectedToolsets(spec.Tools.Core, spec.Tools.Extended); err != nil {
+	selected, err := selectedToolsets(spec.Tools)
+	if err != nil {
 		return thv1.ProjectionResp{}, err
 	}
 	grants := map[string]bool{}
 	for _, g := range spec.Grants.Allow {
 		grants[g] = true
 	}
-	var out thv1.ProjectionResp
+	out := thv1.ProjectionResp{
+		Core:     projectSection(spec.Tools.Core, selected, grants),
+		Extended: projectSection(spec.Tools.Extended, selected, grants),
+	}
 	if grants["tools.use"] {
-		out.Native = spec.Tools.Native
-	}
-	for _, tsName := range spec.Tools.Core {
-		for _, t := range registry[tsName].Tools {
-			if grants[t.Capability] {
-				out.Core = append(out.Core, toolInfo(tsName, t))
-			}
-		}
-	}
-	for _, tsName := range spec.Tools.Extended {
-		for _, t := range registry[tsName].Tools {
-			if grants[t.Capability] {
-				out.Extended = append(out.Extended, toolInfo(tsName, t))
+		for _, name := range spec.Tools.Names() {
+			if spec.Tools.Executor(name) == "harness" {
+				out.Native = append(out.Native, name)
 			}
 		}
 	}
 	return out, nil
+}
+
+func projectSection(names []string, selected, grants map[string]bool) []thv1.ToolInfo {
+	var out []thv1.ToolInfo
+	for _, tsName := range names {
+		if !selected[tsName] {
+			continue
+		}
+		for _, t := range registry[tsName].Tools {
+			if grants[t.Capability] {
+				out = append(out, toolInfo(tsName, t))
+			}
+		}
+	}
+	return out
 }
 
 func toolInfo(tsName string, t toolDef) thv1.ToolInfo {
@@ -163,13 +163,6 @@ func tool(tsName, name string) (toolDef, bool) {
 		}
 	}
 	return toolDef{}, false
-}
-
-// executors is the executor table: the second level of the tool
-// model. Only toolhub exists in this phase; other names in the
-// closed set (harness, mcp, cli, remote) land with their phases.
-var executors = map[string]func(context.Context, *Server, toolCall) (json.RawMessage, error){
-	"toolhub": toolhubExec,
 }
 
 // toolCall bundles what an executor needs for one admitted call.
@@ -227,13 +220,15 @@ func decide(selected map[string]bool, grants map[string]bool,
 	return true, caps, ""
 }
 
-// selectedToolsets maps the spec's two tool lists to the set of
-// selected toolset names; an unknown name is a spec defect and is
-// refused, not skipped.
-func selectedToolsets(core, extended []string) (map[string]bool, error) {
+// selectedToolsets returns the selection executed by this service.
+func selectedToolsets(tools toolsView) (map[string]bool, error) {
 	out := map[string]bool{}
-	for _, name := range append(append([]string{}, core...), extended...) {
-		if _, ok := registry[name]; !ok {
+	for _, name := range tools.Names() {
+		executor := tools.Executor(name)
+		if executor == "harness" {
+			continue
+		}
+		if _, ok := registry[name]; !ok || executor != "toolhub" {
 			return nil, herrors.New(herrors.CodeInvalid, //nolint:wrapcheck // shared error form
 				"err.invalid-arg").With("toolset", name)
 		}

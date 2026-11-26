@@ -1,13 +1,8 @@
-# Toolset registry: the model-facing tool model in three levels —
-# a toolset (what the model sees) names its executor, the executor
-# names its provider. Executors are the closed set toolhub, harness,
-# mcp, cli, remote; only toolhub exists in this phase, so no `via`
-# field is needed — the admission path derives from the executor.
+# Toolset registry for the toolhub executor selected by the passport.
 # Every tool names exactly one capability from the platform catalog;
 # a tool cannot introduce a new right.
 toolsets:
   - name: probe
-    executor: toolhub
     provider: builtin
     tools:
       - name: probe_echo
@@ -20,7 +15,6 @@ toolsets:
               type: string
           required: [text]
   - name: ownerreq
-    executor: toolhub
     provider: ownerreq
     tools:
       - name: ask

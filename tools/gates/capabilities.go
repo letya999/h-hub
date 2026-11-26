@@ -48,7 +48,7 @@ type toolsetsDoc struct {
 
 type toolsetEntry struct {
 	Name     string      `yaml:"name"`
-	Executor string      `yaml:"executor"`
+	Executor yaml.Node   `yaml:"executor"`
 	Tools    []toolEntry `yaml:"tools"`
 }
 
@@ -57,14 +57,8 @@ type toolEntry struct {
 	Capability string `yaml:"capability"`
 }
 
-// executors is the closed set of toolset executor kinds.
-var executors = map[string]bool{
-	"toolhub": true, "harness": true, "mcp": true, "cli": true, "remote": true,
-}
-
-// checkToolsets verifies the shipped toolset registry: every
-// executor is in the closed set and every tool names exactly one
-// capability that exists in the catalog.
+// checkToolsets verifies capability references and keeps executor choices
+// in the tools passport, where spawn-controller compiles them.
 func checkToolsets(root string, names map[string]bool) error {
 	const rel = "services/tool-hub/internal/svc/platform/toolsets.yaml"
 	data, err := os.ReadFile(filepath.Join(root, rel))
@@ -76,9 +70,8 @@ func checkToolsets(root string, names map[string]bool) error {
 		return fmt.Errorf("capabilities: %s: parse: %w", rel, err)
 	}
 	for _, ts := range doc.Toolsets {
-		if !executors[ts.Executor] {
-			return fmt.Errorf("capabilities: toolset %q executor %q not in closed set",
-				ts.Name, ts.Executor)
+		if ts.Executor.Kind != 0 {
+			return fmt.Errorf("capabilities: toolset %q declares an executor outside the tools passport", ts.Name)
 		}
 		for _, tl := range ts.Tools {
 			switch {

@@ -5,7 +5,6 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -89,44 +88,26 @@ func TestHermesPassportTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := ""
-	for _, names := range [][]string{{}, {"todo_list"}, {}} {
-		digest := activateNative(t, scope, names)
-		talk("list my current tools", "answer: tools ["+strings.Join(names, ",")+"]")
-		if len(names) == 1 {
-			probeNativeTodo(t, talk)
+	for _, selected := range [][]string{{"probe"}, {}} {
+		digest := activateToolsets(t, scope, selected)
+		expected := "probe_echo"
+		if len(selected) == 0 {
+			expected = ""
 		}
+		talk("list my current tools", "answer: tools ["+expected+"]")
 		cid := strings.TrimSpace(string(DockerOutput(t, "ps", "-q", "--filter", "label=hhub.space="+space,
 			"--filter", "label=hhub.digest="+digest)))
 		if cid == "" || cid == previous {
-			t.Fatalf("expected a new runtime for %v, got %q", names, cid)
+			t.Fatalf("expected a new runtime for %v, got %q", selected, cid)
 		}
-		if previous != "" {
-			rejectToolMismatch(t, scope.Space, digest, cid, len(names) == 0)
-		}
+		rejectToolMismatch(t, scope.Space, digest, cid, len(selected) == 0)
 		previous = cid
 	}
 }
 
-func probeNativeTodo(t *testing.T, talk func(string, string)) {
+func activateToolsets(t *testing.T, scope OwnerSpace, names []string) string {
 	t.Helper()
-	id := "native_todo_" + Nonce
-	script := strings.ReplaceAll(`id: ID
-steps:
-  - expect: "scenario:ID read"
-    tool_calls:
-      - name: todo_list
-        arguments: "{}"
-  - expect: "scenario:ID read"
-    expect_tool_result: '"total": 0'
-    respond: "native todo list is empty"
-`, "ID", id)
-	PostScenario(t, script, http.StatusCreated)
-	talk("scenario:"+id+" read", "native todo list is empty")
-}
-
-func activateNative(t *testing.T, scope OwnerSpace, names []string) string {
-	t.Helper()
-	doc, err := json.Marshal(map[string]any{"tools": map[string][]string{"core": {}, "extended": {}, "native": names}})
+	doc, err := json.Marshal(map[string]any{"tools": map[string][]string{"core": names, "extended": {}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +137,7 @@ func rejectToolMismatch(t *testing.T, space, digest, cid string, extra bool) {
 		reason = "unexpected Hermes tool"
 	}
 	cfg["platform_toolsets"] = map[string][]string{"api_server": actual}
+	cfg["known_plugin_toolsets"] = map[string][]string{"api_server": {"hhub"}}
 	cfg["agent"] = map[string][]string{"disabled_toolsets": {}}
 	corrupt, err := json.Marshal(cfg)
 	if err != nil {

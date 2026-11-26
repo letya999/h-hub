@@ -1,6 +1,5 @@
 toolsets:
   - name: probe
-    executor: toolhub
     provider: builtin
     tools:
       - name: probe_echo

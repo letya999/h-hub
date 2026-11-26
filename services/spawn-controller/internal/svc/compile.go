@@ -121,6 +121,9 @@ func validateSpec(p Passports) error {
 	if err := validateGrants(p.Grants, ""); err != nil {
 		return err
 	}
+	if err := validateExecutors(p.Tools); err != nil {
+		return err
+	}
 	if m := p.Config.Approvals.Mode; m != "" && !slices.Contains(approvalModes, m) {
 		return herrors.New(herrors.CodeInvalid, "err.invalid-arg"). //nolint:wrapcheck // shared error form
 										With("leaf", "config.approvals.mode")

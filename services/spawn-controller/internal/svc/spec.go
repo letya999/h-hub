@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
+	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 )
 
 // Passports are the six full-form documents — stack, config, models,
@@ -98,13 +100,8 @@ type WorkspaceNode struct {
 	Note string `json:"note,omitempty"`
 }
 
-// ToolsPassport selects visible toolsets; capabilities and the
-// executor land with tool-hub in phase 9.
-type ToolsPassport struct {
-	Core     []string `json:"core"`
-	Extended []string `json:"extended"`
-	Native   []string `json:"native,omitempty"`
-}
+// ToolsPassport selects toolsets and their executors.
+type ToolsPassport = thv1.Selection
 
 // GrantsPassport is the unconditional capability ceiling for the
 // space; rights come only from here (rule 5).

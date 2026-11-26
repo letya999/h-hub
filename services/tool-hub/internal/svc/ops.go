@@ -82,7 +82,10 @@ func (s *Server) launchProjection(ctx context.Context, r thv1.ProjectionReq) (th
 		return thv1.ProjectionResp{}, err
 	}
 	p.Digest = digest
-	for _, name := range append(append([]string{}, spec.Tools.Core...), spec.Tools.Extended...) {
+	for _, name := range spec.Tools.Names() {
+		if spec.Tools.Executor(name) != "toolhub" {
+			continue
+		}
 		for _, definition := range registry[name].Tools {
 			p.Catalog = append(p.Catalog, toolInfo(name, definition))
 		}
@@ -90,7 +93,7 @@ func (s *Server) launchProjection(ctx context.Context, r thv1.ProjectionReq) (th
 	return p, nil
 }
 
-// invoke runs one call through the executor the toolset names, after
+// invoke runs one call through tool-hub, after
 // the same admission AdmitCall would give. A denial is forbidden.
 func (s *Server) invoke(ctx context.Context, r thv1.InvokeReq) (thv1.InvokeResp, error) {
 	if err := herrors.Require(r.Run != "" && r.Digest != "" && r.Toolset != "" && r.Tool != "",
@@ -105,7 +108,7 @@ func (s *Server) invoke(ctx context.Context, r thv1.InvokeReq) (thv1.InvokeResp,
 		return thv1.InvokeResp{}, herrors.New(herrors.CodeForbidden, "err.tool-denied")
 	}
 	ts := registry[r.Toolset]
-	res, err := executors[ts.Executor](ctx, s,
+	res, err := toolhubExec(ctx, s,
 		toolCall{ts: ts, name: r.Tool, claims: d.claims, args: r.Arguments})
 	if err != nil {
 		return thv1.InvokeResp{}, err
