@@ -4,9 +4,8 @@ set -eu
 dir=$(ls -dt /backup/*/ | head -n 1)
 test -n "$dir"
 (cd "$dir" && sha256sum -c SHA256SUMS >/dev/null)
-# The sealed secrets base is the backup's most valuable payload: a
-# missing key, snapshot or recorded listing fails the drill outright.
-for f in broker-db-key broker-snapshot.db broker-connections.txt; do
+# Reject a backup without the broker snapshot and session manifest.
+for f in broker-db-key broker-snapshot.db broker-connections.txt session-volumes session-probe; do
   if test ! -f "$dir/$f"; then echo "backup misses $f" >&2; exit 1; fi
 done
 id="$(date -u +%s)-$$"
@@ -23,7 +22,13 @@ broker="hhub-restore-broker-$id"
 brokerdata="hhub-restore-broker-data-$id"
 render="hhub-restore-render-$id"
 operator_conf="hhub-restore-conf-$id"
+restore_probe_space=
 services="identity-hub task-engine channel-hub spawn-controller model-gateway tool-hub credential-broker"
+. /src/tools/backup/sessions.sh
+while IFS= read -r space; do
+  valid_session_space "$space"
+  grep -Eq "^[[:xdigit:]]{64}  sessions/$space\\.tar\\.gz$" "$dir/SHA256SUMS"
+done < "$dir/session-volumes"
 cleanup() {
   docker rm -f "$issuer" "$task" "$channel" "$spawn" "$model" "$gateway" "$toolhub" "$broker" "$pg" >/dev/null 2>&1 || true
   for runtime in $(docker ps -aq --filter "network=$net" --filter label=hhub.managed=true); do
@@ -37,9 +42,19 @@ cleanup() {
   docker volume rm "$render" >/dev/null 2>&1 || true
   docker rm -f "$operator_conf" >/dev/null 2>&1 || true
   docker volume rm "$operator_conf" >/dev/null 2>&1 || true
+  while IFS= read -r space; do
+    docker volume rm "$net-session-$space-main" >/dev/null 2>&1 || true
+  done < "$dir/session-volumes"
+  if valid_session_space "$restore_probe_space"; then
+    docker volume rm "$net-session-$restore_probe_space-main" >/dev/null 2>&1 || true
+  fi
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+while IFS= read -r space; do
+  session_archive restore "$net-session-$space-main" < "$dir/sessions/$space.tar.gz"
+done < "$dir/session-volumes"
 
 pg_image=$(docker inspect -f '{{.Config.Image}}' postgres)
 issuer_image=${RESTORE_ISSUER_IMAGE:-$(docker inspect -f '{{.Config.Image}}' identity-hub)}
@@ -182,11 +197,22 @@ conns=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
 if test "$conns" != "$(cat "$dir/broker-connections.txt")"; then
   echo 'restored broker connections differ from backup' >&2; exit 1
 fi
+if test -s "$dir/session-probe"; then
+  read -r probe space < "$dir/session-probe"
+  grep -Fxq "$space" "$dir/session-volumes"
+  answer=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
+    hhub-hubctl:local chat "$probe" 'recall my markers')
+  case "$answer" in
+    *"answer: markers one-$probe/two-$probe"*) echo 'restore drill: conversation resumed with both saved markers' ;;
+    *) echo 'restore drill: restored Hermes did not recall both markers' >&2; exit 1 ;;
+  esac
+fi
 probe="restoreprobe-$id"
 registration=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
   hhub-hubctl:local user add "$probe")
 set -- $registration
 test "$#" -eq 3 && test "$1" = "$probe"
+restore_probe_space=$2
 linked=$(docker run --rm --network "$net" -v "$operator_conf:/etc/hhub:ro" \
   hhub-hubctl:local chat "$probe" "/start $3")
 case "$linked" in *"Account linked"*) ;; *) echo 'restore link produced no answer' >&2; exit 1 ;; esac
