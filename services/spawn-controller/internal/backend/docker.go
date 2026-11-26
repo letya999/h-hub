@@ -168,10 +168,11 @@ func runtimeSpec(l Launch) createReq {
 			},
 			Init: true,
 			Mounts: []mount{
+				{Type: "volume", Source: sessionVolume(l.Network, l.Space), Target: "/var/tmp"},
 				{Type: "image", Source: l.Adapter, Target: "/hhub-adapter", ReadOnly: true, ImageOptions: &mountPath{"svc"}},
-				{Type: "image", Source: l.Adapter, Target: "/opt/data/plugins", ReadOnly: true, ImageOptions: &mountPath{"hhub-plugins"}},
+				{Type: "image", Source: l.Adapter, Target: "/var/tmp/plugins", ReadOnly: true, ImageOptions: &mountPath{"hhub-plugins"}},
 				{Type: "volume", Source: l.RenderVol, Target: "/etc/hhub/render", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir}},
-				{Type: "volume", Source: l.RenderVol, Target: "/opt/data/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
+				{Type: "volume", Source: l.RenderVol, Target: "/var/tmp/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
 			},
 			SecurityOpt: []string{"no-new-privileges"},
 		},
@@ -320,6 +321,17 @@ func (d *Docker) Remove(ctx context.Context, id string) error {
 }
 
 type notFoundError struct{ msg string }
+
+func sessionVolume(network, space string) string { return network + "-session-" + space + "-main" }
+
+// RemoveSessions removes the upstream state only when its space is destroyed.
+func (d *Docker) RemoveSessions(ctx context.Context, space string) error {
+	err := d.req(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(sessionVolume(d.network, space)), nil, nil)
+	if isNotFound(err) {
+		return nil
+	}
+	return err
+}
 
 func (e notFoundError) Error() string { return e.msg }
 

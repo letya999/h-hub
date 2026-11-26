@@ -55,7 +55,7 @@ func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.Submit
 	// Obtain the receipt even if cancellation races a committed upstream submission.
 	submit, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
-	run, err := s.deps.Gateway.Submit(submit, a.Run, a.Run, upstreamInput(request))
+	run, err := s.deps.Gateway.Submit(submit, a.Run, a.session, upstreamInput(request))
 	if run.ID != "" {
 		defer func() {
 			if err != nil {

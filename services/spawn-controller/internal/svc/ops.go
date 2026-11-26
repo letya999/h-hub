@@ -234,6 +234,10 @@ func destroySpaceOp(s *Server, ctx context.Context, r sv1.DestroySpaceReq) (sv1.
 	if err := deleteSpace(ctx, tx, sp.id); err != nil {
 		return sv1.DestroySpaceResp{}, err
 	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fsm.outbox (kind,machine_id,topic,payload)
+		VALUES ('space',$1,'remove-sessions',$2)`, sp.id, mustJSON(resetEffect{Space: sp.id})); err != nil {
+		return sv1.DestroySpaceResp{}, fmt.Errorf("enqueue session removal: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return sv1.DestroySpaceResp{}, fmt.Errorf("commit: %w", err)
 	}

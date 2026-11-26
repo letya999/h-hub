@@ -42,11 +42,24 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 			input = m.Content
 		}
 	}
+	if input == "recall my markers" {
+		input = recallMarkers(req.Messages)
+	}
 	if strings.HasPrefix(input, "scenario:") {
 		m.scriptCompletion(w, r, input)
 		return
 	}
 	defaultCompletion(w, r, input)
+}
+
+func recallMarkers(history []message) string {
+	var markers []string
+	for _, m := range history {
+		if value, ok := strings.CutPrefix(m.Content, "remember marker "); m.Role == "user" && ok {
+			markers = append(markers, value)
+		}
+	}
+	return "markers " + strings.Join(markers, "/")
 }
 
 func defaultCompletion(w http.ResponseWriter, r *http.Request, input string) {
