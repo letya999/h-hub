@@ -2,12 +2,28 @@ package svc
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/letya999/h-hub/shared/testkit"
 )
+
+func TestTelegramAlreadyAppliedEdit(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}`, http.StatusBadRequest)
+	}))
+	t.Cleanup(server.Close)
+	api := NewTGAPI(server.URL)
+	if err := api.editMessageText(t.Context(), "fixture", 42, 71, "same answer"); err != nil {
+		t.Fatalf("already visible edit failed: %v", err)
+	}
+	if _, err := api.sendMessage(t.Context(), "fixture", 42, "", "same answer"); err == nil {
+		t.Fatal("a refused send was acknowledged")
+	}
+}
 
 func rawText(id, from, chat int64, text string) tgRawUpdate {
 	var u tgRawUpdate

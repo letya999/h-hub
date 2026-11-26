@@ -57,6 +57,15 @@ func (ad *tgAdapter) tgToken(ctx context.Context) (string, error) {
 	return v, nil
 }
 
+func (ad *tgAdapter) chatCredentials(ctx context.Context, id string) (string, int64, error) {
+	chat, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("tg chat %q: %w", id, err)
+	}
+	tok, err := ad.tgToken(ctx)
+	return tok, chat, err
+}
+
 // sendTelegram is the "send" effect for channel=telegram: one
 // provider call, then the delivery machine acks or turns ambiguous
 // on its own deadline.
@@ -69,7 +78,7 @@ func (ad *tgAdapter) sendTelegram(ctx context.Context, id string) (bool, error) 
 	var d deliveryRow
 	err = tx.QueryRowContext(ctx, `SELECT m.state, d.id, d.kind, d.body, d.chat_id, d.topic, d.intake_id
 		FROM fsm.machines m JOIN deliveries d ON d.id=m.id
-		WHERE m.kind='delivery' AND m.id=$1`, id).
+		WHERE m.kind='delivery' AND m.id=$1 FOR UPDATE OF m`, id).
 		Scan(&d.state, &d.id, &d.kind, &d.body, &d.chat, &d.topic, &d.intake)
 	if err != nil {
 		return false, fmt.Errorf("tg delivery read: %w", err)
@@ -80,15 +89,11 @@ func (ad *tgAdapter) sendTelegram(ctx context.Context, id string) (bool, error) 
 	if d.state != "sending" {
 		return false, herrors.New(herrors.CodeConflict, "err.machine-state")
 	}
-	tok, err := ad.tgToken(ctx)
+	tok, chat, err := ad.chatCredentials(ctx, d.chat)
 	if err != nil {
 		return false, err
 	}
-	chat, err := strconv.ParseInt(d.chat, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("tg chat %q: %w", d.chat, err)
-	}
-	if err := ad.tgSendByKind(ctx, tok, d, chat); err != nil {
+	if err := ad.tgSendByKind(ctx, tx, tok, d, chat); err != nil {
 		return false, err
 	}
 	if err := ad.s.delivery.Transition(ctx, tx, fsm.Request{
@@ -107,12 +112,12 @@ type deliveryRow struct{ state, id, kind, body, chat, topic, intake string }
 // delivery edits the already-posted phase message when the intake
 // has one; a request delivery posts its prompt under an inline
 // keyboard whose buttons carry the answer index.
-func (ad *tgAdapter) tgSendByKind(ctx context.Context, tok string, d deliveryRow, chat int64) error {
+func (ad *tgAdapter) tgSendByKind(ctx context.Context, tx *sql.Tx, tok string, d deliveryRow, chat int64) error {
 	switch d.kind {
-	case "status":
-		return ad.tgSendStatus(ctx, tok, d, chat)
+	case "status", "answer":
+		return ad.tgSendStatus(ctx, tx, tok, d, chat)
 	case "request":
-		return ad.tgSendRequest(ctx, tok, d, chat)
+		return ad.tgSendRequest(ctx, tx, tok, d, chat)
 	}
 	_, err := ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
 	return err
@@ -121,12 +126,12 @@ func (ad *tgAdapter) tgSendByKind(ctx context.Context, tok string, d deliveryRow
 // tgSendRequest posts one owner request with its option buttons; a
 // question has no options and arrives as plain text — the link still
 // routes the typed reply.
-func (ad *tgAdapter) tgSendRequest(ctx context.Context, tok string, d deliveryRow, chat int64) error {
+func (ad *tgAdapter) tgSendRequest(ctx context.Context, tx *sql.Tx, tok string, d deliveryRow, chat int64) error {
 	var (
 		requestID string
 		opts      []byte
 	)
-	err := ad.s.db.QueryRowContext(ctx, `SELECT request_id,options FROM request_links
+	err := tx.QueryRowContext(ctx, `SELECT request_id,options FROM request_links
 		WHERE delivery_id=$1`, d.id).Scan(&requestID, &opts)
 	if err != nil {
 		return fmt.Errorf("tg request link: %w", err)
@@ -145,73 +150,89 @@ func (ad *tgAdapter) tgSendRequest(ctx context.Context, tok string, d deliveryRo
 	return err
 }
 
-// tgSendStatus edits the posted phase message or posts the first one
-// and records its id for later edits.
-func (ad *tgAdapter) tgSendStatus(ctx context.Context, tok string, d deliveryRow, chat int64) error {
-	var msg int64
-	err := ad.s.db.QueryRowContext(ctx,
-		`SELECT message_id FROM tg_status WHERE intake_id=$1`, d.intake).Scan(&msg)
-	if err == nil {
-		return ad.api.editMessageText(ctx, tok, chat, msg, d.body)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("tg status read: %w", err)
-	}
-	msgID, err := ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
+// The first answer replaces the progress message. A delayed working
+// delivery must never create or overwrite a message after completion.
+func (ad *tgAdapter) tgSendStatus(ctx context.Context, tx *sql.Tx, tok string, d deliveryRow, chat int64) error {
+	waiting, err := lockWaitingIntake(ctx, tx, d.intake)
 	if err != nil {
 		return err
 	}
-	if _, err := ad.s.db.ExecContext(ctx,
+	if !waiting && d.kind == "status" && d.body == locale.T(locale.EN, "channel.phase.working") {
+		return nil
+	}
+	var msg int64
+	err = tx.QueryRowContext(ctx,
+		`SELECT message_id FROM tg_status WHERE intake_id=$1`, d.intake).Scan(&msg)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		msg, err = ad.api.sendMessage(ctx, tok, chat, d.topic, d.body)
+	case err == nil:
+		err = ad.api.editMessageText(ctx, tok, chat, msg, d.body)
+	default:
+		return fmt.Errorf("tg status read: %w", err)
+	}
+	if err != nil {
+		return err
+	}
+	phase := d.body
+	if d.kind == "answer" {
+		phase = locale.T(locale.EN, "channel.phase.done")
+	}
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO tg_status(intake_id,message_id,phase) VALUES($1,$2,$3)
-		 ON CONFLICT(intake_id) DO UPDATE SET message_id=$2, phase=$3`,
-		d.intake, msgID, d.body); err != nil {
+		 ON CONFLICT(intake_id) DO UPDATE SET phase=$3, updated_at=now()`,
+		d.intake, msg, phase); err != nil {
 		return fmt.Errorf("tg status write: %w", err)
 	}
 	return nil
 }
 
-// tgStatusPass edits the posted status message to the live run
-// phase; edits carry the phase word only, never content, and never
-// more often than once per five seconds (final bypasses the throttle
-// — the run is over).
-func (ad *tgAdapter) tgStatusPass(ctx context.Context, intake, phase string, final bool) {
-	var (
-		msg       int64
-		stored    string
-		updatedAt time.Time
-	)
-	err := ad.s.db.QueryRowContext(ctx,
-		`SELECT message_id, phase, updated_at FROM tg_status WHERE intake_id=$1`,
-		intake).Scan(&msg, &stored, &updatedAt)
+func lockWaitingIntake(ctx context.Context, tx *sql.Tx, intake string) (bool, error) {
+	var state string
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM fsm.machines
+		WHERE kind='intake' AND id=$1 FOR UPDATE`, intake).Scan(&state); err != nil {
+		return false, fmt.Errorf("tg intake state: %w", err)
+	}
+	return state == "waiting", nil
+}
+
+// Intermediate edits share the intake lock with the final delivery.
+func (ad *tgAdapter) tgStatusPass(ctx context.Context, r inputRow, phase string) error {
+	tx, err := ad.s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return // no status message posted yet; the next pass retries
+		return fmt.Errorf("tg progress begin: %w", err)
 	}
-	if stored == phase {
-		return
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
+	waiting, err := lockWaitingIntake(ctx, tx, r.id)
+	if err != nil || !waiting {
+		return err
 	}
-	if !final && ad.s.now().Sub(updatedAt) < tgStatusThrottle {
-		return
+	var msg int64
+	err = tx.QueryRowContext(ctx, `SELECT message_id FROM tg_status
+		WHERE intake_id=$1 AND phase<>$2 AND updated_at<=$3`, r.id, phase,
+		ad.s.now().Add(-tgStatusThrottle)).Scan(&msg)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
 	}
-	tok, err := ad.tgToken(ctx)
 	if err != nil {
-		return
+		return fmt.Errorf("tg progress read: %w", err)
 	}
-	r, err := inputOf(ctx, ad.s, intake)
+	tok, chat, err := ad.chatCredentials(ctx, r.chat)
 	if err != nil {
-		return
-	}
-	chat, err := strconv.ParseInt(r.chat, 10, 64)
-	if err != nil {
-		return
+		return err
 	}
 	if err := ad.api.editMessageText(ctx, tok, chat, msg, phase); err != nil {
-		return
+		return err
 	}
-	if _, err := ad.s.db.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE tg_status SET phase=$2, updated_at=now() WHERE intake_id=$1`,
-		intake, phase); err != nil {
-		return
+		r.id, phase); err != nil {
+		return fmt.Errorf("tg progress write: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("tg progress commit: %w", err)
+	}
+	return nil
 }
 
 // tgDelete removes the provider-side copy of a secret-looking
@@ -221,13 +242,9 @@ func (ad *tgAdapter) tgDelete(ctx context.Context, intakeID string) (bool, error
 	if err != nil {
 		return false, err
 	}
-	tok, err := ad.tgToken(ctx)
+	tok, chat, err := ad.chatCredentials(ctx, r.chat)
 	if err != nil {
 		return false, err
-	}
-	chat, err := strconv.ParseInt(r.chat, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("tg chat %q: %w", r.chat, err)
 	}
 	p := tgPayloadOf(r.payload)
 	if err := ad.api.deleteMessage(ctx, tok, chat, p.MessageID); err != nil {

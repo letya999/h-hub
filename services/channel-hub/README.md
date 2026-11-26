@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Owns durable mock-channel intake, command routing and answer delivery.
+Owns Telegram and mock-channel intake, command routing and answer delivery.
 
 ## Zone and neighbors
 
@@ -26,8 +26,10 @@ Implements `contracts/channel/v1` (`Inject`, `ReadOutbox`) and consumes
 
 ## Does not do
 
-Does not run a model, issue tokens, or execute tools. Telegram is outside
-this phase.
+Task-engine owns job execution. On a successful Telegram turn the channel
+edits its progress message into the first answer part, or sends the answer
+directly when it is ready first. Telegram receives plain text.
+[Telegram delivery and replay](internal/svc/telegram_reply_db_test.go).
 
 ## Machines
 
