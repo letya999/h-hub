@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+patch=$(find deploy services/harness-runtime tools/hermes -type f \( -name '*.patch' -o -name '*.diff' \) -print -quit)
+if [ -n "$patch" ]; then
+    echo "Undeclared upstream patch: $patch. An exception needs an upstream issue, PR and a build check on the pinned revision." >&2
+    exit 1
+fi
+
 ref=$(cat "${1:-deploy/hermes-image.ref}")
 tag=${ref%@*}
 digest=${ref##*@}
