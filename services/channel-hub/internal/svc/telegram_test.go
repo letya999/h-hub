@@ -54,10 +54,10 @@ func TestLongRequestIsOneDocumentWithChoices(t *testing.T) {
 		io.WriteString(w, `{"ok":true,"result":{"message_id":1}}`) //nolint:errcheck // test response
 	}))
 	defer srv.Close()
-	err := NewTGAPI(srv.URL).sendRequest(context.Background(), "test", tgRequestMsg{
+	receipt, err := NewTGAPI(srv.URL).sendRequest(context.Background(), "test", tgRequestMsg{
 		Chat: 73, Topic: "thr:17", Text: text, RequestID: "req-1", Options: []string{"blue", "red"}})
-	if err != nil || calls.Load() != 1 {
-		t.Fatalf("sent %d requests: %v", calls.Load(), err)
+	if err != nil || calls.Load() != 1 || receipt != 1 {
+		t.Fatalf("sent %d requests, receipt %d: %v", calls.Load(), receipt, err)
 	}
 }
 

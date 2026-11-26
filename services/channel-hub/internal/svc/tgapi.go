@@ -33,6 +33,7 @@ func NewTGAPI(base string) *tgAPI {
 type tgUpdate struct {
 	ID        int64
 	MessageID int64
+	ReplyTo   int64
 	FromID    int64
 	ChatID    int64
 	Topic     string // "thr:<id>" for forum threads, "dm:<id>" for DM topics, "" otherwise
@@ -115,7 +116,10 @@ type tgRawUpdate struct {
 
 // tgRawMessage is the wire shape of one message update.
 type tgRawMessage struct {
-	MessageID           int64  `json:"message_id"`
+	MessageID      int64 `json:"message_id"`
+	ReplyToMessage *struct {
+		MessageID int64 `json:"message_id"`
+	} `json:"reply_to_message"`
 	MessageThreadID     *int64 `json:"message_thread_id"`
 	Text                string `json:"text"`
 	Caption             string `json:"caption"`
@@ -148,13 +152,7 @@ type tgRawCallback struct {
 	From struct {
 		ID int64 `json:"id"`
 	} `json:"from"`
-	Message *struct {
-		Chat struct {
-			ID      int64 `json:"id"`
-			IsForum bool  `json:"is_forum"`
-		} `json:"chat"`
-		MessageThreadID *int64 `json:"message_thread_id"`
-	} `json:"message"`
+	Message *tgRawMessage `json:"message"`
 }
 
 // getUpdates long-polls; timeout is the provider-side wait.
@@ -205,8 +203,11 @@ type tgRequestMsg struct {
 // sendRequest posts one owner request with an inline keyboard — one
 // button per option, callback_data "a:<request>:<1-based index>".
 // The same index a mock user types is what the button reports.
-func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) error {
+func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) (int64, error) {
 	body := map[string]any{"chat_id": m.Chat}
+	var sent struct {
+		MessageID int64 `json:"message_id"`
+	}
 	topicJSON(body, m.Topic)
 	var rows [][]map[string]any
 	for i, o := range m.Options {
@@ -220,12 +221,14 @@ func (a *tgAPI) sendRequest(ctx context.Context, token string, m tgRequestMsg) e
 	if utf8.RuneCountInString(m.Text) > maxTextPart {
 		doc, err := requestDocument(m, body)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		return a.post(ctx, token, "sendDocument", doc, nil)
+		err = a.post(ctx, token, "sendDocument", doc, &sent)
+		return sent.MessageID, err
 	}
 	body["text"] = m.Text
-	return a.call(ctx, token, "sendMessage", body, nil)
+	err := a.call(ctx, token, "sendMessage", body, &sent)
+	return sent.MessageID, err
 }
 
 // A long turn and its question still occupy one message with working buttons.

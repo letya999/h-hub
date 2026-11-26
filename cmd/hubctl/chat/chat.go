@@ -22,15 +22,29 @@ const operatorKey = "/etc/hhub/keys/operator.key"
 
 func Run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: hubctl chat <external> <message> | chat read <external> [after]")
+		return fmt.Errorf("usage: hubctl chat <external> <message> | chat read <external> [after] | chat reply <external> <receipt> <message>")
 	}
 	if args[0] == "read" {
 		return read(ctx, args[1:], out)
 	}
+	if args[0] == "reply" {
+		return reply(ctx, args[1:], out)
+	}
 	if len(args) < 2 {
 		return fmt.Errorf("usage: hubctl chat <external> <message>")
 	}
-	return send(ctx, args[0], strings.Join(args[1:], " "), out)
+	return send(ctx, cv1.InjectReq{External: args[0], Text: strings.Join(args[1:], " ")}, out)
+}
+
+func reply(ctx context.Context, args []string, out io.Writer) error {
+	if len(args) < 3 {
+		return fmt.Errorf("usage: hubctl chat reply <external> <receipt> <message>")
+	}
+	receipt, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil || receipt <= 0 {
+		return fmt.Errorf("invalid receipt %q", args[1])
+	}
+	return send(ctx, cv1.InjectReq{External: args[0], Text: strings.Join(args[2:], " "), ReplyTo: receipt}, out)
 }
 
 func client(external, target string) (*cv1.Client, error) {
@@ -71,12 +85,12 @@ func parseAfter(args []string) (int64, error) {
 	return v, nil
 }
 
-func send(ctx context.Context, external, text string, out io.Writer) error {
-	reader, err := client(external, "ReadOutbox")
+func send(ctx context.Context, req cv1.InjectReq, out io.Writer) error {
+	reader, err := client(req.External, "ReadOutbox")
 	if err != nil {
 		return err
 	}
-	prev, err := reader.ReadOutbox(ctx, cv1.ReadOutboxReq{External: external})
+	prev, err := reader.ReadOutbox(ctx, cv1.ReadOutboxReq{External: req.External})
 	if err != nil {
 		return fmt.Errorf("outbox cursor: %w", err)
 	}
@@ -88,14 +102,15 @@ func send(ctx context.Context, external, text string, out io.Writer) error {
 	if _, err := rand.Read(raw[:]); err != nil {
 		return fmt.Errorf("update id: %w", err)
 	}
-	writer, err := client(external, "Inject")
+	writer, err := client(req.External, "Inject")
 	if err != nil {
 		return err
 	}
-	if _, err := writer.Inject(ctx, cv1.InjectReq{External: external, UpdateID: hex.EncodeToString(raw[:]), Text: text}); err != nil {
+	req.UpdateID = hex.EncodeToString(raw[:])
+	if _, err := writer.Inject(ctx, req); err != nil {
 		return fmt.Errorf("inject: %w", err)
 	}
-	return await(ctx, external, after, out)
+	return await(ctx, req.External, after, out)
 }
 
 func await(ctx context.Context, external string, after int64, out io.Writer) error {
@@ -144,8 +159,8 @@ func readAfter(ctx context.Context, external string, after int64, out io.Writer)
 
 func printMessages(out io.Writer, messages []cv1.OutMessage) error {
 	for _, m := range messages {
-		if m.Kind == "file" {
-			if _, err := fmt.Fprintln(out, locale.T(locale.EN, "channel.file")); err != nil {
+		if prefix := messagePrefix(m); prefix != "" {
+			if _, err := fmt.Fprintln(out, prefix); err != nil {
 				return fmt.Errorf("output: %w", err)
 			}
 		}
@@ -154,4 +169,14 @@ func printMessages(out io.Writer, messages []cv1.OutMessage) error {
 		}
 	}
 	return nil
+}
+
+func messagePrefix(m cv1.OutMessage) string {
+	switch m.Kind {
+	case "request":
+		return locale.T(locale.EN, "channel.request-receipt", "receipt", m.Seq)
+	case "file":
+		return locale.T(locale.EN, "channel.file")
+	}
+	return ""
 }

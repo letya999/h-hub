@@ -142,7 +142,7 @@ func (s *Server) dispatch(ctx context.Context, id string) error {
 }
 
 // routeKind dispatches the non-job update kinds: intercepted
-// secrets, photos, request callbacks and slash commands each have
+// secrets, photos and slash commands each have
 // their own path; a plain text falls through to the request link
 // check and the job flow.
 func (s *Server) routeKind(ctx context.Context, r inputRow) (bool, error) {
@@ -151,8 +151,6 @@ func (s *Server) routeKind(ctx context.Context, r inputRow) (bool, error) {
 		return true, interceptSecret(ctx, s, r)
 	case r.kind == "photo":
 		return true, dispatchPhoto(ctx, s, r)
-	case r.kind == "answer":
-		return true, (&requestOps{s}).answerByID(ctx, r)
 	case strings.HasPrefix(r.body, "/"):
 		return true, (&commandOps{s}).command(ctx, r)
 	}

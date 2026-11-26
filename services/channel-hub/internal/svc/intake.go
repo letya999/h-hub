@@ -33,7 +33,7 @@ func randomID(prefix string) (string, error) {
 }
 
 func (s *Server) inject(ctx context.Context, r cv1.InjectReq) (cv1.InjectResp, error) {
-	if r.External == "" || r.UpdateID == "" || r.Text == "" {
+	if !r.Valid() {
 		return cv1.InjectResp{}, herrors.New(herrors.CodeInvalid, "err.missing-input")
 	}
 	if err := operatorScope(ctx, r.External, "Inject"); err != nil {
@@ -69,8 +69,9 @@ func (s *Server) inject(ctx context.Context, r cv1.InjectReq) (cv1.InjectResp, e
 }
 
 func insertUpdate(ctx context.Context, tx *sql.Tx, id string, r cv1.InjectReq) (bool, error) {
-	res, err := tx.ExecContext(ctx, `INSERT INTO inbound_updates(id,channel,update_id,external_id,body)
-		VALUES($1,'mock',$2,$3,$4) ON CONFLICT(channel,update_id) DO NOTHING`, id, r.UpdateID, r.External, r.Text)
+	res, err := tx.ExecContext(ctx, `INSERT INTO inbound_updates(id,channel,update_id,external_id,body,payload)
+		VALUES($1,'mock',$2,$3,$4,$5) ON CONFLICT(channel,update_id) DO NOTHING`,
+		id, r.UpdateID, r.External, r.Text, mockReplyPayload(r.ReplyTo))
 	if err != nil {
 		return false, fmt.Errorf("intake insert: %w", err)
 	}
@@ -82,14 +83,22 @@ func insertUpdate(ctx context.Context, tx *sql.Tx, id string, r cv1.InjectReq) (
 }
 
 func (s *Server) existingUpdate(ctx context.Context, tx *sql.Tx, r cv1.InjectReq) (cv1.InjectResp, error) {
-	var id, external, body string
-	if err := tx.QueryRowContext(ctx, `SELECT id,external_id,body FROM inbound_updates WHERE channel='mock' AND update_id=$1`, r.UpdateID).Scan(&id, &external, &body); err != nil {
+	var id, external, body, payload string
+	if err := tx.QueryRowContext(ctx, `SELECT id,external_id,body,payload FROM inbound_updates
+		WHERE channel='mock' AND update_id=$1`, r.UpdateID).Scan(&id, &external, &body, &payload); err != nil {
 		return cv1.InjectResp{}, fmt.Errorf("existing update: %w", err)
 	}
-	if external != r.External || body != r.Text {
+	if external != r.External || body != r.Text || payload != mockReplyPayload(r.ReplyTo) {
 		return cv1.InjectResp{}, herrors.New(herrors.CodeConflict, "err.conflict")
 	}
 	return cv1.InjectResp{ID: id}, nil
+}
+
+func mockReplyPayload(receipt int64) string {
+	if receipt == 0 {
+		return ""
+	}
+	return fmt.Sprintf(`{"reply_to":%d}`, receipt)
 }
 
 func (s *Server) readOutbox(ctx context.Context, r cv1.ReadOutboxReq) (cv1.ReadOutboxResp, error) {

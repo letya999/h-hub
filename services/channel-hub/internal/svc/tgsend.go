@@ -140,9 +140,20 @@ func (ad *tgAdapter) tgSendRequest(ctx context.Context, tx *sql.Tx, tok string, 
 	if err := json.Unmarshal(opts, &options); err != nil {
 		return fmt.Errorf("tg request options: %w", err)
 	}
-	return ad.api.sendRequest(ctx, tok, tgRequestMsg{
+	receipt, err := ad.api.sendRequest(ctx, tok, tgRequestMsg{
 		Chat: chat, Topic: d.topic, Text: d.body,
 		RequestID: requestID, Options: options})
+	if err != nil {
+		return err
+	}
+	if receipt <= 0 {
+		return fmt.Errorf("telegram request receipt is missing")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE deliveries SET telegram_message_id=$2 WHERE id=$1`,
+		d.id, receipt); err != nil {
+		return fmt.Errorf("telegram request receipt: %w", err)
+	}
+	return nil
 }
 
 // The first answer replaces the progress message. A delayed working
