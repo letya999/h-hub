@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
@@ -106,17 +107,19 @@ type InvokeResp struct {
 
 // Handlers is the server-side operation table.
 type Handlers struct {
-	AdmitCall  func(context.Context, AdmitCallReq) (AdmitCallResp, error)
-	Projection func(context.Context, ProjectionReq) (ProjectionResp, error)
-	Invoke     func(context.Context, InvokeReq) (InvokeResp, error)
+	AdmitCall        func(context.Context, AdmitCallReq) (AdmitCallResp, error)
+	Projection       func(context.Context, ProjectionReq) (ProjectionResp, error)
+	Invoke           func(context.Context, InvokeReq) (InvokeResp, error)
+	NotifyProjection func(context.Context, sv1.RestartReq) (sv1.RestartResp, error)
 }
 
 // Ops maps operation names to request handlers.
 func Ops(h Handlers) map[string]httpapi.Handler {
 	return map[string]httpapi.Handler{
-		"AdmitCall":  op(h.AdmitCall),
-		"Projection": op(h.Projection),
-		"Invoke":     op(h.Invoke),
+		"AdmitCall":        op(h.AdmitCall),
+		"Projection":       op(h.Projection),
+		"Invoke":           op(h.Invoke),
+		"NotifyProjection": op(h.NotifyProjection),
 	}
 }
 

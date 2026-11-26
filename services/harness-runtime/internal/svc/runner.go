@@ -36,7 +36,6 @@ func (s *Server) runAdmission(a *Admission, request hv1.SubmitRunReq) {
 	case a.ctx.Err() != nil:
 		err = errors.New("cancelled")
 	}
-	a.done = true
 	s.mu.Unlock()
 	kind := "final-ok"
 	if err != nil {
@@ -45,6 +44,9 @@ func (s *Server) runAdmission(a *Admission, request hv1.SubmitRunReq) {
 	if err := s.report(a, kind, answer); err != nil {
 		s.deps.Log.Error(context.Background(), "report "+kind+" "+a.Run, err)
 	}
+	s.mu.Lock()
+	a.done = true
+	s.mu.Unlock()
 }
 
 func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.SubmitRunReq, session string) (answer string, err error) {

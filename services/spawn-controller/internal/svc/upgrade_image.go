@@ -103,7 +103,8 @@ func (s *Server) upgradeImageLayers(ctx context.Context, tx *sql.Tx, cur spaceRo
 		explain: c.explain, effect: "respawn", author: "hermes-image"}); err != nil {
 		return err
 	}
-	return applyEffectTx(s, ctx, tx, cur, "respawn")
+	_, err = drainRuntimeTx(s, ctx, tx, cur.id, "passport")
+	return err
 }
 
 func hasPinnedImage(ctx context.Context, tx *sql.Tx, space string) (bool, error) {

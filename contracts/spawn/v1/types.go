@@ -211,6 +211,16 @@ type WorkspaceBranch struct {
 	Children []WorkspaceBranch `json:"children,omitempty"`
 }
 
+type RestartReq struct {
+	Space  string `json:"space"`
+	Digest string `json:"digest"`
+	Key    string `json:"key"`
+}
+
+type RestartResp struct {
+	OK bool `json:"ok"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
 	CreateSpace    func(context.Context, CreateSpaceReq) (CreateSpaceResp, error)
@@ -229,6 +239,7 @@ type Handlers struct {
 	Explain        func(context.Context, ExplainReq) (ExplainResp, error)
 	Workspace      func(context.Context, WorkspaceReq) (WorkspaceResp, error)
 	EditConfig     func(context.Context, EditConfigReq) (ActivateResp, error)
+	RestartRequest func(context.Context, RestartReq) (RestartResp, error)
 }
 
 // Ops maps operation names to request handlers.

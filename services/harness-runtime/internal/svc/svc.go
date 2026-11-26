@@ -56,6 +56,7 @@ type Server struct {
 	admit          map[string]*Admission
 	probeAdmission *Admission
 	changed        chan struct{}
+	parked         bool
 }
 
 // New builds the server.
@@ -67,9 +68,12 @@ func New(sub string, deps Deps) *Server {
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := hv1.Ops(s.handlers())
-	verifier := httpapi.RunVerifier(s.deps.Issuer, s.deps.Now)
 	for name, op := range ops {
 		op := op
+		verifier := httpapi.RunVerifier(s.deps.Issuer, s.deps.Now)
+		if name == "PrepareRestart" {
+			verifier = httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Rendered.Edges, s.deps.Now)
+		}
 		mux.Handle("/v1/"+name, httpapi.HandleAuth(verifier,
 			func(w http.ResponseWriter, r *http.Request, p httpapi.Principal) error {
 				ctx := context.WithValue(r.Context(), principalKey{}, p)
@@ -86,7 +90,7 @@ func (s *Server) Mux() *http.ServeMux {
 type principalKey struct{}
 
 func (s *Server) handlers() hv1.Handlers {
-	return hv1.Handlers{SubmitRun: s.submitRun, CancelRun: s.cancelRun}
+	return hv1.Handlers{SubmitRun: s.submitRun, CancelRun: s.cancelRun, PrepareRestart: s.prepareRestart}
 }
 
 // claims binds the caller's run token to the request: purpose, aud,
@@ -122,6 +126,10 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 		s.mu.Unlock()
 		return hv1.SubmitRunResp{Accepted: true}, nil // idempotent
 	}
+	if s.parked {
+		s.mu.Unlock()
+		return hv1.SubmitRunResp{}, herrors.New(herrors.CodeUnavailable, "err.runtime-restarting")
+	}
 	rctx, stop := context.WithCancel(context.Background())
 	for id, previous := range s.admit {
 		if previous.done && previous.expires <= s.deps.Now().Unix() {
@@ -135,6 +143,21 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 	s.mu.Unlock()
 	go s.runAdmission(a, r)
 	return hv1.SubmitRunResp{Accepted: true}, nil
+}
+
+func (s *Server) prepareRestart(_ context.Context, r hv1.PrepareRestartReq) (hv1.PrepareRestartResp, error) {
+	if r.Space != s.deps.Rendered.Space || r.Key == "" {
+		return hv1.PrepareRestartResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.admit {
+		if !a.done {
+			return hv1.PrepareRestartResp{}, nil
+		}
+	}
+	s.parked = true
+	return hv1.PrepareRestartResp{Idle: true}, nil
 }
 
 // cancelRun aborts an admitted run. A run id with no admission row is

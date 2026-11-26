@@ -47,7 +47,9 @@ services:
         rw: true
     edges:
       - to: tool-hub
-        ops: [Projection]
+        ops: [Projection, NotifyProjection]
+      - to: harness-runtime
+        ops: [PrepareRestart]
   - name: identity-hub
     zone: control
     deploy: true
@@ -140,7 +142,7 @@ services:
         path: /etc/hhub
     edges:
       - to: spawn-controller
-        ops: [ResolveSpec, Workspace, EditConfig]
+        ops: [ResolveSpec, Workspace, EditConfig, RestartRequest]
       - to: identity-hub
         ops: [Resolve]
       - to: channel-hub

@@ -97,7 +97,7 @@ func (m specMode) ApprovalsMode(ctx context.Context, space string) (string, erro
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := thv1.Ops(thv1.Handlers{
-		AdmitCall: s.admitCall, Projection: s.projection, Invoke: s.invoke})
+		AdmitCall: s.admitCall, Projection: s.projection, Invoke: s.invoke, NotifyProjection: s.notifyProjection})
 	runVer := httpapi.RunVerifier(s.deps.Issuer, s.deps.Now)
 	svcVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Edges, s.deps.Now)
 	dual := func(r *http.Request) (httpapi.Principal, error) {
@@ -108,8 +108,11 @@ func (s *Server) Mux() *http.ServeMux {
 	}
 	for name, op := range ops {
 		v := runVer
-		if name == "Projection" {
+		switch name {
+		case "Projection":
 			v = dual
+		case "NotifyProjection":
+			v = svcVer
 		}
 		mux.Handle("/v1/"+name, httpapi.HandleAuth(v,
 			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
@@ -26,6 +27,22 @@ func (s *Server) spec(ctx context.Context, space string) (specView, string, erro
 		return specView{}, "", fmt.Errorf("spec decode: %w", err)
 	}
 	return v, res.Digest, nil
+}
+
+func (s *Server) notifyProjection(ctx context.Context, r sv1.RestartReq) (sv1.RestartResp, error) {
+	p := httpapi.PrincipalFrom(ctx)
+	if p == nil || p.Purpose != "service" || p.Sub != "spawn-controller" {
+		return sv1.RestartResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	}
+	c, err := s.spawnClient(ctx)
+	if err != nil {
+		return sv1.RestartResp{}, err
+	}
+	resp, err := c.RestartRequest(ctx, r)
+	if err != nil {
+		return resp, fmt.Errorf("request runtime restart: %w", err)
+	}
+	return resp, nil
 }
 
 func (s *Server) spawnClient(ctx context.Context) (*sv1.Client, error) {

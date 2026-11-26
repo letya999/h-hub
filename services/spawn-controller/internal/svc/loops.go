@@ -2,7 +2,6 @@ package svc
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
@@ -17,6 +16,7 @@ import (
 
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/services/spawn-controller/internal/backend"
+	"github.com/letya999/h-hub/shared/edges"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
 )
@@ -75,7 +75,9 @@ func (s *Server) outboxPass(ctx context.Context, l *log.L) {
 	}
 	for _, f := range fx {
 		if err := s.execEffect(ctx, f); err != nil {
-			l.Error(ctx, "effect "+f.Topic, err)
+			if !errors.Is(err, errRestartBusy) {
+				l.Error(ctx, "effect "+f.Topic, err)
+			}
 			if err := fsm.DeferEffect(ctx, s.db, "fsm", f.Seq,
 				s.deps.Now().Add(5*time.Second)); err != nil {
 				l.Error(ctx, "effect defer", err)
@@ -90,6 +92,8 @@ func (s *Server) outboxPass(ctx context.Context, l *log.L) {
 
 func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 	switch f.Topic {
+	case notifyRestart, restartIdle:
+		return runRestartEffect(s, ctx, f)
 	case "docker-create":
 		var e createEffect
 		if err := json.Unmarshal(f.Payload, &e); err != nil {
@@ -178,7 +182,7 @@ func launchHermes(s *Server, ctx context.Context, name string, sp spaceRow, p Pa
 	if err != nil {
 		return "", err
 	}
-	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, sp, p, tools); err != nil {
+	if err := s.renderConfig(sp, p, tools); err != nil {
 		return "", err
 	}
 	workspace, err := prepareWorkspace(s.deps.RenderDir, sp.id, p.Workspace)
@@ -210,8 +214,8 @@ func launchHermes(s *Server, ctx context.Context, name string, sp spaceRow, p Pa
 // renderConfig writes the space's effective harness config and the
 // issuer public key into the shared render volume; runtimes mount
 // the directory read-only.
-func renderConfig(renderDir string, issuer ed25519.PublicKey, sp spaceRow, p Passports, tools thv1.ProjectionResp) error {
-	dir := filepath.Join(renderDir, sp.id, sp.digest)
+func (s *Server) renderConfig(sp spaceRow, p Passports, tools thv1.ProjectionResp) error {
+	dir := filepath.Join(s.deps.RenderDir, sp.id, sp.digest)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("render dir: %w", err)
 	}
@@ -220,15 +224,16 @@ func renderConfig(renderDir string, issuer ed25519.PublicKey, sp spaceRow, p Pas
 	}
 	data, err := json.Marshal(struct {
 		ConfigPassport
-		Space string `json:"space"`
-	}{p.Config, sp.id})
+		Space string      `json:"space"`
+		Edges edges.Table `json:"edges,omitempty"`
+	}{p.Config, sp.id, s.deps.RuntimeEdges})
 	if err != nil {
 		return fmt.Errorf("render config: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o644); err != nil {
 		return fmt.Errorf("render config: %w", err)
 	}
-	pub, err := x509.MarshalPKIXPublicKey(issuer)
+	pub, err := x509.MarshalPKIXPublicKey(s.deps.Issuer)
 	if err != nil {
 		return fmt.Errorf("issuer pub: %w", err)
 	}
