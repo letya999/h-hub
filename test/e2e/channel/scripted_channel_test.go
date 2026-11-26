@@ -24,7 +24,7 @@ func TestScriptedLongAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	cursor := WaitMock(t, owner, 0, "Account linked", 10*time.Second)
-	response := "<script>alert(1)</script>" + strings.Repeat("Ж", 21000)
+	response := "<script>alert(1)</script>" + longCyrillicText()
 	script := fmt.Sprintf("id: %s\nsteps:\n  - expect: %s\n    respond: %s\n", id, strconv.Quote("scenario:"+id+" long"), strconv.Quote(response))
 	PostScenario(t, script, http.StatusCreated)
 	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(), cv1.InjectReq{External: owner, UpdateID: Idem("long", owner), Text: "scenario:" + id + " long"}); err != nil {
@@ -64,4 +64,15 @@ func TestScriptedLongAnswer(t *testing.T) {
 	if res.StatusCode != http.StatusNoContent {
 		t.Fatalf("unused script steps: %s", res.Status)
 	}
+}
+
+// Unique three-letter groups preserve the 21,000 letters and 42,000 UTF-8 bytes.
+func longCyrillicText() string {
+	var text strings.Builder
+	for n := range 7000 {
+		text.WriteRune('А' + rune(n/(32*32)))
+		text.WriteRune('А' + rune(n/32%32))
+		text.WriteRune('А' + rune(n%32))
+	}
+	return text.String()
 }
