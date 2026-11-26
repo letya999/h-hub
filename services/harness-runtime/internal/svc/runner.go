@@ -17,12 +17,15 @@ func (s *Server) runAdmission(a *Admission, request hv1.SubmitRunReq) {
 	ctx, cancel := context.WithTimeout(a.ctx, time.Duration(s.deps.Rendered.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	defer a.stop()
-	err := s.report(a, "start", "")
+	receipt, err := s.reportReceipt(a, "start", "")
+	if err == nil && receipt.ConversationKey == "" {
+		err = errors.New("task-engine did not bind the run to a conversation")
+	}
 	var answer string
 	if err == nil {
 		done := make(chan struct{})
 		go s.heartbeat(ctx, a, done)
-		answer, err = s.runHermes(ctx, a, request)
+		answer, err = s.runHermes(ctx, a, request, receipt.ConversationKey)
 		cancel()
 		<-done
 	}
@@ -44,7 +47,7 @@ func (s *Server) runAdmission(a *Admission, request hv1.SubmitRunReq) {
 	}
 }
 
-func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.SubmitRunReq) (answer string, err error) {
+func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.SubmitRunReq, session string) (answer string, err error) {
 	allowed, err := s.projection(ctx, a)
 	if err != nil {
 		return "", err
@@ -55,7 +58,7 @@ func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.Submit
 	// Obtain the receipt even if cancellation races a committed upstream submission.
 	submit, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
-	run, err := s.deps.Gateway.Submit(submit, a.Run, a.session, upstreamInput(request))
+	run, err := s.deps.Gateway.Submit(submit, a.Run, session, upstreamInput(request))
 	if run.ID != "" {
 		defer func() {
 			if err != nil {
@@ -116,6 +119,11 @@ func (s *Server) heartbeat(ctx context.Context, a *Admission, done chan<- struct
 }
 
 func (s *Server) report(a *Admission, kind, data string) error {
+	_, err := s.reportReceipt(a, kind, data)
+	return err
+}
+
+func (s *Server) reportReceipt(a *Admission, kind, data string) (tv1.ReportRunResp, error) {
 	a.eventMu.Lock()
 	defer a.eventMu.Unlock()
 	a.sequence++
@@ -123,13 +131,15 @@ func (s *Server) report(a *Admission, kind, data string) error {
 	c := &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(s.deps.Rendered.TaskURL, a.Token)}}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	var receipt tv1.ReportRunResp
 	var err error
 	for range 2 {
-		if err = c.ReportRun(ctx, request); err == nil {
-			return nil
+		receipt, err = c.ReportRunReceipt(ctx, request)
+		if err == nil {
+			return receipt, nil
 		}
 	}
-	return fmt.Errorf("journal Hermes event: %w", err)
+	return tv1.ReportRunResp{}, fmt.Errorf("journal Hermes event: %w", err)
 }
 
 func (s *Server) projection(ctx context.Context, a *Admission) (map[string]string, error) {

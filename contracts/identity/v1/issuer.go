@@ -90,7 +90,7 @@ func (i *Issuer) mintRun(_ context.Context, r MintRunTokenReq) (MintRunTokenResp
 	exp := i.now() + ServiceTTL
 	claims, err := json.Marshal(RunClaims{
 		Sub: "run:" + r.Run, Job: r.Job, Run: r.Run, Space: r.Space,
-		Owner: r.Owner, Conversation: r.Conversation, Digest: r.Digest, Aud: r.Aud, Exp: exp,
+		Owner: r.Owner, Digest: r.Digest, Aud: r.Aud, Exp: exp,
 		Kid: i.kid,
 	})
 	if err != nil {

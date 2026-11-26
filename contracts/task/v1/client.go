@@ -82,6 +82,13 @@ func (c *Client) ReportRun(ctx context.Context, r ReportRunReq) error {
 	return c.call(ctx, "ReportRun", r, nil)
 }
 
+// ReportRunReceipt returns the binding from the same authenticated journal operation.
+func (c *Client) ReportRunReceipt(ctx context.Context, r ReportRunReq) (ReportRunResp, error) {
+	var out ReportRunResp
+	err := c.call(ctx, "ReportRun", r, &out)
+	return out, err
+}
+
 // GetRun reads the run journal after a cursor.
 func (c *Client) GetRun(ctx context.Context, r GetRunReq) (GetRunResp, error) {
 	var out GetRunResp
