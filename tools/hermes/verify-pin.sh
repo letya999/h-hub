@@ -17,3 +17,7 @@ if ! printf '%s\n' "$receipt" | grep -Fxq "Digest: $digest"; then
     exit 1
 fi
 docker image inspect --format '{{.Id}}' "$ref"
+observed=$(mktemp)
+trap 'rm -f "$observed"' EXIT
+sh tools/hermes/inventory.sh > "$observed"
+cmp services/spawn-controller/internal/svc/hermes-inventory.yaml "$observed"

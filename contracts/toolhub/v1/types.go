@@ -81,6 +81,7 @@ func IsEmptyProjection(err error) bool {
 // a run can see its spec moved under it. An empty projection is
 // refused by the service rather than answered with two empty lists.
 type ProjectionResp struct {
+	Native   []string   `json:"native,omitempty"`
 	Catalog  []ToolInfo `json:"catalog,omitempty"` // selected definitions for the host renderer
 	Digest   string     `json:"digest"`
 	Core     []ToolInfo `json:"core"`

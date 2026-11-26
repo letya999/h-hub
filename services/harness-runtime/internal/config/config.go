@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/shared/auth"
 )
 
@@ -18,6 +19,22 @@ import (
 type C struct {
 	Sub    string // HHUB_SUB
 	Config string // HHUB_CONFIG: host-rendered read-only file
+}
+
+// Tools reads the controller's projection from the same read-only render mount.
+func (c C) Tools() (thv1.ProjectionResp, error) {
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(c.Config), "tools.json"))
+	if err != nil {
+		return thv1.ProjectionResp{}, fmt.Errorf("read launch projection: %w", err)
+	}
+	var p thv1.ProjectionResp
+	if err := json.Unmarshal(data, &p); err != nil {
+		return p, fmt.Errorf("decode launch projection: %w", err)
+	}
+	if p.Digest == "" {
+		return p, fmt.Errorf("launch projection requires a passport digest")
+	}
+	return p, nil
 }
 
 // Rendered is the config file shape the controller renders and

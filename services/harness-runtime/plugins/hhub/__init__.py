@@ -8,6 +8,7 @@ import urllib.request
 from functools import partial
 
 from hermes_scope import current_scope
+from toolsets import create_custom_toolset
 
 
 def admission_headers():
@@ -46,8 +47,13 @@ def invoke(name, args, **_):
 
 def register(ctx):
     with open("/etc/hhub/render/tools.json", encoding="utf-8") as source:
-        tools = json.load(source).get("catalog") or []
-    ctx.register_middleware("llm_request", partial(model_request, {tool["name"] for tool in tools}))
+        projection = json.load(source)
+    tools = projection.get("catalog") or []
+    native = projection.get("native") or []
+    create_custom_toolset("hhub_native", "Passport native tools", tools=native)
+    create_custom_toolset("hhub_disabled", "Disabled native tools", tools=projection["denied_native"])
+    managed = set(native).union(tool["name"] for tool in tools)
+    ctx.register_middleware("llm_request", partial(model_request, managed))
     for tool in tools:
         name = tool["name"]
         schema = {key: tool[key] for key in ("name", "description", "parameters")}

@@ -103,6 +103,7 @@ type WorkspaceNode struct {
 type ToolsPassport struct {
 	Core     []string `json:"core"`
 	Extended []string `json:"extended"`
+	Native   []string `json:"native,omitempty"`
 }
 
 // GrantsPassport is the unconditional capability ceiling for the

@@ -48,15 +48,17 @@ type Admission struct {
 	expires  int64
 	eventMu  sync.Mutex
 	sequence int64
+	probe    chan error // only the startup inventory check has no user credential
 }
 
 // Server owns the operation table and the admission registry.
 type Server struct {
-	sub     string
-	deps    Deps
-	mu      sync.Mutex
-	admit   map[string]*Admission
-	changed chan struct{}
+	sub            string
+	deps           Deps
+	mu             sync.Mutex
+	admit          map[string]*Admission
+	probeAdmission *Admission
+	changed        chan struct{}
 }
 
 // New builds the server.

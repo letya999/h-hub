@@ -58,9 +58,7 @@ func run(ctx context.Context, l *log.L) error {
 		Rendered: rendered,
 	})
 	go serveBridge(sctx, s.Bridge(), quit)
-	probe, cancel := context.WithTimeout(sctx, 85*time.Second)
-	defer cancel()
-	if err := gateway.Ready(probe); err != nil {
+	if err := verifyGateway(sctx, cfg, gateway, s); err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
 	srv := &http.Server{Addr: listenAddr, Handler: s.Mux(), ReadHeaderTimeout: 5 * time.Second}
@@ -70,6 +68,22 @@ func run(ctx context.Context, l *log.L) error {
 	}
 	if sigctx.Err() == nil {
 		return fmt.Errorf("upstream: %w", context.Cause(sctx))
+	}
+	return nil
+}
+
+func verifyGateway(ctx context.Context, c config.C, g *hermes.Gateway, s *svc.Server) error {
+	probe, cancel := context.WithTimeout(ctx, 85*time.Second)
+	defer cancel()
+	p, err := c.Tools()
+	if err != nil {
+		return fmt.Errorf("read inventory policy: %w", err)
+	}
+	if err := g.Ready(probe); err != nil {
+		return fmt.Errorf("health: %w", err)
+	}
+	if err := s.Probe(probe, p); err != nil {
+		return fmt.Errorf("inventory: %w", err)
 	}
 	return nil
 }
