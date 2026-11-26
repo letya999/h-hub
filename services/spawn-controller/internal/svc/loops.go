@@ -102,10 +102,16 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 			return fmt.Errorf("rm payload: %w", err)
 		}
 		return s.dockerRemove(ctx, e)
-	case "render-reset":
+	case "render-reset", "remove-sessions":
 		var e resetEffect
 		if err := json.Unmarshal(f.Payload, &e); err != nil {
 			return fmt.Errorf("reset payload: %w", err)
+		}
+		if f.Topic == "remove-sessions" {
+			if err := s.deps.Docker.RemoveSessions(ctx, e.Space); err != nil {
+				return fmt.Errorf("remove space sessions: %w", err)
+			}
+			return nil
 		}
 		if err := os.RemoveAll(filepath.Join(s.deps.RenderDir, e.Space)); err != nil {
 			return fmt.Errorf("render reset: %w", err)
