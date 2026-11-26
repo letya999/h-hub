@@ -20,19 +20,19 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.owner-request-single-use` | proved | tool-hub | [TestOwnerAnswerSingleUse](../test/e2e/channel/ownerreq_proof_test.go#TestOwnerAnswerSingleUse) | A second answer to an already answered request must be refused. |
 | `sys.owner-request-timeout` | proved | tool-hub | [TestOwnerRequestExpiry](../test/e2e/channel/ownerreq_proof_test.go#TestOwnerRequestExpiry) | An answer after the request expiry must be refused. |
 | `sys.owner-request-self-answer` | proved | tool-hub | [TestOwnerRequestSelfAnswer](../test/e2e/channel/ownerreq_proof_test.go#TestOwnerRequestSelfAnswer) | A run token answering a request must be refused. |
-| `sys.seam-onesided` | deferred:18 | tool-hub for owner requests | [TestFinishedJobRetractsUnreportedRequests](../test/e2e/channel/ownerreq_proof_test.go#TestFinishedJobRetractsUnreportedRequests), [TestOwnerAnswerSingleUse](../test/e2e/channel/ownerreq_proof_test.go#TestOwnerAnswerSingleUse) | An adapter must not implement both sides of a seam. |
+| `sys.seam-onesided` | deferred:19 | tool-hub for owner requests | [TestFinishedJobRetractsUnreportedRequests](../test/e2e/channel/ownerreq_proof_test.go#TestFinishedJobRetractsUnreportedRequests), [TestOwnerAnswerSingleUse](../test/e2e/channel/ownerreq_proof_test.go#TestOwnerAnswerSingleUse) | An adapter must not implement both sides of a seam. |
 | `sys.sweep-lag` | proved | task-engine | [TestSweepLagOperatorAlert](../test/e2e/lifecycle/sweep_lag_test.go#TestSweepLagOperatorAlert) | An operator token must be refused when forging a service alert. |
 | `sys.wedge-unblock` | proved | task-engine and spawn-controller | [TestHubctlUnblocksJobAndRuntime](../test/e2e/lifecycle/wedge_unblock_test.go#TestHubctlUnblocksJobAndRuntime) | A foreign owner must be refused when draining another runtime. |
 | `sys.schema-version` | proved | spawn-controller | [TestSpecSchemaVersion](../services/spawn-controller/internal/svc/spec_test.go#TestSpecSchemaVersion) | A future runtime spec version must be refused. |
-| `sys.worker-intent` | deferred:13 | worker absent | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
-| `sys.space-no-db` | deferred:13 | worker absent | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
+| `sys.worker-intent` | deferred:14 | worker absent | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
+| `sys.space-no-db` | deferred:14 | worker absent | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
 | `sys.seal-at-rest` | proved | credential-broker | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/lifecycle/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A broker-held secret value is recovered from its volume dump, service logs, inspect output or a Postgres dump. |
 | `sys.watchdog-stale` | proved | spawn-controller and channel-hub | [TestStaleSpawnTickRefusesHealth](../test/e2e/lifecycle/watchdog_stale_test.go#TestStaleSpawnTickRefusesHealth) | A frozen tick must refuse health; an unauthenticated status read must fail. |
 | `sys.service-edge` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | A token for Inject must be refused at ReadOutbox. |
-| `sys.worker-tenant` | deferred:13 | worker absent | — | A worker must refuse another tenant's context. |
-| `sys.worker-stop-confirmed` | deferred:13 | worker absent | — | A stop request must not report success before worker exit. |
-| `sys.package-build` | deferred:17 | package builder absent | — | An unapproved package must not build. |
-| `sys.recipe-hosts` | deferred:17 | recipe host owner absent | — | A recipe must not access an undeclared host. |
+| `sys.worker-tenant` | deferred:14 | worker absent | — | A worker must refuse another tenant's context. |
+| `sys.worker-stop-confirmed` | deferred:14 | worker absent | — | A stop request must not report success before worker exit. |
+| `sys.package-build` | deferred:18 | package builder absent | — | An unapproved package must not build. |
+| `sys.recipe-hosts` | deferred:18 | recipe host owner absent | — | A recipe must not access an undeclared host. |
 | `sys.model-usage` | proved | model-gateway | [TestGatewayAccountsSpend](../test/e2e/channel/model_test.go#TestGatewayAccountsSpend) | A Complete call without a run token must be refused before any accounting. |
 | `sys.model-quota` | proved | model-gateway | [TestDailyQuotaRefusal](../test/e2e/channel/model_test.go#TestDailyQuotaRefusal) | A request over the daily ceiling must be refused, not served. |
 | `sys.model-route` | proved | model-gateway and spawn-controller | [TestModelChannelCommands](../test/e2e/channel/model_test.go#TestModelChannelCommands), [TestPlatformLayerHonestVision](../services/spawn-controller/internal/svc/spec_test.go#TestPlatformLayerHonestVision) | A route outside the passport's declared routes must be refused; a declared one applies without restart; a declared capability (vision) must hold at the upstream. |
@@ -46,13 +46,13 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.passport-explain` | proved | spawn-controller | [TestPassportLiveAppliesWithoutRestart](../test/e2e/lifecycle/passport_test.go#TestPassportLiveAppliesWithoutRestart) | A leaf without layer attribution must not appear in explain. |
 | `sys.grant-revocation` | proved | tool-hub | [TestGrantRevocation](../test/e2e/capability/capability_test.go#TestGrantRevocation) | A call on a revoked grant must be refused on the next call. |
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
-| `cap.config.edit_own` | deferred:11 | tool-hub | — | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.persona.edit_own` | deferred:12 | tool-hub | — | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.workspace.read` | deferred:11 | tool-hub | — | A call without the workspace.read grant must be refused and the tool absent from the projection. |
-| `cap.workspace.write` | deferred:11 | tool-hub | — | A call without the workspace.write grant must be refused and the tool absent from the projection. |
-| `cap.memory.capture` | deferred:16 | tool-hub | — | A call without the memory.capture grant must be refused and the tool absent from the projection. |
-| `cap.memory.search` | deferred:16 | tool-hub | — | A call without the memory.search grant must be refused and the tool absent from the projection. |
-| `cap.memory.propose` | deferred:16 | tool-hub | — | A call without the memory.propose grant must be refused and the tool absent from the projection. |
+| `cap.config.edit_own` | deferred:12 | tool-hub | — | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.persona.edit_own` | deferred:13 | tool-hub | — | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.workspace.read` | deferred:12 | tool-hub | — | A call without the workspace.read grant must be refused and the tool absent from the projection. |
+| `cap.workspace.write` | deferred:12 | tool-hub | — | A call without the workspace.write grant must be refused and the tool absent from the projection. |
+| `cap.memory.capture` | deferred:17 | tool-hub | — | A call without the memory.capture grant must be refused and the tool absent from the projection. |
+| `cap.memory.search` | deferred:17 | tool-hub | — | A call without the memory.search grant must be refused and the tool absent from the projection. |
+| `cap.memory.propose` | deferred:17 | tool-hub | — | A call without the memory.propose grant must be refused and the tool absent from the projection. |
 | `adr.fsm.cas-version` | proved | shared/fsm | [TestCASRace](../shared/fsm/fsm_db_test.go#TestCASRace) | A transition with a stale version must be refused. |
 | `adr.fsm.history-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
 | `adr.fsm.outbox-same-tx` | proved | shared/fsm | [TestRollbackLeavesNothing](../shared/fsm/fsm_db_test.go#TestRollbackLeavesNothing) | A transition on a machine whose writes rolled back must be refused. |
@@ -73,7 +73,7 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `adr.service-edges.edge-required` | proved | identity-hub | [TestServiceEdge](../test/e2e/lifecycle/e2e_test.go#TestServiceEdge) | An undeclared service operation must be refused. |
 | `adr.service-edges.rendered-table` | proved | keydist | [TestRenderEdges](../cmd/keydist/main_test.go#TestRenderEdges) | An absent descriptor edge must not render a grant. |
 | `adr.service-edges.operator-audited` | proved | identity-hub | [TestActAsBindsAndAudits](../services/identity-hub/internal/svc/act_as_db_test.go#TestActAsBindsAndAudits) | An operator acting as a foreign owner must be refused. |
-| `adr.spawn-runtime.intent-first` | deferred:13 | spawn-controller | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
+| `adr.spawn-runtime.intent-first` | deferred:14 | spawn-controller | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A runtime without a registered intent must be refused at creation. |
 | `adr.spawn-runtime.space-no-db` | proved | spawn-controller | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | Runtime database access must be refused. |
 | `adr.spawn-runtime.digest-pins-image` | proved | spawn-controller | [TestSpecDigestBindsImage](../services/spawn-controller/internal/svc/spec_test.go#TestSpecDigestBindsImage) | Runtime creation with a changed image must be refused. |
 | `adr.task-jobs.kill-to-uncertain` | proved | task-engine | [TestKillUncertain](../test/e2e/lifecycle/e2e_test.go#TestKillUncertain) | Killed work must refuse automatic retry. |
