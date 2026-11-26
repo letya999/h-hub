@@ -23,6 +23,7 @@ leaves:
   - {path: models.run_tokens, class: narrow, consumer: model-gateway, effect: live, proven: true}
   - {path: models.reserve, class: narrow, consumer: model-gateway, effect: live, proven: true}
   - {path: workspace.layout.nodes, class: narrow, consumer: spawn-controller, effect: respawn}
+  - {path: workspace.writable, class: narrow, consumer: spawn-controller, effect: respawn}
   - {path: workspace.files, class: user_data, consumer: spawn-controller, effect: recreate}
   - {path: tools.core, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.extended, class: narrow, consumer: tool-hub, effect: respawn}

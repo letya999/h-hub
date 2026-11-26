@@ -1,4 +1,8 @@
 layout:
   nodes:
-    - {path: /etc/hhub/render, mode: ro, note: "rendered spec and workspace files"}
+    - {path: /config, note: "read-only settings"}
+    - {path: /inbox, note: "original incoming artifacts"}
+    - {path: /vault, note: "read-only durable records"}
+    - {path: /files, mode: rw, note: "agent files"}
+writable: [/files]
 files: {}

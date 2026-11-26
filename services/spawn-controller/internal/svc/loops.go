@@ -103,23 +103,28 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 		}
 		return s.dockerRemove(ctx, e)
 	case "render-reset", "remove-sessions":
-		var e resetEffect
-		if err := json.Unmarshal(f.Payload, &e); err != nil {
-			return fmt.Errorf("reset payload: %w", err)
-		}
-		if f.Topic == "remove-sessions" {
-			if err := s.deps.Docker.RemoveSessions(ctx, e.Space); err != nil {
-				return fmt.Errorf("remove space sessions: %w", err)
-			}
-			return nil
-		}
-		if err := os.RemoveAll(filepath.Join(s.deps.RenderDir, e.Space)); err != nil {
-			return fmt.Errorf("render reset: %w", err)
-		}
-		return nil
+		return resetSpace(s, ctx, f)
 	default:
 		return fmt.Errorf("unknown topic %q", f.Topic)
 	}
+}
+
+func resetSpace(s *Server, ctx context.Context, f fsm.OutEffect) error {
+	var e resetEffect
+	if err := json.Unmarshal(f.Payload, &e); err != nil {
+		return fmt.Errorf("reset payload: %w", err)
+	}
+	dir := filepath.Join(s.deps.RenderDir, e.Space)
+	if f.Topic == "remove-sessions" {
+		if err := s.deps.Docker.RemoveSessions(ctx, e.Space); err != nil {
+			return fmt.Errorf("remove space sessions: %w", err)
+		}
+		dir = filepath.Join(s.deps.RenderDir, workspaceStorage, e.Space)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("clear space storage: %w", err)
+	}
+	return nil
 }
 
 // dockerCreate renders the config, launches the hardened container
@@ -142,7 +147,7 @@ func (s *Server) dockerCreate(ctx context.Context, e createEffect) error {
 		return err
 	}
 	name := "hhub-" + e.Runtime
-	cid, err := s.launchHermes(ctx, name, sp, p)
+	cid, err := launchHermes(s, ctx, name, sp, p)
 	if err != nil {
 		return err
 	}
@@ -160,7 +165,7 @@ func (s *Server) dockerCreate(ctx context.Context, e createEffect) error {
 	return nil
 }
 
-func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p Passports) (string, error) {
+func launchHermes(s *Server, ctx context.Context, name string, sp spaceRow, p Passports) (string, error) {
 	if err := s.requireImage(p.Stack.Image); err != nil {
 		return "", err
 	}
@@ -174,6 +179,10 @@ func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p P
 		return "", err
 	}
 	if err := renderConfig(s.deps.RenderDir, s.deps.Issuer, sp, p, tools); err != nil {
+		return "", err
+	}
+	workspace, err := prepareWorkspace(s.deps.RenderDir, sp.id, p.Workspace)
+	if err != nil {
 		return "", err
 	}
 	cid, err := s.deps.Docker.CreateAndStart(ctx, backend.Launch{
@@ -190,6 +199,7 @@ func (s *Server) launchHermes(ctx context.Context, name string, sp spaceRow, p P
 		Network:   s.deps.Network,
 		RenderVol: s.deps.RenderVol,
 		ConfigDir: dir,
+		Workspace: workspace,
 	})
 	if err != nil {
 		return "", fmt.Errorf("docker create: %w", err)
