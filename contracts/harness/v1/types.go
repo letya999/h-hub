@@ -43,17 +43,28 @@ type CancelRunResp struct {
 	OK bool `json:"ok"`
 }
 
+type PrepareRestartReq struct {
+	Space string `json:"space"`
+	Key   string `json:"key"`
+}
+
+type PrepareRestartResp struct {
+	Idle bool `json:"idle"`
+}
+
 // Handlers is the server-side operation table.
 type Handlers struct {
-	SubmitRun func(context.Context, SubmitRunReq) (SubmitRunResp, error)
-	CancelRun func(context.Context, CancelRunReq) (CancelRunResp, error)
+	SubmitRun      func(context.Context, SubmitRunReq) (SubmitRunResp, error)
+	CancelRun      func(context.Context, CancelRunReq) (CancelRunResp, error)
+	PrepareRestart func(context.Context, PrepareRestartReq) (PrepareRestartResp, error)
 }
 
 // Ops maps operation names to request handlers.
 func Ops(h Handlers) map[string]httpapi.Handler {
 	return map[string]httpapi.Handler{
-		"SubmitRun": op(h.SubmitRun),
-		"CancelRun": op(h.CancelRun),
+		"SubmitRun":      op(h.SubmitRun),
+		"CancelRun":      op(h.CancelRun),
+		"PrepareRestart": op(h.PrepareRestart),
 	}
 }
 

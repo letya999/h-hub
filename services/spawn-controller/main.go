@@ -66,20 +66,21 @@ func run(ctx context.Context, l *log.L) error {
 		return fmt.Errorf("edges: %w", err)
 	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
-		Docker:    backend.New(cfg.DockerSock, cfg.NetworkName),
-		Hermes:    cfg.HermesImage,
-		Image:     cfg.RuntimeImg,
-		ModelURL:  cfg.ModelURL,
-		TaskURL:   cfg.TaskURL,
-		RenderVol: cfg.RenderVol,
-		RenderDir: "/render",
-		Identity:  cfg.IdentityURL,
-		SelfKey:   key,
-		Network:   cfg.NetworkName,
-		Issuer:    issuer,
-		EdgeTab:   tab.For(cfg.Sub),
-		Log:       l,
-		Now:       time.Now,
+		Docker:       backend.New(cfg.DockerSock, cfg.NetworkName),
+		Hermes:       cfg.HermesImage,
+		Image:        cfg.RuntimeImg,
+		ModelURL:     cfg.ModelURL,
+		TaskURL:      cfg.TaskURL,
+		RenderVol:    cfg.RenderVol,
+		RenderDir:    "/render",
+		Identity:     cfg.IdentityURL,
+		SelfKey:      key,
+		Network:      cfg.NetworkName,
+		Issuer:       issuer,
+		EdgeTab:      tab.For(cfg.Sub),
+		RuntimeEdges: tab.For("harness-runtime"),
+		Log:          l,
+		Now:          time.Now,
 	})
 	sctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

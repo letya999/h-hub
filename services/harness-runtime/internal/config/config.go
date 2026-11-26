@@ -14,6 +14,7 @@ import (
 
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/shared/auth"
+	"github.com/letya999/h-hub/shared/edges"
 )
 
 // C is the service configuration: the declared env list.
@@ -41,13 +42,14 @@ func (c C) Tools() (thv1.ProjectionResp, error) {
 // Rendered is the config file shape the controller renders and
 // mounts read-only.
 type Rendered struct {
-	Space        string `json:"space"`
-	Sub          string `json:"sub"`
-	TaskURL      string `json:"task_url"`
-	ModelURL     string `json:"model_url"`
-	ToolURL      string `json:"tool_url"`
-	TimeoutMS    int    `json:"timeout_ms"`
-	Instructions string `json:"-"`
+	Space        string      `json:"space"`
+	Sub          string      `json:"sub"`
+	TaskURL      string      `json:"task_url"`
+	ModelURL     string      `json:"model_url"`
+	ToolURL      string      `json:"tool_url"`
+	TimeoutMS    int         `json:"timeout_ms"`
+	Instructions string      `json:"-"`
+	Edges        edges.Table `json:"edges,omitempty"`
 }
 
 // Env loads C from the environment; every declared variable is

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	"github.com/letya999/h-hub/shared/httpapi"
 )
 
@@ -51,6 +52,12 @@ func (c *Client) Invoke(ctx context.Context, r InvokeReq) (InvokeResp, error) {
 
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
+func (c *Client) NotifyProjection(ctx context.Context, r sv1.RestartReq) (sv1.RestartResp, error) {
+	var out sv1.RestartResp
+	err := c.call(ctx, "NotifyProjection", r, &out)
+	return out, err
+}
+
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {
 	if err := c.T.Call(ctx, op, req, resp); err != nil {
 		return fmt.Errorf("%s: %w", op, err)

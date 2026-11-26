@@ -28,20 +28,21 @@ func Migrations() fs.FS { return migrations }
 
 // Deps are the service's collaborators and launch parameters.
 type Deps struct {
-	Docker    *backend.Docker
-	Hermes    string // official registry reference, verified during the build
-	Image     string // deployment image containing the h-hub adapter
-	ModelURL  string
-	TaskURL   string
-	RenderVol string // volume name mounted ro into runtimes
-	RenderDir string // local path where configs are rendered
-	Network   string // internal network for runtimes
-	Issuer    ed25519.PublicKey
-	SelfKey   ed25519.PrivateKey
-	Identity  string
-	EdgeTab   edges.Table // inbound edge table for this service
-	Log       *log.L      // op errors are logged, never swallowed
-	Now       func() time.Time
+	Docker       *backend.Docker
+	Hermes       string // official registry reference, verified during the build
+	Image        string // deployment image containing the h-hub adapter
+	ModelURL     string
+	TaskURL      string
+	RenderVol    string // volume name mounted ro into runtimes
+	RenderDir    string // local path where configs are rendered
+	Network      string // internal network for runtimes
+	Issuer       ed25519.PublicKey
+	SelfKey      ed25519.PrivateKey
+	Identity     string
+	EdgeTab      edges.Table // inbound edge table for this service
+	RuntimeEdges edges.Table
+	Log          *log.L // op errors are logged, never swallowed
+	Now          func() time.Time
 }
 
 // Server owns the operation table.

@@ -126,6 +126,12 @@ func (c *Client) Explain(ctx context.Context, r ExplainReq) (ExplainResp, error)
 	return out, err
 }
 
+func (c *Client) RestartRequest(ctx context.Context, r RestartReq) (RestartResp, error) {
+	var out RestartResp
+	err := c.call(ctx, "RestartRequest", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

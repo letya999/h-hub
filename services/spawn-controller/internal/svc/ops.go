@@ -69,6 +69,9 @@ func (s *Server) handlers() sv1.Handlers {
 		EditConfig: func(ctx context.Context, r sv1.EditConfigReq) (sv1.ActivateResp, error) {
 			return editConfig(s, ctx, r)
 		},
+		RestartRequest: func(ctx context.Context, r sv1.RestartReq) (sv1.RestartResp, error) {
+			return acceptRestart(s, ctx, r)
+		},
 	}
 }
 
@@ -335,6 +338,10 @@ func ensureRuntimeOp(s *Server, ctx context.Context, r sv1.EnsureRuntimeReq) (sv
 	}
 	if err := s.admissionReady(sp); err != nil {
 		return sv1.EnsureRuntimeResp{}, err
+	}
+	pending, err := restartPending(ctx, tx, sp.id)
+	if err != nil || pending {
+		return sv1.EnsureRuntimeResp{Digest: sp.digest}, err
 	}
 	out, err := s.runtimeForLaunch(ctx, tx, sp)
 	if err != nil {

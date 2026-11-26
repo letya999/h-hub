@@ -164,12 +164,20 @@ func (s Service) view(spaceTarget bool) (svcView, error) {
 // join the space network so a runtime can call them.
 func (f *File) spaceTargets() map[string]bool {
 	out := map[string]bool{}
+	spaceServices := map[string]bool{}
 	for _, s := range f.Services {
-		if s.Zone != "space" {
-			continue
+		if s.Zone == "space" {
+			spaceServices[s.Name] = true
 		}
+	}
+	for _, s := range f.Services {
 		for _, e := range s.Edges {
-			out[e.To] = true
+			if spaceServices[s.Name] {
+				out[e.To] = true
+			}
+			if spaceServices[e.To] {
+				out[s.Name] = true
+			}
 		}
 	}
 	return out

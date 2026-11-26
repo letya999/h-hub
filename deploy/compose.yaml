@@ -59,7 +59,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
-    networks: [hhub]
+    networks: [hhub, hhub-space]
   identity-hub:
     image: hhub-identity-hub:local
     container_name: identity-hub

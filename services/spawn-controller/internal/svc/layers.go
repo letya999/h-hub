@@ -353,6 +353,9 @@ func applyEffectTx(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow, effe
 	if effect == "live" || effect == "" {
 		return nil
 	}
+	if effect == "respawn" {
+		return stageRestart(ctx, tx, sp)
+	}
 	if _, err := drainRuntimeTx(s, ctx, tx, sp.id, "passport"); err != nil {
 		return err
 	}

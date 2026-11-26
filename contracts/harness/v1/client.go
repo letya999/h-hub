@@ -42,6 +42,12 @@ func (c *Client) CancelRun(ctx context.Context, r CancelRunReq) (CancelRunResp, 
 	return out, err
 }
 
+func (c *Client) PrepareRestart(ctx context.Context, r PrepareRestartReq) (PrepareRestartResp, error) {
+	var out PrepareRestartResp
+	err := c.call(ctx, "PrepareRestart", r, &out)
+	return out, err
+}
+
 // call routes one op through the transport and wraps transport
 // failures once, keeping the shared error form in the chain.
 func (c *Client) call(ctx context.Context, op string, req, resp any) error {

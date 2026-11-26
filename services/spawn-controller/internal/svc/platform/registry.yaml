@@ -28,4 +28,4 @@ leaves:
   - {path: tools.core, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.extended, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.executors, class: keyset-narrow, consumer: tool-hub, effect: respawn}
-  - {path: grants.allow, class: narrow, consumer: tool-hub, effect: live}
+  - {path: grants.allow, class: narrow, consumer: tool-hub, effect: live, proven: true}
