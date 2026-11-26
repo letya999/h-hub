@@ -28,8 +28,10 @@ func TestPhase12Workspace(t *testing.T) {
 	testkit.Req(t, "cap.config.edit_own")
 	f := newWorkspaceProof(t)
 	f.activate("platform", `{"tools":{"core":["files","config","probe"]}}`)
+	f.activate("user", `{"config":{"approvals":{"mode":"auto"}}}`)
 	f.autoFiles()
 	f.refuseUnsafePaths()
+	f.askBeforeWriting()
 	f.revokeGrants()
 	f.respawnWhenIdle()
 	f.editConfig()
@@ -148,6 +150,7 @@ func (f *workspaceProof) script(mark string, checks []workspaceCheck) {
 }
 
 func (f *workspaceProof) autoFiles() {
+	cursor := f.cursor
 	f.script("auto", []workspaceCheck{
 		{"files_mkdir", `{"path":"files/notes"}`, `"ok":true`},
 		{"files_write", `{"path":"files/notes/keep.txt","text":"first marker"}`, `"ok":true`},
@@ -159,6 +162,7 @@ func (f *workspaceProof) autoFiles() {
 		{"files_remove", `{"path":"files/notes/temporary.txt"}`, `"ok":true`},
 		{"files_read", `{"path":"files/notes/temporary.txt"}`, locale.T(locale.EN, "err.workspace-missing")},
 	})
+	f.assertNoRequest(cursor)
 }
 
 func (f *workspaceProof) assertNoRequest(after int64) {
@@ -188,15 +192,40 @@ func (f *workspaceProof) refuseUnsafePaths() {
 	})
 }
 
+func (f *workspaceProof) askBeforeWriting() {
+	f.activate("user", `{"config":{"approvals":{"mode":"ask"}}}`)
+	call := workspaceCall{"files_write", `{"path":"files/approved.txt","text":"owner approved"}`}
+	const continued = "\n\n[owner request answered: yes]"
+	input := f.load("ask", []workspaceStep{
+		{Calls: []workspaceCall{call}},
+		{ToolResult: `"state":"pending"`, Respond: "waiting for file approval"},
+		{Expect: continued, Calls: []workspaceCall{call}},
+		{Expect: continued, ToolResult: `"ok":true`, Respond: "saved after approval"},
+	})
+	f.inject("approve-file", input, 0)
+	f.wait(locale.T(locale.EN, "tool.files.approve", "tool", call.Name, "path", "files/approved.txt"))
+	if _, err := ExecDocker(f.container(), "test", "!", "-e", "/workspace/files/approved.txt"); err != nil {
+		f.t.Fatalf("file appeared before approval: %v", err)
+	}
+	f.inject("yes-file", "1", f.cursor)
+	f.wait("saved after approval")
+	got, err := ExecDocker(f.container(), "cat", "/workspace/files/approved.txt")
+	if err != nil || string(got) != "owner approved" {
+		f.t.Fatalf("approved file: %q %v", got, err)
+	}
+}
+
 func (f *workspaceProof) revokeGrants() {
 	old := f.container()
-	activation := f.activate("user", `{
+	activation := f.activate("user", `{"config":{"approvals":{"mode":"bypass"}},
 		"grants":{"allow":["tools.use","workspace.read","config.edit_own"]}}`)
 	if activation.Effect != "live" {
 		f.t.Fatalf("grant change requested %s", activation.Effect)
 	}
 	f.denyCall(activation.Digest, "files", "files_write", "cap.workspace.write")
+	after := f.cursor
 	f.chat("write-off", "list my current tools", "answer: tools [config_edit,files_list,files_read,files_search,probe_echo]")
+	f.assertNoRequest(after)
 	if f.container() != old {
 		f.t.Fatal("revoking workspace.write restarted Hermes")
 	}

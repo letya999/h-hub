@@ -19,6 +19,7 @@ type request struct {
 	state                               string
 	deadline                            time.Time
 	turn                                tv1.RequestTurnResp
+	action                              string
 }
 
 // insert writes the request row inside the create transaction.
@@ -29,9 +30,9 @@ func insert(ctx context.Context, tx *sql.Tx, r request) error {
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO owner_requests
 		(id,owner,space,channel,external_id,chat_id,topic,conversation,
-		 job,run,kind,prompt,options) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		 job,run,kind,prompt,options,action_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		r.id, r.owner, r.space, r.channel, r.external, r.chat, r.topic,
-		r.conv, r.job, r.run, r.kind, r.prompt, opts)
+		r.conv, r.job, r.run, r.kind, r.prompt, opts, r.action)
 	if err != nil {
 		return fmt.Errorf("request insert: %w", err)
 	}

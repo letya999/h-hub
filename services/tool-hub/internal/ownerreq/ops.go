@@ -30,6 +30,7 @@ func (s *Server) Handlers() orv1.Handlers {
 type caller struct {
 	run    bool
 	claims idv1.RunClaims
+	action string
 }
 
 func errRequestNotFound() error {
@@ -74,6 +75,12 @@ func (s *Server) createRequest(ctx context.Context, r orv1.CreateReq) (orv1.Crea
 	return s.create(ctx, c, r)
 }
 
+// CreateRunRequest binds a question or choice to the admitted run's claims.
+func CreateRunRequest(s *Server, ctx context.Context, claims idv1.RunClaims, r orv1.CreateReq) (orv1.CreateResp, error) {
+	r.TTLSec = int64(defaultTTL.Seconds())
+	return s.create(ctx, caller{run: true, claims: claims}, r)
+}
+
 // addressee binds the request's target to what the caller proved:
 // run claims pin owner, space, job and run — the conversation
 // arrives later through BindRequest, because the mint wire stays
@@ -82,11 +89,12 @@ func (s *Server) createRequest(ctx context.Context, r orv1.CreateReq) (orv1.Crea
 func addressee(c caller, r orv1.CreateReq) (request, error) {
 	rec := request{kind: r.Kind, prompt: r.Prompt, options: r.Options}
 	if c.run {
-		if r.Kind == orv1.KindApproval {
+		if r.Kind == orv1.KindApproval && c.action == "" {
 			return rec, herrors.New(herrors.CodeForbidden, "err.request-kind")
 		}
 		rec.owner, rec.space = c.claims.Owner, c.claims.Space
 		rec.job, rec.run = c.claims.Job, c.claims.Run
+		rec.action = c.action
 		return rec, nil
 	}
 	rec.owner, rec.space = r.Owner, r.Space
