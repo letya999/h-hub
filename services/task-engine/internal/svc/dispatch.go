@@ -215,8 +215,8 @@ func (d *dispatcher) withJobTx(ctx context.Context, jobID, event, actor string,
 func getJobByID(ctx context.Context, db *sql.DB, id string) (jobRow, error) {
 	var j jobRow
 	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result, owner_request, COALESCE(attachments::text,'') FROM jobs WHERE id=$1`, id).Scan(
-		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.ownerRequest, &j.attach)
+		input, idem, owner_request, COALESCE(attachments::text,'') FROM jobs WHERE id=$1`, id).Scan(
+		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.ownerRequest, &j.attach)
 	if err != nil {
 		return j, fmt.Errorf("get job %s: %w", id, err)
 	}
