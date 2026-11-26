@@ -107,9 +107,7 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request, a *Admission
 		return nil
 	}
 	stream := string(request["stream"]) == "true"
-	delete(request, "stream")
-	delete(request, "stream_options")
-	body, err := json.Marshal(request)
+	body, err := spaceModelRequest(request, offered, s.deps.Rendered.Instructions)
 	if err != nil {
 		return fmt.Errorf("encode Hermes model request: %w", err)
 	}

@@ -16,7 +16,8 @@ import (
 
 func TestNestedToolSurface(t *testing.T) {
 	t.Parallel()
-	const todo = `{"tools":[{"type":"function","function":{"name":"todo_list"}}]}`
+	const plain = `{"messages":[{"role":"user","content":"hello"}]}`
+	const todo = `{"messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"todo_list"}}]}`
 	const extra = `{"tools":[{"type":"function","function":{"name":"unknown_tool"}}]}`
 	for _, tc := range []struct {
 		name, request, responseTool, refusal string
@@ -24,7 +25,7 @@ func TestNestedToolSurface(t *testing.T) {
 	}{
 		{"child may use todo", todo, "todo_list", "", false, true},
 		{"parent-only tool is absent for the child", todo, "delegate_task", "model requested an unprojected tool", false, true},
-		{"child can converse without any tools", "{}", "", "", false, true},
+		{"child can converse without any tools", plain, "", "", false, true},
 		{"missing startup tool", todo, "", "missing a projected tool", true, false},
 		{"extra runtime tool", extra, "", "unexpected Hermes tool", false, false},
 	} {

@@ -83,6 +83,11 @@ func TestHermesPassportTools(t *testing.T) {
 		cursor = WaitMock(t, owner, cursor, answer, 3*time.Minute)
 	}
 	talk("/start "+code, "Account linked")
+	_, err := SpawnClient(t, scope).SubmitLayers(context.Background(), sv1.SubmitLayersReq{Space: space, Role: "user",
+		Docs: json.RawMessage(`{"workspace":{"files":{"soul.md":"public space persona","agents.md":"public space instructions","other.md":"private workspace fixture"}}}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	previous := ""
 	for _, names := range [][]string{{}, {"todo_list"}, {}} {
 		digest := activateNative(t, scope, names)
