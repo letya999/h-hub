@@ -121,11 +121,12 @@ func (f *Fake) hold(_ context.Context, r SetHoldReq) (SetHoldResp, error) {
 	return SetHoldResp{Epoch: f.epoch}, nil
 }
 
-func (f *Fake) report(_ context.Context, r ReportRunReq) (struct{}, error) {
+func (f *Fake) report(_ context.Context, r ReportRunReq) (ReportRunResp, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.runs[r.Run] = append(f.runs[r.Run], r.Events...)
-	return struct{}{}, nil
+	// The in-memory journal has no dispatcher to bind a conversation.
+	return ReportRunResp{}, nil
 }
 
 func (f *Fake) runEvents(_ context.Context, r GetRunReq) (GetRunResp, error) {

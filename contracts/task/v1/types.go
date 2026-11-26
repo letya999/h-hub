@@ -92,6 +92,11 @@ type ReportRunReq struct {
 	Events []RunEvent `json:"events"`
 }
 
+// ReportRunResp identifies the bound conversation when a start is acknowledged.
+type ReportRunResp struct {
+	ConversationKey string `json:"conversation_key,omitempty"`
+}
+
 // GetRunReq reads run events after a cursor position.
 type GetRunReq struct {
 	Run  string `json:"run"`
@@ -113,7 +118,7 @@ type Handlers struct {
 	RetryJob        func(context.Context, JobReq) (JobInfo, error)
 	UnquarantineJob func(context.Context, JobReq) (JobInfo, error)
 	SetHold         func(context.Context, SetHoldReq) (SetHoldResp, error)
-	ReportRun       func(context.Context, ReportRunReq) (struct{}, error)
+	ReportRun       func(context.Context, ReportRunReq) (ReportRunResp, error)
 	GetRun          func(context.Context, GetRunReq) (GetRunResp, error)
 }
 

@@ -2,7 +2,9 @@ package svc
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,28 +20,46 @@ import (
 // reportRun appends journal events and settles the run/job when the
 // runtime reports a final event. The run token's claims bind the
 // report to one run.
-func (rep *runReporter) reportRun(ctx context.Context, r tv1.ReportRunReq) (struct{}, error) {
+func (rep *runReporter) reportRun(ctx context.Context, r tv1.ReportRunReq) (tv1.ReportRunResp, error) {
+	var receipt tv1.ReportRunResp
 	p := RunPrincipal(ctx)
-	if p == nil {
-		return struct{}{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	if p == nil || !slices.Contains(p.Aud, rep.s.sub) {
+		return receipt, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	claims, err := idv1.ParseRunClaims(p.Payload)
 	if err != nil || claims.Run != r.Run {
-		return struct{}{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+		return receipt, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
-	// The report must name the audience this token was minted for.
-	if !slices.Contains(p.Aud, rep.s.sub) {
-		return struct{}{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
+	run, err := getRun(ctx, rep.s.db, r.Run)
+	if err != nil {
+		return receipt, err
 	}
-	if _, err := getRun(ctx, rep.s.db, r.Run); err != nil {
-		return struct{}{}, err
+	if !run.matchesScope(claims) {
+		return receipt, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	for _, e := range r.Events {
 		if err := rep.applyEvent(ctx, r.Run, e); err != nil {
-			return struct{}{}, err
+			return tv1.ReportRunResp{}, err
+		}
+		if e.Kind == "start" {
+			receipt.ConversationKey = run.conversationKey()
 		}
 	}
-	return struct{}{}, nil
+	return receipt, nil
+}
+
+func (r runRow) matchesScope(c idv1.RunClaims) bool {
+	return c.Job == r.job && c.Owner == r.owner && c.Space == r.space && c.Digest == r.digest
+}
+
+func (r runRow) conversationKey() string {
+	h := sha256.New()
+	for _, part := range []string{r.owner, r.space, r.conv} {
+		// Hash each component separately so delimiters in user text cannot alias a scope.
+		component := sha256.Sum256([]byte(part))
+		h.Write(component[:])
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // applyEvent writes one journal row and fires the machine events it

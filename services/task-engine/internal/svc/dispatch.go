@@ -148,7 +148,7 @@ func (d *dispatcher) mintRun(ctx context.Context, j jobRow, runID, digest string
 		return idv1.MintRunTokenResp{}, fmt.Errorf("service token: %w", err)
 	}
 	res, err := d.s.identityClient(tok).MintRunToken(ctx, idv1.MintRunTokenReq{
-		Job: j.id, Run: runID, Space: j.space, Owner: j.owner, Conversation: j.conv,
+		Job: j.id, Run: runID, Space: j.space, Owner: j.owner,
 		Digest: digest, Aud: []string{"harness-runtime", "task-engine",
 			"model-gateway", "tool-hub"},
 	})

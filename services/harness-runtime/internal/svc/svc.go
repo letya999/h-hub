@@ -5,8 +5,6 @@ package svc
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"slices"
 	"sync"
@@ -37,7 +35,6 @@ type Admission struct {
 	Job      string
 	Space    string
 	Digest   string // the spec digest the run was admitted under
-	session  string // stable Hermes key from the signed conversation scope
 	Token    string // the run token, reused for report-back
 	ctx      context.Context
 	stop     context.CancelFunc
@@ -116,7 +113,7 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 	if err != nil {
 		return hv1.SubmitRunResp{}, err
 	}
-	if c.Job != r.Job || c.Space != r.Space || c.Owner == "" || c.Conversation == "" {
+	if c.Job != r.Job || c.Space != r.Space || c.Owner == "" {
 		return hv1.SubmitRunResp{}, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
 	tok := bearerOf(ctx)
@@ -133,21 +130,11 @@ func (s *Server) submitRun(ctx context.Context, r hv1.SubmitRunReq) (hv1.SubmitR
 	}
 	a := &Admission{
 		Run: r.Run, Job: r.Job, Space: r.Space, Digest: c.Digest,
-		Token: tok, ctx: rctx, stop: stop, expires: c.Exp, session: sessionKey(c)}
+		Token: tok, ctx: rctx, stop: stop, expires: c.Exp}
 	s.admit[r.Run] = a
 	s.mu.Unlock()
 	go s.runAdmission(a, r)
 	return hv1.SubmitRunResp{Accepted: true}, nil
-}
-
-func sessionKey(c idv1.RunClaims) string {
-	h := sha256.New()
-	for _, part := range []string{c.Owner, c.Space, c.Conversation} {
-		// Hash each component separately so neither delimiters nor user text can alias a scope.
-		component := sha256.Sum256([]byte(part))
-		h.Write(component[:])
-	}
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // cancelRun aborts an admitted run. A run id with no admission row is

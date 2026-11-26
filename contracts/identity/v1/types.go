@@ -75,16 +75,15 @@ type ActAsResp struct {
 // RunClaims is the run-token payload (purpose "run"): the launch is
 // bound to the space, job, run and spec digest it was admitted under.
 type RunClaims struct {
-	Conversation string   `json:"conversation,omitempty"`
-	Sub          string   `json:"sub"`
-	Job          string   `json:"job"`
-	Run          string   `json:"run"`
-	Space        string   `json:"space"`
-	Owner        string   `json:"owner"`
-	Digest       string   `json:"digest"`
-	Aud          []string `json:"aud"`
-	Exp          int64    `json:"exp"`
-	Kid          string   `json:"kid"`
+	Sub    string   `json:"sub"`
+	Job    string   `json:"job"`
+	Run    string   `json:"run"`
+	Space  string   `json:"space"`
+	Owner  string   `json:"owner"`
+	Digest string   `json:"digest"`
+	Aud    []string `json:"aud"`
+	Exp    int64    `json:"exp"`
+	Kid    string   `json:"kid"`
 }
 
 // ParseRunClaims extracts run claims from a verified principal payload.
@@ -123,13 +122,12 @@ func CanonicalProof(sub, aud, nonce string) []byte {
 // MintRunTokenReq asks for a run token; the caller must hold a service
 // token (edge task-engine -> identity-hub).
 type MintRunTokenReq struct {
-	Conversation string   `json:"conversation,omitempty"`
-	Job          string   `json:"job"`
-	Run          string   `json:"run"`
-	Space        string   `json:"space"`
-	Owner        string   `json:"owner"`
-	Digest       string   `json:"digest"`
-	Aud          []string `json:"aud"`
+	Job    string   `json:"job"`
+	Run    string   `json:"run"`
+	Space  string   `json:"space"`
+	Owner  string   `json:"owner"`
+	Digest string   `json:"digest"`
+	Aud    []string `json:"aud"`
 }
 
 // MintRunTokenResp carries the minted run token.
