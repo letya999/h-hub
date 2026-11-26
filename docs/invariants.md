@@ -46,10 +46,10 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.passport-explain` | proved | spawn-controller | [TestPassportLiveAppliesWithoutRestart](../test/e2e/lifecycle/passport_test.go#TestPassportLiveAppliesWithoutRestart) | A leaf without layer attribution must not appear in explain. |
 | `sys.grant-revocation` | proved | tool-hub | [TestGrantRevocation](../test/e2e/capability/capability_test.go#TestGrantRevocation) | A call on a revoked grant must be refused on the next call. |
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
-| `cap.config.edit_own` | deferred:12 | tool-hub | — | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.config.edit_own` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
 | `cap.persona.edit_own` | deferred:13 | tool-hub | — | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.workspace.read` | deferred:12 | tool-hub | — | A call without the workspace.read grant must be refused and the tool absent from the projection. |
-| `cap.workspace.write` | deferred:12 | tool-hub | — | A call without the workspace.write grant must be refused and the tool absent from the projection. |
+| `cap.workspace.read` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the workspace.read grant must be refused and the tool absent from the projection. |
+| `cap.workspace.write` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the workspace.write grant must be refused and the tool absent from the projection. |
 | `cap.memory.capture` | deferred:17 | tool-hub | — | A call without the memory.capture grant must be refused and the tool absent from the projection. |
 | `cap.memory.search` | deferred:17 | tool-hub | — | A call without the memory.search grant must be refused and the tool absent from the projection. |
 | `cap.memory.propose` | deferred:17 | tool-hub | — | A call without the memory.propose grant must be refused and the tool absent from the projection. |

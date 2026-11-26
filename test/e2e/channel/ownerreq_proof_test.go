@@ -40,6 +40,12 @@ func svcToolClient(t *testing.T, service, mark string) *orv1.Client {
 // the owner-request client with it.
 func runReqClient(t *testing.T, scope OwnerSpace, job, run string) *orv1.Client {
 	t.Helper()
+	token := mintOwnerRequestRun(t, scope, job, run, "digest")
+	return &orv1.Client{T: orv1.HTTP{C: httpapi.NewClient(ToolURL, token)}}
+}
+
+func mintOwnerRequestRun(t *testing.T, scope OwnerSpace, job, run, digest string) string {
+	t.Helper()
 	key, err := auth.LoadPrivateKey("/etc/hhub/services/task-engine/service.key")
 	if err != nil {
 		t.Fatalf("task-engine key: %v", err)
@@ -54,11 +60,11 @@ func runReqClient(t *testing.T, scope OwnerSpace, job, run string) *orv1.Client 
 	mint := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, svc.Token)}}
 	tok, err := mint.MintRunToken(ctx, idv1.MintRunTokenReq{
 		Job: job, Run: run, Space: scope.Space, Owner: scope.Owner,
-		Digest: "digest", Aud: []string{"tool-hub"}})
+		Digest: digest, Aud: []string{"tool-hub"}})
 	if err != nil {
 		t.Fatalf("run token: %v", err)
 	}
-	return &orv1.Client{T: orv1.HTTP{C: httpapi.NewClient(ToolURL, tok.Token)}}
+	return tok.Token
 }
 
 // linkedOwner registers one mock owner and returns its handle.
