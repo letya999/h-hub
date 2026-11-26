@@ -2,21 +2,24 @@
 
 ## Purpose
 
-Runs one admitted Hermes turn in a hardened container: the run exists
-only because task-engine's `SubmitRun` planted an admit row in memory,
-and the turn is one scripted "answer with text" model call.
+Drives the pinned Hermes process for turns admitted by task-engine. Hermes
+owns the conversation on the space volume and reopens it after respawn.
+[Process identity](../../test/e2e/lifecycle/hermes_test.go#L22) and
+[session continuity](../../test/e2e/channel/hermes_session_test.go#L18).
 
 ## Zone and neighbors
 
-Space zone. Called only by task-engine (`SubmitRun` with a run token,
-`CancelRun`); calls back `ReportRun` with a service token. Reaches the
-scripted model over the models-passport route; cannot reach Postgres or
-the Docker socket (`sys.space-no-db`).
+Space zone. Task-engine admits and cancels runs. The adapter routes Hermes
+model requests through model-gateway and h-hub tool calls through tool-hub.
+The model receives the space instructions, the conversation and the tool
+names offered on this turn, including an explicit empty list.
+[Model request boundary](internal/svc/model_context_test.go).
 
 ## Owns
 
-The in-memory admit table (run-id -> owner/ctx), the mounted read-only
-host-rendered config, and the turn runner — nothing is persisted.
+The in-memory admission table binds each run to its owner and context.
+The controller renders the adapter configuration and mounts it read-only.
+[Pinned runtime](../../test/e2e/lifecycle/hermes_test.go).
 
 ## Contracts
 
@@ -25,11 +28,11 @@ Implements `contracts/harness/v1` (`SubmitRun`, `CancelRun`); consumes
 
 ## Does not do
 
-No database — a run-id without an admit row is a refusal, and caller
-headers are stripped. No tools: all Hermes toolsets are disabled. No
-restart of runs, no retries — settlement is reported once to
-task-engine. No secrets of its own; `HHUB_CONFIG` points at the
-rendered file.
+Hermes starts with the tools selected by the effective passport. The adapter
+refuses startup on an inventory mismatch and constrains each reply to the
+tools offered on that request.
+[Startup probe](../../test/e2e/lifecycle/hermes_test.go#L69) and
+[nested requests](internal/svc/nested_tools_test.go).
 
 ## Machines
 

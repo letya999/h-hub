@@ -6,6 +6,7 @@ package config
 import (
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,12 +41,13 @@ func (c C) Tools() (thv1.ProjectionResp, error) {
 // Rendered is the config file shape the controller renders and
 // mounts read-only.
 type Rendered struct {
-	Space     string `json:"space"`
-	Sub       string `json:"sub"`
-	TaskURL   string `json:"task_url"`
-	ModelURL  string `json:"model_url"`
-	ToolURL   string `json:"tool_url"`
-	TimeoutMS int    `json:"timeout_ms"`
+	Space        string `json:"space"`
+	Sub          string `json:"sub"`
+	TaskURL      string `json:"task_url"`
+	ModelURL     string `json:"model_url"`
+	ToolURL      string `json:"tool_url"`
+	TimeoutMS    int    `json:"timeout_ms"`
+	Instructions string `json:"-"`
 }
 
 // Env loads C from the environment; every declared variable is
@@ -85,6 +87,18 @@ func (c C) Load() (Rendered, error) {
 	if r.Space == "" || r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
 		return Rendered{}, fmt.Errorf("config: space, task_url, model_url and timeout_ms are required")
 	}
+	var parts []string
+	for _, name := range []string{"soul.md", "agents.md"} {
+		content, err := os.ReadFile(filepath.Join(filepath.Dir(c.Config), "files", name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return r, fmt.Errorf("read space instructions %s: %w", name, err)
+		}
+		parts = append(parts, string(content))
+	}
+	r.Instructions = strings.Join(parts, "\n\n")
 	return r, nil
 }
 

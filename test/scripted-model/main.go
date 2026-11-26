@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +52,10 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 		for _, tool := range req.Tools {
 			names = append(names, tool.Function.Name)
 		}
+		if !matchesSpaceContext(req.Messages, names) {
+			http.Error(w, "system context differs from the space instructions or offered schemas", http.StatusBadRequest)
+			return
+		}
 		input = "tools [" + strings.Join(names, ",") + "]"
 	}
 	if strings.HasPrefix(input, "scenario:") {
@@ -58,6 +63,31 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defaultCompletion(w, r, input)
+}
+
+func matchesSpaceContext(messages []message, names []string) bool {
+	if len(messages) == 0 || messages[0].Role != "system" || slices.ContainsFunc(messages[1:], isControlMessage) {
+		return false
+	}
+	prompt := messages[0].Content
+	for _, private := range []string{"private workspace fixture", "Hermes runtime environment", "api_server"} {
+		if strings.Contains(prompt, private) {
+			return false
+		}
+	}
+	return strings.Contains(prompt, "public space persona") && strings.Contains(prompt, "public space instructions") &&
+		inventoryMatches(prompt, names)
+}
+
+func isControlMessage(m message) bool {
+	return m.Role == "developer" || m.Role == "system"
+}
+
+func inventoryMatches(prompt string, names []string) bool {
+	_, list, ok := strings.Cut(prompt, "\n\nAvailable tools: ")
+	var visible []string
+	return ok && strings.HasPrefix(list, "[") && json.Unmarshal([]byte(list), &visible) == nil &&
+		slices.Equal(visible, slices.Sorted(slices.Values(names)))
 }
 
 func recallMarkers(history []message) string {
