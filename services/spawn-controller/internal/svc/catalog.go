@@ -44,11 +44,12 @@ func mustCatalog() map[string]bool {
 // validateGrants refuses a compiled spec whose grants name a
 // capability the catalog does not declare — activation rejects an
 // invalid passport rather than letting the name sit inert.
-func validateGrants(g GrantsPassport) error {
+func validateGrants(g GrantsPassport, space string) error {
 	for _, name := range g.Allow {
 		if !catalog[name] {
-			return herrors.New(herrors.CodeInvalid, //nolint:wrapcheck // shared error form
-				"err.invalid-arg").With("grant", name)
+			err := herrors.New(herrors.CodeInvalid,
+				"err.invalid-arg").With("grant", name).With("space", space)
+			return fmt.Errorf("space %s: unknown grant %s: %w", space, name, err)
 		}
 	}
 	return nil

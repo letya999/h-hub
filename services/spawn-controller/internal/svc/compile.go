@@ -17,9 +17,10 @@ import (
 type layerSet []namedDocs
 
 type namedDocs struct {
-	role string
-	rev  string
-	docs DocSet
+	role  string
+	rev   string
+	space string
+	docs  DocSet
 }
 
 // compiled is one compileSet result: the effective spec, its digest
@@ -38,6 +39,9 @@ func compileSet(chain layerSet) (compiled, error) {
 	out := compiled{explain: map[string]string{}}
 	merged := DocSet{}
 	for i, l := range chain {
+		if err := validateLayerGrants(l); err != nil {
+			return out, err
+		}
 		if err := applyLayer(merged, out.explain, l, i == 0); err != nil {
 			return out, err
 		}
@@ -59,6 +63,22 @@ func compileSet(chain layerSet) (compiled, error) {
 	}
 	out.digest = sum
 	return out, nil
+}
+
+func validateLayerGrants(l namedDocs) error {
+	v, ok := leafValue(l.docs, "grants.allow")
+	if !ok {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("space %s grants: %w", l.space, err)
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err != nil {
+		return fmt.Errorf("space %s grants: %w", l.space, err)
+	}
+	return validateGrants(GrantsPassport{Allow: names}, l.space)
 }
 
 // applyLayer folds one layer's leaves into the running merge. The
@@ -98,7 +118,7 @@ func validateSpec(p Passports) error {
 	if err := validateModels(p.Models); err != nil {
 		return err
 	}
-	if err := validateGrants(p.Grants); err != nil {
+	if err := validateGrants(p.Grants, ""); err != nil {
 		return err
 	}
 	if m := p.Config.Approvals.Mode; m != "" && !slices.Contains(approvalModes, m) {

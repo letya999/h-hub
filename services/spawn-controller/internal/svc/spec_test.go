@@ -2,8 +2,10 @@ package svc
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
+	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/testkit"
 )
 
@@ -56,8 +58,27 @@ func TestGrantNamesResolveToCatalog(t *testing.T) {
 		t.Fatal("unknown grant name accepted")
 	}
 	p.Grants.Allow = []string{"tools.use", "memory.search"}
-	if err := validateGrants(p.Grants); err != nil {
+	if err := validateGrants(p.Grants, ""); err != nil {
 		t.Fatalf("catalog names refused: %v", err)
+	}
+}
+
+func TestUnknownLayerGrantIdentifiesSpace(t *testing.T) {
+	t.Parallel()
+	platform, err := layerDocs("platform/layer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = compileSet(layerSet{
+		{role: "platform", space: "space-17", docs: platform},
+		{role: "user", space: "space-17", docs: DocSet{"grants": map[string]any{
+			"allow": []any{"tools.use", "models.select"},
+		}}},
+	})
+	var invalid *herrors.Error
+	if !errors.As(err, &invalid) || invalid.Details["grant"] != "models.select" ||
+		invalid.Details["space"] != "space-17" {
+		t.Fatalf("unknown grant must name right and space: %v", err)
 	}
 }
 
