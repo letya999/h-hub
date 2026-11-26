@@ -55,6 +55,13 @@ type Launch struct {
 	Network   string // single internal network
 	RenderVol string // volume mounted ro at /etc/hhub/render
 	ConfigDir string // directory inside RenderVol with config.json
+	Workspace []WorkspaceMount
+}
+
+type WorkspaceMount struct {
+	Subpath  string
+	Path     string
+	ReadOnly bool
 }
 
 // createReq mirrors POST /containers/create.
@@ -167,7 +174,7 @@ func runtimeSpec(l Launch) createReq {
 				"/opt/data": "rw,nodev,noexec,nosuid,uid=65534,gid=65534,mode=0700,size=64m",
 			},
 			Init: true,
-			Mounts: []mount{
+			Mounts: append([]mount{
 				{Type: "volume", Source: sessionVolume(l.Network, l.Space), Target: "/var/tmp"},
 				{Type: "image", Source: l.Adapter, Target: "/hhub-adapter", ReadOnly: true, ImageOptions: &mountPath{"svc"}},
 				{Type: "image", Source: l.Adapter, Target: "/var/tmp/plugins", ReadOnly: true, ImageOptions: &mountPath{"hhub-plugins"}},
@@ -175,7 +182,7 @@ func runtimeSpec(l Launch) createReq {
 				{Type: "image", Source: l.Adapter, Target: "/var/tmp/.op.env", ReadOnly: true, ImageOptions: &mountPath{"hhub-empty-env"}},
 				{Type: "volume", Source: l.RenderVol, Target: "/etc/hhub/render", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir}},
 				{Type: "volume", Source: l.RenderVol, Target: "/var/tmp/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
-			},
+			}, workspaceMounts(l)...),
 			SecurityOpt: []string{"no-new-privileges"},
 		},
 		Healthcheck: healthCheck{
@@ -187,6 +194,15 @@ func runtimeSpec(l Launch) createReq {
 			StartPeriod: 5e9,
 		},
 	}
+}
+
+func workspaceMounts(l Launch) []mount {
+	out := make([]mount, 0, len(l.Workspace))
+	for _, node := range l.Workspace {
+		out = append(out, mount{Type: "volume", Source: l.RenderVol, Target: "/workspace" + node.Path,
+			ReadOnly: node.ReadOnly, VolumeOptions: &mountPath{node.Subpath}})
+	}
+	return out
 }
 
 // existingLaunch recovers a container created before the intent was acknowledged.

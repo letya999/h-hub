@@ -288,6 +288,14 @@ func explainOp(s *Server, ctx context.Context, r sv1.ExplainReq) (sv1.ExplainRes
 	if err := json.Unmarshal(raw, &out.Layers); err != nil {
 		return out, fmt.Errorf("explain decode: %w", err)
 	}
+	p, err := specPassports(sp)
+	if err != nil {
+		return out, err
+	}
+	if err := p.Workspace.validateLayout(); err != nil {
+		return out, err
+	}
+	out.Workspace = p.Workspace.tree()
 	return out, nil
 }
 

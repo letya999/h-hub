@@ -195,8 +195,20 @@ type ExplainReq struct {
 
 // ExplainResp is the persisted attribution of the active digest.
 type ExplainResp struct {
-	Digest string            `json:"digest"`
-	Layers map[string]string `json:"layers"`
+	Digest    string            `json:"digest"`
+	Layers    map[string]string `json:"layers"`
+	Workspace []WorkspaceBranch `json:"workspace,omitempty"`
+}
+
+type WorkspaceNode struct {
+	Path string `json:"path"`
+	Mode string `json:"mode,omitempty"`
+	Note string `json:"note,omitempty"`
+}
+
+type WorkspaceBranch struct {
+	WorkspaceNode
+	Children []WorkspaceBranch `json:"children,omitempty"`
 }
 
 // Handlers is the server-side operation table.
@@ -234,6 +246,9 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"Activate":       op(h.Activate),
 		"Rollback":       op(h.Rollback),
 		"Explain":        op(h.Explain),
+		"Workspace":      op(h.Workspace),
+		"EditConfig":     op(h.EditConfig),
+		"RestartRequest": op(h.RestartRequest),
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 )
 
@@ -84,20 +85,14 @@ type StackIdentity struct {
 // and the workspace files (soul.md, agents.md) rendered into the
 // read-only mount.
 type WorkspacePassport struct {
-	Layout WorkspaceLayout   `json:"layout"`
-	Files  map[string]string `json:"files"`
+	Layout   WorkspaceLayout   `json:"layout"`
+	Writable []string          `json:"writable,omitempty"`
+	Files    map[string]string `json:"files"`
 }
 
 // WorkspaceLayout is the ordered node list for the space's mounts.
 type WorkspaceLayout struct {
-	Nodes []WorkspaceNode `json:"nodes"`
-}
-
-// WorkspaceNode is one declared mount point.
-type WorkspaceNode struct {
-	Path string `json:"path"`
-	Mode string `json:"mode"`
-	Note string `json:"note,omitempty"`
+	Nodes []sv1.WorkspaceNode `json:"nodes"`
 }
 
 // ToolsPassport selects toolsets and their executors.
