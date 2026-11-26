@@ -97,7 +97,7 @@ services:
     zone: space
     deploy: false
     database: none
-    mem: 256m
+    mem: 384m
     cpu: 1.0
     pids: 256
     env:

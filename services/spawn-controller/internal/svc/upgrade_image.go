@@ -116,9 +116,37 @@ func hasPinnedImage(ctx context.Context, tx *sql.Tx, space string) (bool, error)
 }
 
 func (s *Server) pinLayer(ctx context.Context, tx *sql.Tx, space string, layer *namedDocs) error {
+	if err := upgradeBaseMemory(ctx, tx, layer); err != nil {
+		return err
+	}
 	setLeaf(layer.docs, "stack.image", s.deps.Hermes)
 	rev, _, err := insertRevision(ctx, tx, revRow{space: space, role: "platform",
 		docs: layer.docs, at: s.deps.Now(), author: "hermes-image"})
 	layer.rev = rev
 	return err
+}
+
+// Only the original shipped layer proves that the old memory ceiling was a default.
+func upgradeBaseMemory(ctx context.Context, tx *sql.Tx, layer *namedDocs) error {
+	if mem, _ := leafValue(layer.docs, "stack.mem"); mem != "256m" {
+		return nil
+	}
+	var stock bool
+	if err := tx.QueryRowContext(ctx, `SELECT seq=1 AND author='create' FROM layer_revisions
+		WHERE id=$1 AND role='platform'`, layer.rev).Scan(&stock); err != nil {
+		return fmt.Errorf("read platform revision origin: %w", err)
+	}
+	if !stock {
+		return nil
+	}
+	base, err := layerDocs("platform/layer")
+	if err != nil {
+		return err
+	}
+	mem, ok := leafValue(base, "stack.mem")
+	if !ok {
+		return fmt.Errorf("shipped platform layer requires stack.mem")
+	}
+	setLeaf(layer.docs, "stack.mem", mem)
+	return nil
 }
