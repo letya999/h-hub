@@ -2,7 +2,9 @@ package svc
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,32 +15,44 @@ import (
 
 const sweepLagLimit = 30 * time.Second
 
-// alertSweepLag records one durable signal for the oldest overdue
-// machine before applying its transition, so delivery can retry.
+// alertSweepLag claims the oldest deadline and records the signal in
+// the same transaction as the deadline transition.
 func (lp *loopRunner) alertSweepLag(ctx context.Context, now time.Time) error {
-	var oldest fsm.DueRow
-	for _, machine := range []*fsm.Machine{lp.s.jobM, lp.s.runM} {
-		rows, err := machine.DueRows(ctx, lp.s.db, now, 1)
-		if err != nil {
-			return fmt.Errorf("sweep lag read: %w", err)
-		}
-		if len(rows) > 0 && (oldest.ID == "" || rows[0].DeadlineAt.Before(oldest.DeadlineAt)) {
-			oldest = rows[0]
-		}
-	}
-	if oldest.ID == "" || now.Sub(oldest.DeadlineAt) <= sweepLagLimit {
-		return nil
-	}
-	return lp.queueOperatorAlert(ctx, cv1.AlertReq{
-		Key: "sweep-lag-" + oldest.ID, Code: "sweep-lag"})
-}
-
-func (lp *loopRunner) queueOperatorAlert(ctx context.Context, alert cv1.AlertReq) error {
 	tx, err := lp.s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("alert begin: %w", err)
+		return fmt.Errorf("sweep lag begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
+	var kind string
+	r := fsm.Request{At: now}
+	err = tx.QueryRowContext(ctx, `SELECT kind,id,deadline_event,deadline_actor
+		FROM fsm.machines WHERE kind IN ($1,$2) AND deadline_at < $3
+		ORDER BY deadline_at,kind,id LIMIT 1 FOR UPDATE`,
+		lp.s.jobM.Kind(), lp.s.runM.Kind(), now.Add(-sweepLagLimit)).
+		Scan(&kind, &r.ID, &r.Event, &r.Actor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("sweep lag claim: %w", err)
+	}
+	machine, hook := lp.s.jobM, lp.jobSweepHook
+	if kind == lp.s.runM.Kind() {
+		machine, hook = lp.s.runM, lp.runSweepHook
+	}
+	if err := machine.Transition(ctx, tx, r, hook); err != nil {
+		return fmt.Errorf("sweep lag transition: %w", err)
+	}
+	if err := queueOperatorAlert(ctx, tx, cv1.AlertReq{Key: "sweep-lag-" + r.ID, Code: "sweep-lag"}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("sweep lag commit: %w", err)
+	}
+	return nil
+}
+
+func queueOperatorAlert(ctx context.Context, tx *sql.Tx, alert cv1.AlertReq) error {
 	res, err := tx.ExecContext(ctx, `INSERT INTO operator_alerts(key,code)
 		VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, alert.Key, alert.Code)
 	if err != nil {
@@ -57,9 +71,6 @@ func (lp *loopRunner) queueOperatorAlert(ctx context.Context, alert cv1.AlertReq
 			(kind,machine_id,topic,payload) VALUES('alert',$1,'operator-alert',$2)`, alert.Key, payload); err != nil {
 			return fmt.Errorf("alert outbox: %w", err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("alert commit: %w", err)
 	}
 	return nil
 }
