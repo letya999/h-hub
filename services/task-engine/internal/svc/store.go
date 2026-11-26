@@ -58,16 +58,26 @@ type jobRow struct {
 	conv         string
 	input        string
 	idem         string
-	result       string
 	ownerRequest string
 	attach       string // raw jsonb of [{mime,data}], '' when absent
 }
 
-func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, error) {
-	var j jobRow
-	err := db.QueryRowContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result, owner_request, COALESCE(attachments::text,'') FROM jobs WHERE owner=$1 AND space=$2 AND id=$3`,
-		owner, space, id).Scan(&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.ownerRequest, &j.attach)
+// A committed result and its machine state must come from one snapshot.
+const ownedJobInfo = `SELECT j.id, j.space, m.state, j.result FROM jobs j
+	LEFT JOIN fsm.machines m ON m.kind='job' AND m.id=j.id
+	WHERE j.owner=$1 AND j.space=$2`
+
+func scanJobInfo(row interface{ Scan(...any) error }) (tv1.JobInfo, error) {
+	var j tv1.JobInfo
+	if err := row.Scan(&j.ID, &j.Space, &j.State, &j.Result); err != nil {
+		return j, fmt.Errorf("read job info: %w", err)
+	}
+	j.Done = JobMachine().Terminal(j.State)
+	return j, nil
+}
+
+func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (tv1.JobInfo, error) {
+	j, err := scanJobInfo(db.QueryRowContext(ctx, ownedJobInfo+" AND j.id=$3", owner, space, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, herrors.New(herrors.CodeNotFound, "err.not-found"). //nolint:wrapcheck // shared error form
 										With("job", id)
@@ -78,19 +88,17 @@ func getJob(ctx context.Context, db *sql.DB, owner, space, id string) (jobRow, e
 	return j, nil
 }
 
-func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]jobRow, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, owner, space, conversation,
-		input, idem, result, owner_request, COALESCE(attachments::text,'') FROM jobs WHERE owner=$1 AND space=$2 ORDER BY created`, owner, space)
+func listJobs(ctx context.Context, db *sql.DB, owner, space string) ([]tv1.JobInfo, error) {
+	rows, err := db.QueryContext(ctx, ownedJobInfo+" ORDER BY j.created", owner, space)
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck // best-effort close
-	var out []jobRow
+	out := []tv1.JobInfo{}
 	for rows.Next() {
-		var j jobRow
-		if err := rows.Scan(&j.id, &j.owner, &j.space, &j.conv,
-			&j.input, &j.idem, &j.result, &j.ownerRequest, &j.attach); err != nil {
-			return nil, fmt.Errorf("scan job: %w", err)
+		j, err := scanJobInfo(rows)
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, j)
 	}
@@ -130,7 +138,7 @@ func globalRunning(ctx context.Context, db *sql.DB) (int, error) {
 func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 	var j jobRow
 	err := tx.QueryRowContext(ctx, `SELECT j.id, j.owner, j.space,
-		j.conversation, j.input, j.idem, j.result, j.owner_request, COALESCE(j.attachments::text,'')
+		j.conversation, j.input, j.idem, j.owner_request, COALESCE(j.attachments::text,'')
 		FROM jobs j
 		JOIN fsm.machines m ON m.kind='job' AND m.id=j.id AND m.state='queued'
 		JOIN conversations c ON c.owner=j.owner AND c.space=j.space
@@ -147,7 +155,7 @@ func claimable(ctx context.Context, tx *sql.Tx) (jobRow, error) {
 					AND pm.state IN ('admitted','running'))
 		ORDER BY j.created LIMIT 1
 		FOR UPDATE OF c SKIP LOCKED`).Scan(
-		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.result, &j.ownerRequest, &j.attach)
+		&j.id, &j.owner, &j.space, &j.conv, &j.input, &j.idem, &j.ownerRequest, &j.attach)
 	if errors.Is(err, sql.ErrNoRows) {
 		return j, errNoClaim
 	}

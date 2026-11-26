@@ -130,14 +130,11 @@ func (o *jobOps) idemReplay(ctx context.Context, scope idv1.OwnerClaims, r tv1.C
 		return tv1.CreateJobResp{}, false, err
 	}
 	if id != "" {
-		if _, err := getJob(ctx, o.s.db, scope.Owner, scope.Space, id); err != nil {
+		j, err := getJob(ctx, o.s.db, scope.Owner, scope.Space, id)
+		if err != nil {
 			return tv1.CreateJobResp{}, false, err
 		}
-		st, err := o.s.jobM.State(ctx, o.s.db, id)
-		if err != nil {
-			return tv1.CreateJobResp{}, false, fmt.Errorf("job state: %w", err)
-		}
-		return tv1.CreateJobResp{ID: id, State: st}, true, nil
+		return tv1.CreateJobResp{ID: id, State: j.State}, true, nil
 	}
 	if n, err := ownerLiveJobs(ctx, o.s.db, scope.Owner); err != nil {
 		return tv1.CreateJobResp{}, false, err
@@ -163,11 +160,7 @@ func (o *jobOps) getJob(ctx context.Context, r tv1.GetJobReq) (tv1.GetJobResp, e
 	if err != nil {
 		return tv1.GetJobResp{}, err
 	}
-	st, err := o.s.jobM.State(ctx, o.s.db, j.id)
-	if err != nil {
-		return tv1.GetJobResp{}, fmt.Errorf("job state: %w", err)
-	}
-	return tv1.GetJobResp{Job: info(j, st)}, nil
+	return tv1.GetJobResp{Job: j}, nil
 }
 
 func (o *jobOps) listJobs(ctx context.Context, r tv1.ListJobsReq) (tv1.ListJobsResp, error) {
@@ -179,27 +172,14 @@ func (o *jobOps) listJobs(ctx context.Context, r tv1.ListJobsReq) (tv1.ListJobsR
 	if err != nil {
 		return tv1.ListJobsResp{}, err
 	}
-	out := tv1.ListJobsResp{Jobs: []tv1.JobInfo{}}
-	for _, j := range rows {
-		st, err := o.s.jobM.State(ctx, o.s.db, j.id)
-		if err != nil {
-			return tv1.ListJobsResp{}, fmt.Errorf("job state: %w", err)
-		}
-		out.Jobs = append(out.Jobs, info(j, st))
-	}
-	return out, nil
-}
-
-func info(j jobRow, state string) tv1.JobInfo {
-	return tv1.JobInfo{ID: j.id, Space: j.space, State: state, Result: j.result, Done: JobMachine().Terminal(state)}
+	return tv1.ListJobsResp{Jobs: rows}, nil
 }
 
 // jobEvent applies an operator event to a job in one tx; the state
 // guard is the machine's edge table.
 func (o *jobOps) jobEvent(ctx context.Context, scope idv1.OwnerClaims, id, event string,
 	hook fsm.Hook) (tv1.JobInfo, error) {
-	j, err := getJob(ctx, o.s.db, scope.Owner, scope.Space, id)
-	if err != nil {
+	if _, err := getJob(ctx, o.s.db, scope.Owner, scope.Space, id); err != nil {
 		return tv1.JobInfo{}, err
 	}
 	tx, err := o.s.db.BeginTx(ctx, nil)
@@ -215,11 +195,7 @@ func (o *jobOps) jobEvent(ctx context.Context, scope idv1.OwnerClaims, id, event
 	if err := tx.Commit(); err != nil {
 		return tv1.JobInfo{}, fmt.Errorf("commit: %w", err)
 	}
-	st, err := o.s.jobM.State(ctx, o.s.db, id)
-	if err != nil {
-		return tv1.JobInfo{}, fmt.Errorf("job state: %w", err)
-	}
-	return info(j, st), nil
+	return getJob(ctx, o.s.db, scope.Owner, scope.Space, id)
 }
 
 func (o *jobOps) cancelJob(ctx context.Context, r tv1.JobReq) (tv1.JobInfo, error) {
@@ -239,7 +215,7 @@ func (o *jobOps) cancelJob(ctx context.Context, r tv1.JobReq) (tv1.JobInfo, erro
 	// A running job has an active run; the cancel reaches the runtime
 	// through an outbox effect committed with the transition.
 	var effects []fsm.Effect
-	run, err := activeRunForJob(ctx, tx, j.id)
+	run, err := activeRunForJob(ctx, tx, j.ID)
 	if err != nil {
 		return tv1.JobInfo{}, err
 	}
@@ -247,7 +223,7 @@ func (o *jobOps) cancelJob(ctx context.Context, r tv1.JobReq) (tv1.JobInfo, erro
 		effects = []fsm.Effect{{Topic: "cancel-run", Payload: []byte(run)}}
 	}
 	err = o.s.jobM.Transition(ctx, tx, fsm.Request{
-		ID: j.id, Event: "cancel", Actor: "api", At: o.s.deps.Now(),
+		ID: j.ID, Event: "cancel", Actor: "api", At: o.s.deps.Now(),
 		Effects: effects}, nil)
 	if err != nil {
 		return tv1.JobInfo{}, fmt.Errorf("cancel: %w", err)
@@ -255,11 +231,7 @@ func (o *jobOps) cancelJob(ctx context.Context, r tv1.JobReq) (tv1.JobInfo, erro
 	if err := tx.Commit(); err != nil {
 		return tv1.JobInfo{}, fmt.Errorf("commit: %w", err)
 	}
-	st, err := o.s.jobM.State(ctx, o.s.db, j.id)
-	if err != nil {
-		return tv1.JobInfo{}, fmt.Errorf("job state: %w", err)
-	}
-	return info(j, st), nil
+	return getJob(ctx, o.s.db, scope.Owner, scope.Space, j.ID)
 }
 
 func (o *jobOps) retryJob(ctx context.Context, r tv1.JobReq) (tv1.JobInfo, error) {
