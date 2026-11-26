@@ -107,6 +107,7 @@ func (lp *loopRunner) sweepPass(ctx context.Context, l *log.L) {
 	}
 	if err := lp.alertSweepLag(ctx, lp.s.deps.Now()); err != nil {
 		l.Error(ctx, "sweep lag alert", err)
+		return
 	}
 	if _, err := lp.s.jobM.Sweep(ctx, lp.s.db, lp.s.deps.Now(), 32, lp.jobSweepHook); err != nil {
 		l.Error(ctx, "job sweep", err)
