@@ -105,7 +105,7 @@ func candidateChain(ctx context.Context, q queryer, space string) (layerSet, err
 		if err := json.Unmarshal(docs, &ds); err != nil {
 			return nil, fmt.Errorf("layer %s docs: %w", role, err)
 		}
-		chain = append(chain, namedDocs{role: role, rev: id, docs: ds})
+		chain = append(chain, namedDocs{role: role, rev: id, space: space, docs: ds})
 	}
 	return chain, nil
 }
@@ -143,8 +143,9 @@ func revisionsChain(ctx context.Context, tx *sql.Tx, revs map[string]string) (la
 	chain := layerSet{}
 	for _, role := range registry.Chain {
 		var docs []byte
-		err := tx.QueryRowContext(ctx, `SELECT docs FROM layer_revisions
-			WHERE id=$1`, revs[role]).Scan(&docs)
+		var space string
+		err := tx.QueryRowContext(ctx, `SELECT space, docs FROM layer_revisions
+			WHERE id=$1`, revs[role]).Scan(&space, &docs)
 		if err != nil {
 			return nil, fmt.Errorf("revision %s: %w", revs[role], err)
 		}
@@ -152,7 +153,7 @@ func revisionsChain(ctx context.Context, tx *sql.Tx, revs map[string]string) (la
 		if err := json.Unmarshal(docs, &ds); err != nil {
 			return nil, fmt.Errorf("revision docs: %w", err)
 		}
-		chain = append(chain, namedDocs{role: role, docs: ds, rev: revs[role]})
+		chain = append(chain, namedDocs{role: role, docs: ds, rev: revs[role], space: space})
 	}
 	return chain, nil
 }
