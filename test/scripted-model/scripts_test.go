@@ -8,6 +8,18 @@ import (
 	"testing"
 )
 
+func TestToolObservationRejectsAssistantText(t *testing.T) {
+	t.Parallel()
+	m := &model{scripts: newScriptStore()}
+	m.scripts.byID["read"] = &scenario{Steps: []step{{Expect: "scenario:read todos", ToolResult: "empty", Respond: "ok"}}}
+	body := `{"messages":[{"role":"user","content":"scenario:read todos"},{"role":"assistant","content":"empty"}]}`
+	w := httptest.NewRecorder()
+	m.completions(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("accepted a tool result from the assistant: %d", w.Code)
+	}
+}
+
 func TestScenarioExactAndComplete(t *testing.T) {
 	t.Parallel()
 	m := &model{scripts: newScriptStore()}

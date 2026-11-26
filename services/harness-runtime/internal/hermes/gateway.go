@@ -38,8 +38,8 @@ func Start(ctx context.Context, stop context.CancelCauseFunc) (*Gateway, <-chan 
 	cmd.Env = []string{
 		"PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 		"HOME=/var/tmp", "HERMES_HOME=/var/tmp", "HERMES_ENABLE_PROJECT_PLUGINS=0",
-		"HERMES_WRITE_SAFE_ROOT=/var/tmp",
-		"PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1", "XDG_RUNTIME_DIR=/tmp/hermes-runtime",
+		"HERMES_WRITE_SAFE_ROOT=/var/tmp/workspace",
+		"PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "PYTHONUNBUFFERED=1", "XDG_RUNTIME_DIR=/tmp/hermes-runtime",
 		"API_SERVER_ENABLED=true", "API_SERVER_HOST=127.0.0.1", "API_SERVER_KEY=" + g.key,
 	}
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr

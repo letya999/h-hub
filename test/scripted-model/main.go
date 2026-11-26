@@ -29,8 +29,9 @@ func main() {
 
 func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model    string    `json:"model"`
-		Messages []message `json:"messages"`
+		Model    string                                     `json:"model"`
+		Messages []message                                  `json:"messages"`
+		Tools    []struct{ Function struct{ Name string } } `json:"tools"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -45,8 +46,15 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 	if input == "recall my markers" {
 		input = recallMarkers(req.Messages)
 	}
+	if input == "list my current tools" {
+		var names []string
+		for _, tool := range req.Tools {
+			names = append(names, tool.Function.Name)
+		}
+		input = "tools [" + strings.Join(names, ",") + "]"
+	}
 	if strings.HasPrefix(input, "scenario:") {
-		m.scriptCompletion(w, r, input)
+		m.scriptCompletion(w, r, input, req.Messages[len(req.Messages)-1])
 		return
 	}
 	defaultCompletion(w, r, input)

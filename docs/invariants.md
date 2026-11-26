@@ -8,6 +8,8 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 
 | ID | Status | Owner | Scenario | Forbidden path that must be rejected |
 | --- | --- | --- | --- | --- |
+| `sys.harness-pinned` | proved | spawn-controller | [TestHermesPinnedProcess](../test/e2e/lifecycle/hermes_test.go#TestHermesPinnedProcess) | A tag without a digest or any substituted digest must be refused before launch. |
+| `sys.harness-tool-list` | proved | harness-runtime | [TestHermesPassportTools](../test/e2e/lifecycle/hermes_test.go#TestHermesPassportTools) | A runtime with a missing or additional active tool must refuse to become ready. |
 | `sys.tenant-isolation` | proved | channel-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | Owner A reads owner B's outbox. |
 | `sys.forged-token` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | A token signed by a foreign key reads an outbox. |
 | `sys.secret-leak` | proved | identity-hub | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/lifecycle/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer), [TestTelegramSecretBodyNotStored](../services/channel-hub/internal/svc/secret_db_test.go#TestTelegramSecretBodyNotStored) | A sealed key opened for the wrong purpose must fail; an intercepted secret must not persist in intake. |

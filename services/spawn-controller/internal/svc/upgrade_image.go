@@ -9,6 +9,18 @@ import (
 
 var executablePin = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
+func (s *Server) checkImagePatch(docs DocSet) error {
+	raw, changed := leafValue(docs, "stack.image")
+	if !changed {
+		return nil
+	}
+	pin, valid := raw.(string)
+	if !valid {
+		return s.requireImage("")
+	}
+	return s.requireImage(pin)
+}
+
 // spaceForRun upgrades a pre-Hermes platform revision before granting a runtime.
 // A refused passport affects only the space that owns it.
 func (s *Server) spaceForRun(ctx context.Context, space string) (spaceRow, error) {
@@ -64,6 +76,13 @@ func (s *Server) upgradeImageLayers(ctx context.Context, tx *sql.Tx, cur spaceRo
 	if image, _ := leafValue(active[0].docs, "stack.image"); image == s.deps.Hermes {
 		return nil
 	}
+	pinned, err := hasPinnedImage(ctx, tx, space)
+	if err != nil {
+		return err
+	}
+	if pinned {
+		return s.requireImage("")
+	}
 	pending, err := candidateChain(ctx, tx, space)
 	if err != nil {
 		return err
@@ -85,6 +104,15 @@ func (s *Server) upgradeImageLayers(ctx context.Context, tx *sql.Tx, cur spaceRo
 		return err
 	}
 	return applyEffectTx(s, ctx, tx, cur, "respawn")
+}
+
+func hasPinnedImage(ctx context.Context, tx *sql.Tx, space string) (bool, error) {
+	var pinned bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM effective_specs WHERE space=$1
+		AND spec #>> '{stack,image}' LIKE 'docker.io/nousresearch/hermes-agent:%@sha256:%')`, space).Scan(&pinned); err != nil {
+		return false, fmt.Errorf("check space image history: %w", err)
+	}
+	return pinned, nil
 }
 
 func (s *Server) pinLayer(ctx context.Context, tx *sql.Tx, space string, layer *namedDocs) error {

@@ -25,6 +25,7 @@ var sysIDs = map[string]bool{
 	"passport-explain": true, "grant-revocation": true,
 	"owner-request-single-use": true, "owner-request-timeout": true,
 	"owner-request-self-answer": true,
+	"harness-pinned":            true, "harness-tool-list": true,
 }
 
 var (
