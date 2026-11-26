@@ -33,15 +33,18 @@ func parseMarkdown(input string) []block {
 			kind = "quote"
 			trim = strings.TrimSpace(trim[2:])
 		}
-		out = append(out, block{kind: kind, text: html.EscapeString(trim)})
+		out = append(out, block{kind: kind, text: trim})
 	}
 	return out
 }
 
-func renderAnswer(input string) []cv1.OutMessage {
+func renderAnswer(channel, input string) []cv1.OutMessage {
 	blocks := parseMarkdown(input)
 	var lines []string
 	for _, b := range blocks {
+		if channel != "telegram" {
+			b.text = html.EscapeString(b.text)
+		}
 		switch b.kind {
 		case "list":
 			lines = append(lines, "• "+b.text)

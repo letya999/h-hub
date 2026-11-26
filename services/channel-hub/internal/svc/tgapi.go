@@ -76,6 +76,9 @@ func (a *tgAPI) call(ctx context.Context, token, method string,
 		return fmt.Errorf("telegram %s decode: %w", method, err)
 	}
 	if !env.OK {
+		if env.unchangedEdit(method) {
+			return nil
+		}
 		return fmt.Errorf("telegram %s: api %d %s", method, env.ErrorCode, env.Description)
 	}
 	if out != nil {
@@ -84,6 +87,12 @@ func (a *tgAPI) call(ctx context.Context, token, method string,
 		}
 	}
 	return nil
+}
+
+// A retried edit whose text already matches has reached its destination.
+func (e tgEnvelope) unchangedEdit(method string) bool {
+	return method == "editMessageText" && e.ErrorCode == http.StatusBadRequest &&
+		strings.HasPrefix(e.Description, "Bad Request: message is not modified")
 }
 
 // tgRawUpdate is the wire shape of one update.

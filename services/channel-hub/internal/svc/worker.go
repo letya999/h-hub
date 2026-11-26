@@ -270,7 +270,7 @@ func (s *Server) pollJob(ctx context.Context, id string) (bool, error) {
 	}
 	if !job.Job.Done {
 		if r.channel == "telegram" {
-			s.tg.tgStatusPass(ctx, r.id, locale.T(locale.EN, phaseKey(job.Job.State)), false)
+			return false, s.tg.tgStatusPass(ctx, r, locale.T(locale.EN, phaseKey(job.Job.State)))
 		}
 		return false, nil
 	}
@@ -301,21 +301,22 @@ func (s *Server) completeText(ctx context.Context, r inputRow, answer string, ph
 	if len(phase) > 0 {
 		final = phase[0]
 	}
-	parts := renderAnswer(answer)
+	parts := renderAnswer(r.channel, answer)
+	if r.channel == "telegram" {
+		switch {
+		case final != "channel.phase.done":
+			parts = append(parts, cv1.OutMessage{Kind: "status", Body: locale.T(locale.EN, final)})
+		case r.job != "":
+			parts[0].Kind = "answer"
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("complete begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback after commit is harmless
 	hook := func(ctx context.Context, tx *sql.Tx, _ fsm.Change) error {
-		if err := enqueueDeliveries(ctx, s, tx, r, parts); err != nil {
-			return err
-		}
-		if r.channel == "telegram" {
-			return enqueueDelivery(ctx, s, tx, r, cv1.OutMessage{
-				Kind: "status", Body: locale.T(locale.EN, final)})
-		}
-		return nil
+		return enqueueDeliveries(ctx, s, tx, r, parts)
 	}
 	if err := s.intake.Transition(ctx, tx, fsm.Request{ID: r.id, Event: "complete", Actor: "channel-hub"}, hook); err != nil {
 		return fmt.Errorf("complete intake: %w", err)

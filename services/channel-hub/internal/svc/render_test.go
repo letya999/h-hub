@@ -8,11 +8,11 @@ import (
 
 func TestRenderNeutralAndOverflow(t *testing.T) {
 	t.Parallel()
-	got := renderAnswer("# Hello\n- item\n<script>alert(1)</script>")
+	got := renderAnswer("mock", "# Hello\n- item\n<script>alert(1)</script>")
 	if len(got) != 1 || !strings.Contains(got[0].Body, "Hello\n• item") || strings.Contains(got[0].Body, "<script>") {
 		t.Fatalf("unsafe or lost Markdown: %+v", got)
 	}
-	long := renderAnswer(strings.Repeat("Ж", maxTextPart*maxTextParts+17))
+	long := renderAnswer("mock", strings.Repeat("Ж", maxTextPart*maxTextParts+17))
 	if len(long) != maxTextParts+1 || long[5].Kind != "file" || !strings.Contains(long[4].Body, "truncated") {
 		t.Fatalf("overflow not visible: %d parts", len(long))
 	}

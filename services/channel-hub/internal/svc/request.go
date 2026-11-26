@@ -401,7 +401,7 @@ func (o *requestOps) answerLink(ctx context.Context, r inputRow, l linkRow, raw 
 // completeAnswer marks the link answered and completes the intake
 // with the accepted notice in one transaction.
 func (o *requestOps) completeAnswer(ctx context.Context, r inputRow, l linkRow, key string) error {
-	parts := renderAnswer(locale.T(locale.EN, key))
+	parts := renderAnswer(r.channel, locale.T(locale.EN, key))
 	tx, err := o.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("answer begin: %w", err)
