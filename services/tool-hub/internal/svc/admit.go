@@ -13,9 +13,10 @@ import (
 // admission is one decided call: the bound run claims, the ledger
 // receipt and the verdict.
 type admission struct {
-	claims  idv1.RunClaims
-	receipt thv1.Receipt
-	allowed bool
+	claims     idv1.RunClaims
+	receipt    thv1.Receipt
+	allowed    bool
+	specDigest string
 }
 
 // admit decides one call and writes its receipt: the run token binds
@@ -50,7 +51,7 @@ func (s *Server) admit(ctx context.Context, run, digest,
 	if err != nil {
 		return admission{}, err
 	}
-	return admission{claims: claims, receipt: receipt, allowed: allowed}, nil
+	return admission{claims: claims, receipt: receipt, allowed: allowed, specDigest: specDigest}, nil
 }
 
 // runClaims binds the run token to the request: the token must name

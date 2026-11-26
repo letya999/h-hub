@@ -63,6 +63,9 @@ func (s *Server) handlers() sv1.Handlers {
 		Explain: func(ctx context.Context, r sv1.ExplainReq) (sv1.ExplainResp, error) {
 			return explainOp(s, ctx, r)
 		},
+		Workspace: func(ctx context.Context, r sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
+			return workspaceAccess(s, ctx, r)
+		},
 	}
 }
 
