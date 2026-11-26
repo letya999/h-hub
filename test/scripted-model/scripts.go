@@ -17,6 +17,7 @@ type toolCall struct {
 }
 type step struct {
 	Expect        string     `yaml:"expect"`
+	ToolResult    string     `yaml:"expect_tool_result"`
 	Respond       string     `yaml:"respond"`
 	ToolCalls     []toolCall `yaml:"tool_calls"`
 	ProviderError int        `yaml:"provider_error"`
@@ -129,7 +130,7 @@ func (m *model) verifyScenario(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *scriptStore) next(id, input string) (step, error) {
+func (s *scriptStore) next(id, input string, last message) (step, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sc := s.byID[id]
@@ -148,17 +149,21 @@ func (s *scriptStore) next(id, input string) (step, error) {
 		sc.failure = fmt.Sprintf("step %d: got %q, want %q", sc.next, input, want.Expect)
 		return step{}, fmt.Errorf("%s", sc.failure)
 	}
+	if want.ToolResult != "" && (last.Role != "tool" || !strings.Contains(last.Content, want.ToolResult)) {
+		sc.failure = fmt.Sprintf("step %d: expected tool result containing %q", sc.next, want.ToolResult)
+		return step{}, fmt.Errorf("%s", sc.failure)
+	}
 	sc.next++
 	return want, nil
 }
 
-func (m *model) scriptCompletion(w http.ResponseWriter, r *http.Request, input string) {
+func (m *model) scriptCompletion(w http.ResponseWriter, r *http.Request, input string, last message) {
 	name, _, ok := strings.Cut(strings.TrimPrefix(input, "scenario:"), " ")
 	if !ok {
 		http.Error(w, "scenario id missing", http.StatusBadRequest)
 		return
 	}
-	st, err := m.scripts.next(name, input)
+	st, err := m.scripts.next(name, input, last)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

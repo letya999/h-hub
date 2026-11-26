@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cv1 "github.com/letya999/h-hub/contracts/channel/v1"
+	tv1 "github.com/letya999/h-hub/contracts/task/v1"
 	"github.com/letya999/h-hub/shared/testkit"
 	. "github.com/letya999/h-hub/test/e2e/harness"
 )
@@ -55,5 +56,51 @@ func TestHermesConversationAfterRespawn(t *testing.T) {
 	turn("recall my markers", "answer: markers "+first+"/"+second)
 	if current := container(); current == "" || current == old {
 		t.Fatalf("expected a new Hermes container, got %q after %q", current, old)
+	}
+}
+
+func TestHermesOverlappingSessionsAndOwners(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	owners := []string{"parallel_a_" + Nonce, "parallel_b_" + Nonce}
+	scopes := make([]OwnerSpace, len(owners))
+	for i, owner := range owners {
+		scopes[i] = OwnerSpace{Owner: owner, Space: EnsureSpace(t, owner, Idem("parallel", owner))}
+	}
+	job := func(scope OwnerSpace, conversation, input string) string {
+		t.Helper()
+		created, err := TaskClient(t, scope).CreateJob(ctx, tv1.CreateJobReq{Space: scope.Space,
+			Conversation: conversation, Input: input, Idem: Idem(scope.Owner, conversation, input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return created.ID
+	}
+	var warm []string
+	for _, scope := range scopes {
+		warm = append(warm, job(scope, "warm", "prepare"))
+	}
+	for i, id := range warm {
+		WaitJob(t, scopes[i], id, "succeeded", 3*time.Minute)
+	}
+	participants := []OwnerSpace{scopes[0], scopes[0], scopes[1]}
+	conversations := []string{"left", "right", "left"}
+	var jobs []string
+	for i, scope := range participants {
+		marker := scope.Owner + "/" + conversations[i]
+		jobs = append(jobs, job(scope, conversations[i], "slow:20000 "+marker))
+	}
+	db := AdminDB(t, "model_gateway")
+	testkit.Poll(t, 45*time.Second, 100*time.Millisecond, func() bool {
+		var a, b int
+		err := db.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE owner=$1),
+			count(*) FILTER (WHERE owner=$2) FROM usage_runs WHERE reserved>0`, owners[0], owners[1]).Scan(&a, &b)
+		return err == nil && a == 2 && b == 1
+	})
+	for i, id := range jobs {
+		got := WaitJob(t, participants[i], id, "succeeded", time.Minute)
+		if want := "answer: " + participants[i].Owner + "/" + conversations[i]; got.Result != want {
+			t.Fatalf("cross-session result %q, want %q", got.Result, want)
+		}
 	}
 }

@@ -51,6 +51,9 @@ func submitLayersOp(s *Server, ctx context.Context, r sv1.SubmitLayersReq) (sv1.
 	if err != nil {
 		return sv1.SubmitLayersResp{}, err
 	}
+	if err := s.checkImagePatch(docs); err != nil {
+		return sv1.SubmitLayersResp{}, err
+	}
 	if err := ensureLayers(s, ctx, sp); err != nil {
 		return sv1.SubmitLayersResp{}, err
 	}

@@ -42,9 +42,9 @@ type rmEffect struct {
 // ticks until ctx ends. Each gets its own goroutine: a deep outbox
 // (real Docker calls) must not starve the deadline sweeper.
 func (s *Server) Loops(ctx context.Context, l *log.L) {
-	go s.every(ctx, outboxEvery, func() { s.outboxPass(ctx, l) })
-	go s.every(ctx, reconcileEvery, func() { s.reconcilePass(ctx, l) })
-	go s.every(ctx, tickEvery, func() {
+	go every(ctx, outboxEvery, func() { s.outboxPass(ctx, l) })
+	go every(ctx, reconcileEvery, func() { s.reconcilePass(ctx, l) })
+	go every(ctx, tickEvery, func() {
 		if err := fsm.WriteTick(ctx, s.db, "fsm", tickName, s.deps.Now()); err != nil {
 			l.Error(ctx, "watchdog tick", err)
 		}
@@ -54,7 +54,7 @@ func (s *Server) Loops(ctx context.Context, l *log.L) {
 
 // every runs f on each tick until ctx ends; a slow pass drops its
 // missed ticks instead of piling up.
-func (s *Server) every(ctx context.Context, d time.Duration, f func()) {
+func every(ctx context.Context, d time.Duration, f func()) {
 	t := time.NewTicker(d)
 	defer t.Stop()
 	for {

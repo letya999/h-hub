@@ -105,9 +105,7 @@ e2e:
       -v hhub-conf:/etc/hhub:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
-      {{ img }} sh -c 'go test -tags hhube2e -count=1 -timeout 10m \
-        ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability && \
-        go test -tags hhube2e -count=1 -timeout 10m ./test/e2e/disrupt'
+      {{ img }} sh /src/tools/tracecheck/e2e.sh
 
 # optional three-user load measurement, separate from mandatory e2e
 load:

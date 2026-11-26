@@ -12,5 +12,6 @@ FROM alpine:3.21@sha256:bc21487101ae47172509130ee1092cc273a831968d64b617776d1f69
 COPY --from=build /out/svc /svc
 COPY deploy/hermes-image.ref /usr/share/hhub/hermes-image.ref
 COPY services/harness-runtime/plugins /hhub-plugins
+RUN touch /hhub-empty-env
 EXPOSE 9000
 ENTRYPOINT ["/svc"]
