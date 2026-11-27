@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -188,8 +189,15 @@ func (d *Docker) Wait(ctx context.Context, id string) (int, error) {
 	var out struct {
 		StatusCode int `json:"StatusCode"`
 	}
-	err := d.req(ctx, http.MethodPost, "/containers/"+id+"/wait", nil, &out)
-	return out.StatusCode, err
+	_, bounded := ctx.Deadline()
+	for {
+		err := d.req(ctx, http.MethodPost, "/containers/"+id+"/wait", nil, &out)
+		// One HTTP observation can expire while the same container is
+		// still within the scenario's deadline.
+		if err == nil || !bounded || ctx.Err() != nil || !errors.Is(err, context.DeadlineExceeded) {
+			return out.StatusCode, err
+		}
+	}
 }
 
 // Remove force-removes a container.
