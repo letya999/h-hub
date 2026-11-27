@@ -25,6 +25,7 @@ leaves:
   - {path: workspace.layout.nodes, class: narrow, consumer: spawn-controller, effect: respawn}
   - {path: workspace.writable, class: narrow, consumer: spawn-controller, effect: respawn}
   - {path: workspace.files, class: user_data, consumer: spawn-controller, effect: recreate}
+  - {path: workspace.skills, class: user_data, consumer: spawn-controller, effect: respawn}
   - {path: tools.core, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.extended, class: narrow, consumer: tool-hub, effect: respawn}
   - {path: tools.executors, class: keyset-narrow, consumer: tool-hub, effect: respawn}

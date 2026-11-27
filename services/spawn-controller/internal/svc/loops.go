@@ -252,7 +252,7 @@ func (s *Server) renderConfig(sp spaceRow, p Passports, tools thv1.ProjectionRes
 			return fmt.Errorf("workspace file %s: %w", name, err)
 		}
 	}
-	return nil
+	return renderSkillShowcase(dir, p.Workspace.Skills)
 }
 
 func (s *Server) dockerRemove(ctx context.Context, e rmEffect) error {

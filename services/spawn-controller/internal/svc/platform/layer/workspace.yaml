@@ -6,3 +6,8 @@ layout:
     - {path: /files, mode: rw, note: "agent files"}
 writable: [/files]
 files: {}
+skills:
+  workspace-notes: |
+    # Workspace notes
+
+    Record stable decisions and their sources in workspace notes. Keep credentials and sensitive values out of notes.
