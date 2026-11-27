@@ -122,3 +122,33 @@ toolsets:
           properties:
             path: {type: string}
           required: [path]
+      - name: files_write_skill
+        description: Save an own Markdown skill at skills/<name>.md.
+        capability: persona.edit_own
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+            text: {type: string}
+          required: [path, text]
+      - name: files_edit_skill
+        description: Replace one matching fragment in an own skill under skills/.
+        capability: persona.edit_own
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+            before: {type: string}
+            text: {type: string}
+          required: [path, before, text]
+      - name: files_remove_skill
+        description: Remove an own Markdown skill under skills/.
+        capability: persona.edit_own
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            path: {type: string}
+          required: [path]

@@ -94,7 +94,7 @@ func removeWorkspace(root *os.Root, rel string, _ sv1.WorkspaceReq) (sv1.Workspa
 }
 
 func replaceWorkspace(root *os.Root, rel string, req sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
-	return sv1.WorkspaceResp{}, atomicWorkspaceWrite(root, rel, req.Text)
+	return sv1.WorkspaceResp{}, saveWorkspaceText(root, rel, req.Path, req.Text)
 }
 
 func editWorkspace(root *os.Root, rel string, req sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
@@ -109,7 +109,14 @@ func editWorkspace(root *os.Root, rel string, req sv1.WorkspaceReq) (sv1.Workspa
 	if strings.Count(old, req.Before) != 1 {
 		return out, fileRefusal("err.workspace-edit")
 	}
-	return out, atomicWorkspaceWrite(root, rel, strings.Replace(old, req.Before, req.Text, 1))
+	return out, saveWorkspaceText(root, rel, req.Path, strings.Replace(old, req.Before, req.Text, 1))
+}
+
+func saveWorkspaceText(root *os.Root, rel, file, text string) error {
+	if _, skill := ownSkillName(file); skill {
+		return saveOwnSkill(root, rel, text)
+	}
+	return atomicWorkspaceWrite(root, rel, text)
 }
 
 func atomicWorkspaceWrite(root *os.Root, rel, text string) (retErr error) {

@@ -11,7 +11,7 @@ import (
 
 func TestWorkspaceLayoutRejectsReservedWrites(t *testing.T) {
 	t.Parallel()
-	for _, target := range []string{"/config", "/inbox/archive", "/vault"} {
+	for _, target := range []string{"/config", "/inbox/archive", "/vault", "/skills"} {
 		base, err := layerDocs("platform/layer")
 		if err != nil {
 			t.Fatal(err)

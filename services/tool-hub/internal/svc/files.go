@@ -30,7 +30,7 @@ func (s *Server) invokeFiles(ctx context.Context, c toolCall) (json.RawMessage, 
 		return nil, err
 	}
 	op, _ := strings.CutPrefix(c.name, "files_")
-	if slices.Contains(c.receipt.Caps, "workspace.write") {
+	if slices.Contains(c.receipt.Caps, "workspace.write") || slices.Contains(c.receipt.Caps, "persona.edit_own") {
 		pending, err := s.fileApproval(ctx, c, a)
 		if err != nil || pending != nil {
 			return pending, err
