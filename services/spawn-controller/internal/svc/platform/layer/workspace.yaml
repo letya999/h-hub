@@ -3,6 +3,7 @@ layout:
     - {path: /config, note: "read-only settings"}
     - {path: /inbox, note: "original incoming artifacts"}
     - {path: /vault, note: "read-only durable records"}
+    - {path: /skills, note: "agent skill documents"}
     - {path: /files, mode: rw, note: "agent files"}
 writable: [/files]
 files: {}

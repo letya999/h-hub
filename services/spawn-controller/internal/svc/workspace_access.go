@@ -24,17 +24,21 @@ const (
 
 type workspaceAction struct {
 	write bool
+	skill bool
 	run   func(*os.Root, string, sv1.WorkspaceReq) (sv1.WorkspaceResp, error)
 }
 
 var workspaceActions = map[string]workspaceAction{
-	"list":   {run: listWorkspace},
-	"read":   {run: readWorkspace},
-	"search": {run: searchWorkspace},
-	"write":  {write: true, run: replaceWorkspace},
-	"edit":   {write: true, run: editWorkspace},
-	"mkdir":  {write: true, run: mkdirWorkspace},
-	"remove": {write: true, run: removeWorkspace},
+	"list":         {run: listWorkspace},
+	"read":         {run: readWorkspace},
+	"search":       {run: searchWorkspace},
+	"write":        {write: true, run: replaceWorkspace},
+	"edit":         {write: true, run: editWorkspace},
+	"mkdir":        {write: true, run: mkdirWorkspace},
+	"remove":       {write: true, run: removeWorkspace},
+	"write_skill":  {write: true, skill: true, run: replaceWorkspace},
+	"edit_skill":   {write: true, skill: true, run: editWorkspace},
+	"remove_skill": {write: true, skill: true, run: removeWorkspace},
 }
 
 func workspaceAccess(s *Server, ctx context.Context, req sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
@@ -74,9 +78,13 @@ func runWorkspaceAction(dir string, w WorkspacePassport, req sv1.WorkspaceReq) (
 		out.OK = true
 		return out, nil
 	}
-	node, rel, err := workspacePath(w, req.Path, action.write)
+	node, rel, err := action.path(w, req.Path)
 	if err != nil {
 		return out, err
+	}
+	if action.skill {
+		skillWrites.Lock()
+		defer skillWrites.Unlock()
 	}
 	root, err := openWorkspaceNode(dir, strings.TrimPrefix(node, "/"))
 	if err != nil {
@@ -91,6 +99,20 @@ func runWorkspaceAction(dir string, w WorkspacePassport, req sv1.WorkspaceReq) (
 		out.OK = true
 	}
 	return out, err
+}
+
+func (a workspaceAction) path(w WorkspacePassport, input string) (string, string, error) {
+	if !a.skill {
+		return workspacePath(w, input, a.write)
+	}
+	if _, ok := ownSkillName(input); !ok {
+		return "", "", fileRefusal("err.skill-format")
+	}
+	node, rel, err := workspacePath(w, input, false)
+	if err == nil && node != ownSkillRoot {
+		err = fileRefusal("err.workspace-outside")
+	}
+	return node, rel, err
 }
 
 func openWorkspaceNode(dir, node string) (*os.Root, error) {

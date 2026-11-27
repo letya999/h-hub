@@ -195,8 +195,22 @@ func writeToolRefusal(w http.ResponseWriter, err error) error {
 	if !errors.As(err, &refusal) || refusal.Code == herrors.CodeUnavailable {
 		return fmt.Errorf("tool hub: %w", err)
 	}
-	httpapi.WriteJSON(w, map[string]string{"reason": refusal.Key, "error": locale.T(locale.EN, refusal.Key)})
+	result := map[string]any{"reason": refusal.Key, "error": locale.T(locale.EN, refusal.Key)}
+	if finding := skillFindingDetails(refusal.Details); finding != nil {
+		result["details"] = finding
+	}
+	httpapi.WriteJSON(w, result)
 	return nil
+}
+
+func skillFindingDetails(details map[string]any) map[string]any {
+	file, hasFile := details["file"].(string)
+	rule, hasRule := details["rule"].(string)
+	line, hasLine := details["line"].(float64)
+	if !hasFile || !hasRule || !hasLine {
+		return nil
+	}
+	return map[string]any{"file": file, "line": line, "rule": rule}
 }
 
 func (s *Server) ownerEvent(a *Admission, result json.RawMessage) error {

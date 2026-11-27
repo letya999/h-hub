@@ -15,7 +15,7 @@ import (
 
 const workspaceStorage = "workspaces"
 
-var reservedWorkspaceRoots = []string{"/config", "/inbox", "/vault"}
+var reservedWorkspaceRoots = []string{"/config", "/inbox", "/vault", ownSkillRoot}
 
 func workspaceContains(root, file string) bool {
 	return file == root || strings.HasPrefix(file, root+"/")
