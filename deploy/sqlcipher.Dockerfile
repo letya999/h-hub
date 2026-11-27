@@ -2,7 +2,7 @@
 # CI builds this image once (.github/workflows/sqlcipher.yml); consumers
 # pull it by the digest pinned in deploy/sqlcipher-base.ref and COPY the
 # artifacts instead of compiling SQLCipher themselves.
-FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 
 ARG SQLCIPHER_VERSION=4.6.1
 ARG SQLCIPHER_SHA256=d8f9afcbc2f4b55e316ca4ada4425daf3d0b4aab25f45e11a802ae422b9f53a3
