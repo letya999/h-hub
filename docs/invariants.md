@@ -24,13 +24,13 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.sweep-lag` | proved | task-engine | [TestSweepLagOperatorAlert](../test/e2e/lifecycle/sweep_lag_test.go#TestSweepLagOperatorAlert) | An operator token must be refused when forging a service alert. |
 | `sys.wedge-unblock` | proved | task-engine and spawn-controller | [TestHubctlUnblocksJobAndRuntime](../test/e2e/lifecycle/wedge_unblock_test.go#TestHubctlUnblocksJobAndRuntime) | A foreign owner must be refused when draining another runtime. |
 | `sys.schema-version` | proved | spawn-controller | [TestSpecSchemaVersion](../services/spawn-controller/internal/svc/spec_test.go#TestSpecSchemaVersion) | A future runtime spec version must be refused. |
-| `sys.worker-intent` | deferred:14 | worker absent | [TestRuntimeIntent](../test/e2e/lifecycle/e2e_test.go#TestRuntimeIntent) | A worker without a recorded intent must not start. |
-| `sys.space-no-db` | deferred:14 | worker absent | [TestSpaceNoDB](../test/e2e/lifecycle/e2e_test.go#TestSpaceNoDB) | A worker must not receive database credentials. |
+| `sys.worker-intent` | proved | spawn-controller | [TestWorkerClaimAndDestroy](../test/e2e/lifecycle/worker_test.go#TestWorkerClaimAndDestroy) | A worker without a recorded intent must not start. |
+| `sys.space-no-db` | proved | spawn-controller | [TestWorkerClaimAndDestroy](../test/e2e/lifecycle/worker_test.go#TestWorkerClaimAndDestroy) | A worker must not receive database credentials. |
 | `sys.seal-at-rest` | proved | credential-broker | [TestSecretsAbsentFromDumpLogsInspectAndAnswer](../test/e2e/lifecycle/seal_test.go#TestSecretsAbsentFromDumpLogsInspectAndAnswer) | A broker-held secret value is recovered from its volume dump, service logs, inspect output or a Postgres dump. |
 | `sys.watchdog-stale` | proved | spawn-controller and channel-hub | [TestStaleSpawnTickRefusesHealth](../test/e2e/lifecycle/watchdog_stale_test.go#TestStaleSpawnTickRefusesHealth) | A frozen tick must refuse health; an unauthenticated status read must fail. |
 | `sys.service-edge` | proved | identity-hub | [TestMockChannelThreeUsers](../test/e2e/channel/channel_test.go#TestMockChannelThreeUsers) | A token for Inject must be refused at ReadOutbox. |
-| `sys.worker-tenant` | deferred:14 | worker absent | — | A worker must refuse another tenant's context. |
-| `sys.worker-stop-confirmed` | deferred:14 | worker absent | — | A stop request must not report success before worker exit. |
+| `sys.worker-tenant` | proved | spawn-controller | [TestWorkerClaimAndDestroy](../test/e2e/lifecycle/worker_test.go#TestWorkerClaimAndDestroy) | A worker must refuse another tenant's context. |
+| `sys.worker-stop-confirmed` | proved | spawn-controller | [TestWorkerStopQuarantine](../test/e2e/lifecycle/worker_quarantine_test.go#TestWorkerStopQuarantine), [TestWorkerIntentLeaseAndQuarantine](../services/spawn-controller/internal/svc/worker_db_test.go#TestWorkerIntentLeaseAndQuarantine) | A stop request must not report success before worker exit. |
 | `sys.package-build` | deferred:18 | package builder absent | — | An unapproved package must not build. |
 | `sys.recipe-hosts` | deferred:18 | recipe host owner absent | — | A recipe must not access an undeclared host. |
 | `sys.model-usage` | proved | model-gateway | [TestGatewayAccountsSpend](../test/e2e/channel/model_test.go#TestGatewayAccountsSpend) | A Complete call without a run token must be refused before any accounting. |

@@ -43,6 +43,7 @@ jobs:
             -e HHUB_MODEL_URL=http://model-gateway:9000 \
             -e HHUB_BROKER_URL=http://credential-broker:9000 \
             -v hhub-conf:/etc/hhub:ro \
+            -v hhub_hhub-space-worker-sockets:/run/hhub-worker-slots:ro \
             -v "$PWD/../h-hub-data/secrets:/run/hhub-secrets:ro" \
             -v "$PWD:/src:ro" -v hhub-gocache:/go -v hhub-cache:/root/.cache \
             hhub-dev:ci just check

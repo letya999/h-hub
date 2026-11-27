@@ -101,5 +101,12 @@ through `shared/log` context.
 referenced by tests; the trace gate resolves each to a real
 requirement.
 
+**worker** — an isolated executor container owned by spawn-controller.
+A worker key binds tenant, space, profile and effective passport digest.
+Each generation has a recorded launch intent and a renewable lease.
+
+**cellinit** — the worker's static PID 1. It authenticates a generation
+and supervises commands in the worker's own process namespace.
+
 **zone** — a network zone from the descriptor (edge, hub, data);
 services sit in exactly one.
