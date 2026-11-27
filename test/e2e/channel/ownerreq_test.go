@@ -38,35 +38,22 @@ func ownerScenario(t *testing.T, sid, tool, args, answer, final string) {
 	PostScenario(t, script, http.StatusCreated)
 }
 
-func ownerRoundTrip(t *testing.T, mark, tool, args, question, reply, answer, final string) {
+func (f *warmChannel) ownerRoundTrip(t *testing.T, mark, tool, args, question, reply, answer, final string) {
 	t.Helper()
-	owner := "mock_orq_" + mark + Nonce
-	_, code := AddUser(t, owner)
-	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("link", mark), Text: "/start " + code}); err != nil {
-		t.Fatalf("link inject: %v", err)
-	}
-	cursor := WaitMock(t, owner, 0, "Account linked", 10*time.Second)
 	sid := "orq" + strings.ReplaceAll(Idem(mark), ".", "")
 	ownerScenario(t, sid, tool, args, answer, final)
-	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("ask", mark), Text: "scenario:" + sid + " go"}); err != nil {
-		t.Fatalf("message inject: %v", err)
-	}
-	linked := cursor
-	cursor = WaitMock(t, owner, cursor, question, 3*time.Minute)
-	messages, err := MockClient(t, owner, "ReadOutbox").ReadOutbox(context.Background(),
-		cv1.ReadOutboxReq{External: owner, After: linked})
+	f.inject(t, "ask-"+mark, "scenario:"+sid+" go", 0)
+	cursor := WaitMock(t, f.owner, f.cursor, question, 3*time.Minute)
+	messages, err := MockClient(t, f.owner, "ReadOutbox").ReadOutbox(context.Background(),
+		cv1.ReadOutboxReq{External: f.owner, After: f.cursor})
 	if err != nil || len(messages.Messages) != 1 || messages.Messages[0].Kind != "request" ||
 		messages.Messages[0].Body != "asking the owner\n\n"+question {
 		t.Fatalf("expected one question with the turn introduction, got %+v (%v)", messages, err)
 	}
-	if _, err := MockClient(t, owner, "Inject").Inject(context.Background(),
-		cv1.InjectReq{External: owner, UpdateID: Idem("answer", mark), Text: reply, ReplyTo: cursor}); err != nil {
-		t.Fatalf("answer inject: %v", err)
-	}
-	WaitMock(t, owner, cursor, final, 3*time.Minute)
-	WaitMock(t, owner, cursor, "Answer accepted.", 10*time.Second)
+	f.inject(t, "answer-"+mark, reply, cursor)
+	answerSeq := WaitMock(t, f.owner, cursor, final, 3*time.Minute)
+	acceptedSeq := WaitMock(t, f.owner, cursor, "Answer accepted.", 10*time.Second)
+	f.cursor = max(answerSeq, acceptedSeq)
 	res, err := http.Get("http://scripted-model:9000/v1/scenarios/" + sid + "/verify")
 	if err != nil {
 		t.Fatal(err)
@@ -77,15 +64,13 @@ func ownerRoundTrip(t *testing.T, mark, tool, args, question, reply, answer, fin
 	}
 }
 
-func TestOwnerQuestionRoundTrip(t *testing.T) {
-	t.Parallel()
-	ownerRoundTrip(t, "ask", "ask", `{"question":"pick a color"}`,
+func ownerQuestionRoundTrip(t *testing.T, f *warmChannel) {
+	f.ownerRoundTrip(t, "ask", "ask", `{"question":"pick a color"}`,
 		"pick a color", "blue", "blue", "color noted")
 }
 
-func TestOwnerChoiceRoundTrip(t *testing.T) {
-	t.Parallel()
-	ownerRoundTrip(t, "choose", "choose",
+func ownerChoiceRoundTrip(t *testing.T, f *warmChannel) {
+	f.ownerRoundTrip(t, "choose", "choose",
 		`{"question":"red or blue","options":["red","blue"]}`,
 		"red or blue\n1. red\n2. blue", "2", "blue", "blue it is")
 }
