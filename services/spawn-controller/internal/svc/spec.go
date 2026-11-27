@@ -88,6 +88,7 @@ type WorkspacePassport struct {
 	Layout   WorkspaceLayout   `json:"layout"`
 	Writable []string          `json:"writable,omitempty"`
 	Files    map[string]string `json:"files"`
+	Skills   map[string]string `json:"skills,omitempty"`
 }
 
 // WorkspaceLayout is the ordered node list for the space's mounts.

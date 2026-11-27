@@ -80,6 +80,10 @@ each value to `purpose + kid`.
 **schema version** — a durable document's decoding version; new space
 specs write version 1 and the reader accepts earlier unversioned specs.
 
+**skill** — Markdown instructions. The skill showcase is the read-only
+catalog compiled from platform and user layers. An agent can author
+its own skills as workspace files through the file tool.
+
 **shared** — infrastructure-only packages under `shared/`; may not
 import services or domain code.
 

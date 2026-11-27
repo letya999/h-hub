@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/shared/auth"
 	"github.com/letya999/h-hub/shared/edges"
@@ -89,6 +90,9 @@ func (c C) Load() (Rendered, error) {
 	if r.Space == "" || r.TaskURL == "" || r.ModelURL == "" || r.TimeoutMS <= 0 {
 		return Rendered{}, fmt.Errorf("config: space, task_url, model_url and timeout_ms are required")
 	}
+	if err := verifySkillShowcase(filepath.Dir(c.Config)); err != nil {
+		return r, err
+	}
 	var parts []string
 	for _, name := range []string{"soul.md", "agents.md"} {
 		content, err := os.ReadFile(filepath.Join(filepath.Dir(c.Config), "files", name))
@@ -102,6 +106,21 @@ func (c C) Load() (Rendered, error) {
 	}
 	r.Instructions = strings.Join(parts, "\n\n")
 	return r, nil
+}
+
+func verifySkillShowcase(dir string) error {
+	data, err := os.ReadFile(filepath.Join(dir, sv1.SkillShowcaseFile))
+	if err != nil {
+		return fmt.Errorf("read layer skill showcase: %w", err)
+	}
+	var skills map[string]string
+	if err := json.Unmarshal(data, &skills); err != nil {
+		return fmt.Errorf("decode layer skill showcase: %w", err)
+	}
+	if skills == nil {
+		return fmt.Errorf("layer skill showcase is missing")
+	}
+	return nil
 }
 
 // IssuerKey loads the run-token issuer's public key, mounted by the

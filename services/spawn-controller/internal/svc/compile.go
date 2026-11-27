@@ -93,11 +93,18 @@ func applyLayer(merged DocSet, explain map[string]string, l namedDocs, base bool
 		if !ok {
 			continue
 		}
+		parent, _ := leafValue(merged, leaf.Path)
 		if !base {
-			parent, _ := leafValue(merged, leaf.Path)
 			if err := checkNarrow(leaf, parent, v); err != nil {
 				return fmt.Errorf("%s: %w", leaf.Path, err)
 			}
+		}
+		if leaf.Path == "workspace.skills" {
+			mergedSkills, err := mergeLayerSkills(parent, v)
+			if err != nil {
+				return err
+			}
+			v = mergedSkills
 		}
 		setLeaf(merged, leaf.Path, v)
 		explain[leaf.Path] = l.role
@@ -128,6 +135,9 @@ func validateSpec(p Passports) error {
 		return err
 	}
 	if err := p.Workspace.validateLayout(); err != nil {
+		return err
+	}
+	if err := validateLayerSkills(p.Workspace.Skills); err != nil {
 		return err
 	}
 	if m := p.Config.Approvals.Mode; m != "" && !slices.Contains(approvalModes, m) {
