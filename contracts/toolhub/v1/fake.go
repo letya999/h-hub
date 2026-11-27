@@ -51,7 +51,10 @@ func (f *Fake) Handlers() Handlers {
 	return Handlers{
 		AdmitCall:  f.admit,
 		Projection: f.projection,
-		Invoke:     f.invoke,
+		SkillPrompt: func(context.Context, SkillPromptReq) (SkillPromptResp, error) {
+			return SkillPromptResp{}, herrors.New(herrors.CodeForbidden, "err.tool-denied")
+		},
+		Invoke: f.invoke,
 	}
 }
 

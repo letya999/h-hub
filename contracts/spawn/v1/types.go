@@ -238,6 +238,7 @@ type Handlers struct {
 	Rollback       func(context.Context, RollbackReq) (RollbackResp, error)
 	Explain        func(context.Context, ExplainReq) (ExplainResp, error)
 	Workspace      func(context.Context, WorkspaceReq) (WorkspaceResp, error)
+	SkillInventory func(context.Context, SkillInventoryReq) (SkillInventoryResp, error)
 	EditConfig     func(context.Context, EditConfigReq) (ActivateResp, error)
 	RestartRequest func(context.Context, RestartReq) (RestartResp, error)
 }
@@ -260,6 +261,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"Rollback":       op(h.Rollback),
 		"Explain":        op(h.Explain),
 		"Workspace":      op(h.Workspace),
+		"SkillInventory": op(h.SkillInventory),
 		"EditConfig":     op(h.EditConfig),
 		"RestartRequest": op(h.RestartRequest),
 	}

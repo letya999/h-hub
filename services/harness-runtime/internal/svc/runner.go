@@ -50,7 +50,7 @@ func (s *Server) runAdmission(a *Admission, request hv1.SubmitRunReq) {
 }
 
 func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.SubmitRunReq, session string) (answer string, err error) {
-	allowed, err := s.projection(ctx, a)
+	allowed, skills, err := s.projection(ctx, a)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +74,7 @@ func (s *Server) runHermes(ctx context.Context, a *Admission, request hv1.Submit
 		return "", fmt.Errorf("submit Hermes run: %w", err)
 	}
 	s.mu.Lock()
-	a.native, a.allowed = run, allowed
+	a.native, a.allowed, a.skills = run, allowed, skills
 	close(s.changed)
 	s.changed = make(chan struct{})
 	s.mu.Unlock()
@@ -144,18 +144,34 @@ func (s *Server) reportReceipt(a *Admission, kind, data string) (tv1.ReportRunRe
 	return tv1.ReportRunResp{}, fmt.Errorf("journal Hermes event: %w", err)
 }
 
-func (s *Server) projection(ctx context.Context, a *Admission) (map[string]string, error) {
+func (s *Server) projection(ctx context.Context, a *Admission) (map[string]string, string, error) {
 	allowed := map[string]string{}
 	if s.deps.Rendered.ToolURL == "" {
-		return allowed, nil
+		return allowed, "", nil
 	}
 	c := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClient(s.deps.Rendered.ToolURL, a.Token)}}
 	p, err := c.Projection(ctx, thv1.ProjectionReq{Run: a.Run, Digest: a.Digest})
 	if err != nil {
 		if thv1.IsEmptyProjection(err) {
-			return allowed, nil
+			return allowed, "", nil
 		}
-		return nil, fmt.Errorf("project admitted tools: %w", err)
+		return nil, "", fmt.Errorf("project admitted tools: %w", err)
 	}
-	return approvedTools(p)
+	allowed, err = approvedTools(p)
+	if err != nil {
+		return nil, "", err
+	}
+	skills, err := loadSkillPrompt(ctx, c, a, allowed)
+	return allowed, skills, err
+}
+
+func loadSkillPrompt(ctx context.Context, c *thv1.Client, a *Admission, allowed map[string]string) (string, error) {
+	if allowed["skills_search"] != "skills" {
+		return "", nil
+	}
+	catalog, err := c.SkillPrompt(ctx, thv1.SkillPromptReq{Run: a.Run, Digest: a.Digest})
+	if err != nil {
+		return "", fmt.Errorf("resolve admitted skill catalog: %w", err)
+	}
+	return catalog.Text, nil
 }

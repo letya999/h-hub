@@ -66,12 +66,19 @@ func New(sub string, db *sql.DB, deps Deps, l *log.L) *Server {
 }
 
 func (s *Server) requestTurn(ctx context.Context, r tv1.RequestTurnReq) (tv1.RequestTurnResp, error) {
-	tok, err := s.toks.Token(ctx, "task-engine")
+	cl, err := taskClient(s, ctx)
 	if err != nil {
 		return tv1.RequestTurnResp{}, err
 	}
-	cl := tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(s.deps.TaskURL, tok)}}
 	return cl.GetRequestTurn(ctx, r) //nolint:wrapcheck // preserve the task contract error
+}
+
+func taskClient(s *Server, ctx context.Context) (*tv1.Client, error) {
+	tok, err := s.toks.Token(ctx, "task-engine")
+	if err != nil {
+		return nil, err
+	}
+	return &tv1.Client{T: tv1.HTTP{C: httpapi.NewClient(s.deps.TaskURL, tok)}}, nil
 }
 
 // specMode resolves config.approvals.mode through the same spec the
@@ -97,7 +104,11 @@ func (m specMode) ApprovalsMode(ctx context.Context, space string) (string, erro
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	ops := thv1.Ops(thv1.Handlers{
-		AdmitCall: s.admitCall, Projection: s.projection, Invoke: s.invoke, NotifyProjection: s.notifyProjection})
+		AdmitCall: s.admitCall, Projection: s.projection, Invoke: s.invoke,
+		SkillPrompt: func(ctx context.Context, r thv1.SkillPromptReq) (thv1.SkillPromptResp, error) {
+			return skillPrompt(s, ctx, r)
+		},
+		NotifyProjection: s.notifyProjection})
 	runVer := httpapi.RunVerifier(s.deps.Issuer, s.deps.Now)
 	svcVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.Edges, s.deps.Now)
 	dual := func(r *http.Request) (httpapi.Principal, error) {

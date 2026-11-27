@@ -142,6 +142,7 @@ type Handlers struct {
 	ReportRun       func(context.Context, ReportRunReq) (ReportRunResp, error)
 	GetRun          func(context.Context, GetRunReq) (GetRunResp, error)
 	GetRequestTurn  func(context.Context, RequestTurnReq) (RequestTurnResp, error)
+	GetRunSession   func(context.Context, RunSessionReq) (RunSessionResp, error)
 }
 
 // Ops maps operation names to request handlers.
@@ -157,6 +158,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"ReportRun":       op(h.ReportRun),
 		"GetRun":          op(h.GetRun),
 		"GetRequestTurn":  op(h.GetRequestTurn),
+		"GetRunSession":   op(h.GetRunSession),
 	}
 }
 

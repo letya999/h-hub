@@ -28,6 +28,7 @@ func (s *Server) handlers() tv1.Handlers {
 		ReportRun:       s.rep.reportRun,
 		GetRun:          s.ops.getRun,
 		GetRequestTurn:  s.ops.getRequestTurn,
+		GetRunSession:   s.ops.getRunSession,
 	}
 }
 
