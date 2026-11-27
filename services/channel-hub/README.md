@@ -53,7 +53,7 @@ edges ([TestOperatorAlert](../../test/e2e/lifecycle/operator_alert_test.go)).
 The channel checks the spawn watchdog and sends a direct operator alert
 for each stale tick ([TestStaleSpawnTickRefusesHealth](../../test/e2e/lifecycle/watchdog_stale_test.go)).
 Long answers become five text parts plus a remainder file
-([TestScriptedLongAnswer](../../test/e2e/channel/scripted_channel_test.go)).
+([Warm Hermes delivery scenario](../../test/e2e/channel/warm_channel_test.go)).
 An owner question includes the turn introduction in one message. When the
 text exceeds Telegram's message limit, a single document carries the full
 text, a caption and the choice buttons.

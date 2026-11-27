@@ -18,33 +18,21 @@ import (
 	. "github.com/letya999/h-hub/test/e2e/harness"
 )
 
-func TestHermesCompleteLongDelivery(t *testing.T) {
-	t.Parallel()
+func hermesCompleteLongDelivery(t *testing.T, f *warmChannel) {
 	ctx := context.Background()
-	owner := "long_native_" + Nonce
-	_, code := AddUser(t, owner)
-	inject := func(key, text string) {
-		t.Helper()
-		_, err := MockClient(t, owner, "Inject").Inject(ctx, cv1.InjectReq{
-			External: owner, UpdateID: Idem(owner, key), Text: text})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	inject("link", "/start "+code)
-	cursor := WaitMock(t, owner, 0, "Account linked", 10*time.Second)
+	id := "long_native_" + Nonce
 	var response strings.Builder
 	response.WriteString("<script>alert(1)</script>")
 	for i := range 21000 {
 		response.WriteRune(0x4e00 + rune(i))
 	}
-	input := "scenario:" + owner + " long"
-	PostScenario(t, fmt.Sprintf("id: %s\nsteps:\n  - expect: %s\n    respond: %s\n", owner,
+	input := "scenario:" + id + " long"
+	PostScenario(t, fmt.Sprintf("id: %s\nsteps:\n  - expect: %s\n    respond: %s\n", id,
 		strconv.Quote(input), strconv.Quote(response.String())), http.StatusCreated)
-	inject("message", input)
+	f.inject(t, id, input, 0)
 	var chunks []cv1.OutMessage
 	testkit.Poll(t, 3*time.Minute, 250*time.Millisecond, func() bool {
-		out, err := MockClient(t, owner, "ReadOutbox").ReadOutbox(ctx, cv1.ReadOutboxReq{External: owner, After: cursor})
+		out, err := MockClient(t, f.owner, "ReadOutbox").ReadOutbox(ctx, cv1.ReadOutboxReq{External: f.owner, After: f.cursor})
 		chunks = out.Messages
 		return err == nil && len(chunks) >= 6
 	})

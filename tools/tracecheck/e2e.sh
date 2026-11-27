@@ -3,10 +3,36 @@ set -eu
 
 start=$(date +%s)
 failed=0
-# Each parallel case may cold-start several real Hermes processes.
-if ! go test -tags hhube2e -count=1 -parallel 2 -timeout 10m "$@" \
-  ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability; then
-  failed=1
+reports=$(mktemp -d)
+trap 'rm -rf "$reports"' EXIT
+
+run_group() {
+  name=$1
+  shift
+  began=$(date +%s)
+  status=0
+  go test -tags hhube2e -count=1 -parallel 2 -timeout 10m "$@" || status=$?
+  printf 'e2e %s: %ss\n' "$name" "$(($(date +%s) - began))" >&2
+  return "$status"
+}
+
+# All other cases may cold-start Hermes. The two filters cover the same
+# packages without dropping or repeating cases.
+control='^Test(ForgedRunTokenRefused|OwnerApprovalOutcomes|OwnerRequestSelfAnswer|OwnerAnswerSingleUse|OwnerRequestExpiry'
+control="$control|ForgedToken|ServiceEdge|MissingConfigRefused|HermesSessionArchiveIncludesCommittedWAL|OperatorAlert|OrphanRuntimeRemoved"
+control="$control|PassportNarrowRefusal|PassportConfirmStaleRefused|PassportRollbackRestoresDigest"
+control="$control|StoreMissingDatabaseRefusesStartup|StaleSpawnTickRefusesHealth|SweepLagOperatorAlert)$"
+run_group control "$@" -run "$control" \
+  ./test/e2e/channel ./test/e2e/lifecycle > "$reports/control" &
+control_pid=$!
+run_group hermes "$@" -skip "$control" \
+  ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability > "$reports/hermes" &
+hermes_pid=$!
+
+wait "$control_pid" || failed=1
+wait "$hermes_pid" || failed=1
+cat "$reports/control" "$reports/hermes"
+if [ "$failed" -ne 0 ]; then
   awk '/^SwapTotal:/' /proc/meminfo >&2
   docker events --since "$start" --until "$(date +%s)" --filter label=hhub.managed=true \
     --filter event=oom --format 'Hermes container {{.Actor.ID}} reached its memory limit' >&2
@@ -15,7 +41,7 @@ if ! go test -tags hhube2e -count=1 -parallel 2 -timeout 10m "$@" \
   done
 fi
 # This package restarts the shared stack.
-go test -tags hhube2e -count=1 -timeout 10m "$@" ./test/e2e/disrupt || failed=1
+run_group disruption "$@" ./test/e2e/disrupt || failed=1
 elapsed=$(($(date +%s) - start))
 printf 'mandatory e2e: %ss\n' "$elapsed" >&2
 if [ "$elapsed" -gt 600 ]; then

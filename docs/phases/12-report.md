@@ -84,3 +84,45 @@ was identical, the local migration record was reconciled with the final
 file so checks could run against the existing installation.
 
 There are no open owner questions for this phase.
+
+## Follow-up on check duration
+
+`v0.0.12` is the merged Phase 12 commit. Its PR check and manually
+dispatched nightly passed. [Phase 12 PR](https://github.com/letya999/h-hub/pull/26) ·
+[Nightly run](https://github.com/letya999/h-hub/actions/runs/45906816502).
+
+The Phase 13 work uses the five-minute warm check target and the
+existing ten-minute mandatory e2e limit.
+
+| Run | Full check | Mandatory e2e | Result |
+| --- | ---: | ---: | --- |
+| Recorded Phase 12 release run | 492.86 s | 401 s | Passed |
+| Unmodified release on the current Windows Docker host | 1,015.89 s | More than 600 s | Stopped after crossing the e2e limit and reproducing runtime readiness timeouts |
+| Independent control and Hermes groups | 1,240.69 s | 658 s | Control 12 s, Hermes 603 s, disruption 55 s. The Hermes group hit its timeout. |
+| Grouped and reused Hermes fixture | 676.96 s | 590 s | Warm stack. Control 11 s, Hermes 514 s, disruption 75 s. One lifecycle test failed. |
+
+The grouped run kept the stack restart scenario isolated. The runtime
+intent and image pin scenarios reached readiness in 55.37 s and 54.15 s
+respectively. Other cases timed out while waiting for runtime readiness
+or a turn result. The warm fixture reuses one Docker container for the
+question, choice and two long-delivery scenarios, and asserts that the
+container ID is stable after each case. All four passed in 58.71 s.
+The first took 48.61 s including startup. The other three took 3.40 s,
+2.13 s and 2.11 s. Without reuse, the grouped run measured 50.47 s for
+choice and 45.73 s for the scripted long answer.
+
+The warm run reused the stack and ran `just check` inside the pinned
+development image. Its preparation and checks before e2e took about
+87 s. The full run exceeded the 300 s target. `TestHermesPassportTools`
+failed when its Docker HTTP observation timed out after 30 s within
+the scenario's 90 s deadline. A regression reproduces that failure.
+The test client now observes the same container again within the
+existing scenario deadline. The regression and the lifecycle scenario
+passed in the full Phase 13 check. That run took 492.99 s overall and
+394 s for mandatory e2e.
+
+For the remaining timing work, measure the same warm checkout on the
+Windows workstation and a Linux CI runner, recording each check stage
+and real Hermes readiness. These measurements can show how much time
+comes from test scheduling and how much comes from startup on the
+current host. The 300 s check target and 600 s e2e limit remain fixed.
