@@ -22,6 +22,7 @@ checkrun := "docker run --rm --network hhub -v /var/run/docker.sock:/var/run/doc
             " -e HHUB_IDENTITY_URL=http://identity-hub:9000 -e HHUB_MODEL_URL=http://model-gateway:9000" + \
             " -e HHUB_BROKER_URL=http://credential-broker:9000 -e HHUB_TOOL_URL=http://tool-hub:9000" + \
             " -v hhub-conf:/etc/hhub:ro -v " + data + "/secrets:/run/hhub-secrets:ro" + \
+            " -v hhub_hhub-space-worker-sockets:/run/hhub-worker-slots:ro" + \
             " -v " + src + ":/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache "
 check_line := if os() == "windows" { "just stack && " + checkrun + img + " just _check" } else { "just _check" }
 fast_line  := if os() == "windows" { run + img + " just check-fast" } else { "just _check-fast" }
@@ -89,6 +90,8 @@ stack: images
     docker compose -f deploy/compose.yaml up -d --wait postgres
     just init
     docker compose -f deploy/compose.yaml up -d --wait
+    # Reload the approved local executor image when only that image changed.
+    docker compose -f deploy/compose.yaml up -d --wait --no-deps --force-recreate spawn-controller
     -docker rm -f scripted-model
     docker run -d --name scripted-model --network hhub --restart unless-stopped hhub-scripted-model:local
 
@@ -104,6 +107,7 @@ e2e:
       -e HHUB_TOOL_URL=http://tool-hub:9000 \
       -e HHUB_ADMIN_DSN={{ dsn }} \
       -v hhub-conf:/etc/hhub:ro \
+      -v hhub_hhub-space-worker-sockets:/run/hhub-worker-slots:ro \
       -v {{ data }}/secrets:/run/hhub-secrets:ro \
       -v {{ src }}:/src:ro -v hhub-gocache:/go -v hhub-cache:/root/.cache \
       {{ img }} sh /src/tools/tracecheck/e2e.sh

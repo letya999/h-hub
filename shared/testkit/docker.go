@@ -93,16 +93,24 @@ func (d *Docker) List(ctx context.Context, label string) ([]ContainerSummary, er
 
 // Inspect returns the full inspect document (loosely decoded).
 type Inspect struct {
-	ID     string `json:"Id"`
-	Name   string `json:"Name"`
-	Image  string `json:"Image"`
-	Config struct {
+	ID      string    `json:"Id"`
+	Name    string    `json:"Name"`
+	Image   string    `json:"Image"`
+	Created time.Time `json:"Created"`
+	Config  struct {
 		Env    []string          `json:"Env"`
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
 		ReadonlyRootfs bool     `json:"ReadonlyRootfs"`
 		CapDrop        []string `json:"CapDrop"`
+		Mounts         []struct {
+			Target        string `json:"Target"`
+			ReadOnly      bool   `json:"ReadOnly"`
+			VolumeOptions struct {
+				Subpath string `json:"Subpath"`
+			} `json:"VolumeOptions"`
+		} `json:"Mounts"`
 	} `json:"HostConfig"`
 	State struct {
 		Status  string `json:"Status"`

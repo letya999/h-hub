@@ -27,6 +27,11 @@ Tool-hub records one skill catalog revision per conversation and
 applies the prompt budget to that revision. Its platform guide uses
 the effective tool projection. [Catalog and guide tests](internal/svc/skills_test.go).
 
+The terminal executor requires `terminal.exec` and the selected terminal
+toolset. It gates the call through the effective approvals mode,
+then sends a bounded argument vector to an isolated worker.
+[Terminal scenario](../../test/e2e/channel/terminal_test.go).
+
 ## Contracts
 
 Implements `contracts/toolhub/v1` (`AdmitCall`, `Projection`,
@@ -37,6 +42,9 @@ questions through `contracts/channel/v1`.
 [Question and choice round trips](../../test/e2e/channel/ownerreq_test.go)
 The skill catalog uses task-engine's `GetRunSession` binding and
 spawn-controller's `SkillInventory`. [Skill scenario](../../test/e2e/channel/skills_test.go).
+The terminal uses spawn-controller's `ClaimWorker` and `WorkerLease`
+for lifecycle, and `contracts/worker/v1` for direct execution.
+[Worker lifecycle scenario](../../test/e2e/lifecycle/worker_test.go).
 
 ## Does not do
 
@@ -50,6 +58,11 @@ routes replies to the request's addressee.
 Tool-hub checks the originating job before delivery and answer. A durable
 outbox check also retires unreported requests after a job finishes.
 [Lost-report scenario](../../test/e2e/channel/ownerreq_proof_test.go#TestFinishedJobRetractsUnreportedRequests)
+
+A terminal call records its dispatch before sending the command.
+The stable call ID prevents repeated execution after a lost response.
+The interrupted call returns `uncertain` with retries disabled.
+[Terminal fault scenarios](../../test/e2e/disrupt/terminal_faults_test.go).
 
 ## Config
 

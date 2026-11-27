@@ -3,8 +3,8 @@
 ## Purpose
 
 The only service that touches containers: it owns spaces, compiles
-minimal passports into the effective spec with one digest, and runs the
-Runtime machine over the Docker Engine API.
+minimal passports into the effective spec with one digest, and drives
+the Runtime and Worker machines through the Docker Engine API.
 
 ## Zone and neighbors
 
@@ -27,6 +27,11 @@ The controller renders the combined layer skill showcase on the
 read-only mount. It checks the complete candidate body before replacing
 an agent's Markdown skill. [Skill boundary tests](internal/svc/skills_test.go).
 
+Worker claims bind the authenticated tenant, space, profile and
+passport digest. Launch reads the installed image ID pinned at controller
+startup and the workspace layout from the owned passport.
+[Worker lifecycle scenario](../../test/e2e/lifecycle/worker_test.go).
+
 ## Contracts
 
 Implements `contracts/spawn/v1` (`CreateSpace`, `DestroySpace`,
@@ -34,6 +39,11 @@ Implements `contracts/spawn/v1` (`CreateSpace`, `DestroySpace`,
 `contracts/spawn/v1/fake.go`.
 Tool-hub reads the workspace skill inventory through `SkillInventory`.
 [Skill scenario](../../test/e2e/channel/skills_test.go).
+
+Tool-hub claims a worker through `ClaimWorker` and changes its lease
+through `WorkerLease`. Cellinit serves the direct command call on its
+fixed loopback port using a transferred TCP socket.
+[Worker lifecycle scenario](../../test/e2e/lifecycle/worker_test.go).
 
 ## Does not do
 
@@ -49,6 +59,13 @@ Runtime: `absent -> starting -> warm -> busy -> draining -> absent`
 plus `failed`, `quarantined`, `missing` (`LongLived`). `warm` carries a
 15-minute idle TTL, `busy` re-arms through work, `draining` waits for
 runs to settle. Sweeper and watchdog run in-process.
+
+Worker generations start under a committed intent, move through
+renewable leases and idle expiry, and stop through one Inspect rule.
+An unconfirmed stop quarantines the key and keeps its socket directory
+assigned. The janitor checks ownership labels for unregistered workers.
+[Quarantine test](internal/svc/worker_db_test.go).
+[Orphan scenario](../../test/e2e/lifecycle/orphan_worker_test.go).
 
 ## Config
 

@@ -19,11 +19,11 @@ run_group() {
 # All other cases may cold-start Hermes. The two filters cover the same
 # packages without dropping or repeating cases.
 control='^Test(ForgedRunTokenRefused|OwnerApprovalOutcomes|OwnerRequestSelfAnswer|OwnerAnswerSingleUse|OwnerRequestExpiry'
-control="$control|ForgedToken|ServiceEdge|MissingConfigRefused|HermesSessionArchiveIncludesCommittedWAL|OperatorAlert|OrphanRuntimeRemoved"
+control="$control|ForgedToken|ServiceEdge|MissingConfigRefused|HermesSessionArchiveIncludesCommittedWAL|OperatorAlert|OrphanRuntimeRemoved|OrphanWorkerRemoved|WorkerClaimAndDestroy|WorkerStopQuarantine"
 control="$control|PassportNarrowRefusal|PassportConfirmStaleRefused|PassportRollbackRestoresDigest"
-control="$control|StoreMissingDatabaseRefusesStartup|StaleSpawnTickRefusesHealth|SweepLagOperatorAlert)$"
+control="$control|StoreMissingDatabaseRefusesStartup|StaleSpawnTickRefusesHealth|SweepLagOperatorAlert|CellinitBootInDocker)$"
 run_group control "$@" -run "$control" \
-  ./test/e2e/channel ./test/e2e/lifecycle > "$reports/control" &
+  ./test/e2e/channel ./test/e2e/lifecycle ./services/spawn-controller/internal/backend > "$reports/control" &
 control_pid=$!
 run_group hermes "$@" -skip "$control" \
   ./test/e2e/channel ./test/e2e/lifecycle ./test/e2e/capability > "$reports/hermes" &
