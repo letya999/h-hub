@@ -66,6 +66,9 @@ func (s *Server) handlers() sv1.Handlers {
 		Workspace: func(ctx context.Context, r sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
 			return workspaceAccess(s, ctx, r)
 		},
+		SkillInventory: func(ctx context.Context, r sv1.SkillInventoryReq) (sv1.SkillInventoryResp, error) {
+			return skillInventory(s, ctx, r)
+		},
 		EditConfig: func(ctx context.Context, r sv1.EditConfigReq) (sv1.ActivateResp, error) {
 			return editConfig(s, ctx, r)
 		},

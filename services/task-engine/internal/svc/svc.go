@@ -143,10 +143,12 @@ func (s *Server) Mux() *http.ServeMux {
 			return ops["ReportRun"](w, r)
 		}))
 	svcVer := httpapi.ServiceVerifier(s.deps.Issuer, s.sub, s.deps.EdgeTab, s.deps.Now)
-	mux.Handle("/v1/GetRequestTurn", httpapi.HandleAuth(svcVer,
-		func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
-			return ops["GetRequestTurn"](w, r)
-		}))
+	for _, name := range []string{"GetRequestTurn", "GetRunSession"} {
+		mux.Handle("/v1/"+name, httpapi.HandleAuth(svcVer,
+			func(w http.ResponseWriter, r *http.Request, _ httpapi.Principal) error {
+				return ops[name](w, r)
+			}))
+	}
 	mux.HandleFunc("/healthz", s.healthz)
 	return mux
 }

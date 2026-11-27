@@ -32,9 +32,23 @@ func (f *Fake) Handlers() Handlers {
 		DestroySpace:   f.destroy,
 		EnsureRuntime:  f.ensure,
 		ResolveSpec:    f.resolve,
+		SkillInventory: f.skillInventory,
 		ReleaseRuntime: f.release,
 		SetModel:       f.setModel,
 	}
+}
+
+func (f *Fake) skillInventory(_ context.Context, r SkillInventoryReq) (SkillInventoryResp, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	space, ok := f.spaces[r.Space]
+	if !ok || space.Owner != r.Owner {
+		return SkillInventoryResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	if r.Digest != space.Digest {
+		return SkillInventoryResp{}, herrors.ErrStale
+	}
+	return SkillInventoryResp{Entries: map[string]string{}}, nil
 }
 
 func digestOf(parts ...string) string {

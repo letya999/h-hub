@@ -109,6 +109,7 @@ type InvokeResp struct {
 type Handlers struct {
 	AdmitCall        func(context.Context, AdmitCallReq) (AdmitCallResp, error)
 	Projection       func(context.Context, ProjectionReq) (ProjectionResp, error)
+	SkillPrompt      func(context.Context, SkillPromptReq) (SkillPromptResp, error)
 	Invoke           func(context.Context, InvokeReq) (InvokeResp, error)
 	NotifyProjection func(context.Context, sv1.RestartReq) (sv1.RestartResp, error)
 }
@@ -118,6 +119,7 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 	return map[string]httpapi.Handler{
 		"AdmitCall":        op(h.AdmitCall),
 		"Projection":       op(h.Projection),
+		"SkillPrompt":      op(h.SkillPrompt),
 		"Invoke":           op(h.Invoke),
 		"NotifyProjection": op(h.NotifyProjection),
 	}

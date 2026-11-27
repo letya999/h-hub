@@ -183,6 +183,8 @@ func toolhubExec(ctx context.Context, s *Server, c toolCall) (json.RawMessage, e
 		return builtinEcho(ctx, c.args)
 	case "files":
 		return s.invokeFiles(ctx, c)
+	case "skills":
+		return invokeSkills(s, ctx, c)
 	case "config":
 		return s.invokeConfigEdit(ctx, c)
 	case "ownerreq":

@@ -44,6 +44,12 @@ func (f *Fake) Handlers() Handlers {
 		ReportRun:       f.report,
 		GetRun:          f.runEvents,
 		GetRequestTurn:  requestTurn,
+		GetRunSession: func(_ context.Context, r RunSessionReq) (RunSessionResp, error) {
+			if err := r.Validate(); err != nil {
+				return RunSessionResp{}, err
+			}
+			return RunSessionResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+		},
 	}
 }
 

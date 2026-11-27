@@ -112,7 +112,7 @@ services:
       - to: model-gateway
         ops: [Complete]
       - to: tool-hub
-        ops: [AdmitCall, Projection, Invoke]
+        ops: [AdmitCall, Projection, Invoke, SkillPrompt]
   - name: proactive-engine
     zone: control
     database: postgres
@@ -142,13 +142,13 @@ services:
         path: /etc/hhub
     edges:
       - to: spawn-controller
-        ops: [ResolveSpec, Workspace, EditConfig, RestartRequest]
+        ops: [ResolveSpec, Workspace, EditConfig, RestartRequest, SkillInventory]
       - to: identity-hub
         ops: [Resolve]
       - to: channel-hub
         ops: [DeliverRequest, RetractRequest]
       - to: task-engine
-        ops: [GetRequestTurn]
+        ops: [GetRequestTurn, GetRunSession]
   - name: memory-hub
     zone: agent
     database: postgres

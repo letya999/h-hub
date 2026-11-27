@@ -52,6 +52,27 @@ toolsets:
             key: {type: string}
             value: {}
           required: [key, value]
+  - name: skills
+    provider: skills
+    tools:
+      - name: skills_search
+        description: Search the conversation's skill catalog by name or description.
+        capability: workspace.read
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            query: {type: string}
+          required: [query]
+      - name: skills_read
+        description: Read a Markdown skill from the conversation's catalog by its full name.
+        capability: workspace.read
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            name: {type: string}
+          required: [name]
   - name: files
     provider: files
     tools:

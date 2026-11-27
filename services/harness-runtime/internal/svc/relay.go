@@ -108,7 +108,7 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request, a *Admission
 		return nil
 	}
 	stream := string(request["stream"]) == "true"
-	body, err := spaceModelRequest(request, offered, s.deps.Rendered.Instructions)
+	body, err := spaceModelRequest(request, offered, a.instructions(s.deps.Rendered.Instructions))
 	if err != nil {
 		return fmt.Errorf("encode Hermes model request: %w", err)
 	}
@@ -122,6 +122,13 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request, a *Admission
 		return err
 	}
 	return writeCompletion(w, res.Response, stream)
+}
+
+func (a *Admission) instructions(rendered string) string {
+	if a.skills == "" {
+		return rendered
+	}
+	return rendered + "\n\n" + a.skills
 }
 
 // A child may offer fewer tools than its parent. Each response is bound to its own request.

@@ -43,26 +43,37 @@ var workspaceActions = map[string]workspaceAction{
 
 func workspaceAccess(s *Server, ctx context.Context, req sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {
 	var out sv1.WorkspaceResp
+	if req.Key == "" {
+		return out, herrors.New(herrors.CodeInvalid, "err.missing-input")
+	}
+	dir, workspace, err := workspaceScope(s, ctx, sv1.SkillInventoryReq{Owner: req.Owner, Space: req.Space, Digest: req.Digest})
+	if err != nil {
+		return out, err
+	}
+	return runWorkspaceAction(dir, workspace, req)
+}
+
+func workspaceScope(s *Server, ctx context.Context, req sv1.SkillInventoryReq) (string, WorkspacePassport, error) {
+	var out WorkspacePassport
 	principal := httpapi.PrincipalFrom(ctx)
 	if principal == nil || principal.Purpose != "service" || principal.Sub != "tool-hub" {
-		return out, herrors.New(herrors.CodeForbidden, "err.forbidden")
+		return "", out, herrors.New(herrors.CodeForbidden, "err.forbidden")
 	}
-	if req.Owner == "" || req.Space == "" || req.Digest == "" || req.Key == "" {
-		return out, herrors.New(herrors.CodeInvalid, "err.missing-input")
+	if req.Owner == "" || req.Space == "" || req.Digest == "" {
+		return "", out, herrors.New(herrors.CodeInvalid, "err.missing-input")
 	}
 	space, err := getSpace(ctx, s.db, req.Owner, req.Space)
 	if err != nil {
-		return out, err
+		return "", out, err
 	}
 	if staleDigest(req.Digest, space.digest) {
-		return out, herrors.ErrStale
+		return "", out, herrors.ErrStale
 	}
 	p, err := specPassports(space)
 	if err != nil {
-		return out, err
+		return "", out, err
 	}
-	root := filepath.Join(s.deps.RenderDir, workspaceStorage, space.id)
-	return runWorkspaceAction(root, p.Workspace, req)
+	return filepath.Join(s.deps.RenderDir, workspaceStorage, space.id), p.Workspace, nil
 }
 
 func runWorkspaceAction(dir string, w WorkspacePassport, req sv1.WorkspaceReq) (sv1.WorkspaceResp, error) {

@@ -40,6 +40,7 @@ type Admission struct {
 	stop     context.CancelFunc
 	native   hermes.Run
 	allowed  map[string]string
+	skills   string
 	fault    error
 	done     bool
 	expires  int64
