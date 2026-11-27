@@ -48,6 +48,7 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
 | `cap.config.edit_own` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
 | `cap.persona.edit_own` | proved | tool-hub | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.terminal.exec` | proved | tool-hub | [TestPhase14Terminal](../test/e2e/channel/terminal_test.go#TestPhase14Terminal) | Bounded execution requires the terminal.exec grant and the terminal toolset selection. |
 | `sys.skill-showcase` | proved | spawn-controller | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A runtime refuses to start without its read-only showcase. |
 | `sys.skill-scan` | proved | spawn-controller | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A skill write refused by the scanner must leave the prior content intact. |
 | `sys.skill-catalog` | proved | tool-hub | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A session cannot read a skill outside its pinned catalog revision. |

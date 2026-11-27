@@ -109,7 +109,8 @@ func (s *Server) invoke(ctx context.Context, r thv1.InvokeReq) (thv1.InvokeResp,
 	}
 	ts := registry[r.Toolset]
 	res, err := toolhubExec(ctx, s,
-		toolCall{ts: ts, name: r.Tool, claims: d.claims, args: r.Arguments, receipt: d.receipt, specDigest: d.specDigest})
+		toolCall{ts: ts, name: r.Tool, claims: d.claims, args: r.Arguments, receipt: d.receipt,
+			specDigest: d.specDigest, key: r.Key})
 	if err != nil {
 		return thv1.InvokeResp{}, err
 	}

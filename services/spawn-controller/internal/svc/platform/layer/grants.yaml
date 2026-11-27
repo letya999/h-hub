@@ -7,3 +7,4 @@ allow:
   - workspace.write
   - config.edit_own
   - persona.edit_own
+  - terminal.exec
