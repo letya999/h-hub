@@ -112,6 +112,8 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 		return resetSpace(s, ctx, f)
 	case worker.StopTopic:
 		return reapWorkerEffect(s, ctx, f)
+	case worker.LaunchTopic:
+		return startWorkerEffect(s, ctx, f)
 	default:
 		return fmt.Errorf("unknown topic %q", f.Topic)
 	}
@@ -181,6 +183,13 @@ func (s *Server) dockerCreate(ctx context.Context, e createEffect) error {
 }
 
 func launchHermes(s *Server, ctx context.Context, name string, sp spaceRow, p Passports) (string, error) {
+	blocked, err := worker.BlocksWorkspace(ctx, s.db, sp.id, sp.digest)
+	if err != nil {
+		return "", fmt.Errorf("runtime workspace: %w", err)
+	}
+	if blocked {
+		return "", errRestartBusy
+	}
 	if err := s.requireImage(p.Stack.Image); err != nil {
 		return "", err
 	}

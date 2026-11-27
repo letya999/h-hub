@@ -21,6 +21,7 @@ toolhub="hhub-restore-toolhub-$id"
 broker="hhub-restore-broker-$id"
 brokerdata="hhub-restore-broker-data-$id"
 render="hhub-restore-render-$id"
+worker_sockets="hhub_$net-worker-sockets"
 operator_conf="hhub-restore-conf-$id"
 restore_probe_space=
 services="identity-hub task-engine channel-hub spawn-controller model-gateway tool-hub credential-broker"
@@ -40,6 +41,7 @@ cleanup() {
   done
   docker volume rm "$brokerdata" >/dev/null 2>&1 || true
   docker volume rm "$render" >/dev/null 2>&1 || true
+  docker volume rm "$worker_sockets" >/dev/null 2>&1 || true
   docker rm -f "$operator_conf" >/dev/null 2>&1 || true
   docker volume rm "$operator_conf" >/dev/null 2>&1 || true
   while IFS= read -r space; do
@@ -164,7 +166,8 @@ docker run -d --rm --name "$toolhub" --network "$net" --network-alias tool-hub \
   -e HHUB_SPAWN_URL=http://spawn-controller:9000 \
   -e HHUB_CHANNEL_URL=http://channel-hub:9000 \
   -e HHUB_TASK_URL=http://task-engine:9000 \
-  -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" hhub-tool-hub:local >/dev/null
+  -v "hhub-restore-keys-tool-hub-$id:/etc/hhub:ro" \
+  -v "$worker_sockets:/run/hhub-worker-slots" hhub-tool-hub:local >/dev/null
 # credential-broker boots only after its key opens the restored
 # snapshot and PRAGMA cipher_version answers (open.go), so a green
 # healthz is the cipher+open proof; the listing diff below is the

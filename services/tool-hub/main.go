@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	wv1 "github.com/letya999/h-hub/contracts/worker/v1"
 	"github.com/letya999/h-hub/services/tool-hub/internal/config"
 	"github.com/letya999/h-hub/services/tool-hub/internal/svc"
 	"github.com/letya999/h-hub/shared/auth"
@@ -36,6 +37,9 @@ func run(ctx context.Context, l *log.L) error {
 	cfg, err := config.Env()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
+	}
+	if err := wv1.PrepareSlots(cfg.WorkerSlots); err != nil {
+		return fmt.Errorf("initialize worker socket volume: %w", err)
 	}
 	db, err := store.Connect(ctx, cfg.DSN)
 	if err != nil {

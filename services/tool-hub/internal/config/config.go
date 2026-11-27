@@ -4,9 +4,14 @@ package config
 import (
 	"fmt"
 	"os"
+
+	wv1 "github.com/letya999/h-hub/contracts/worker/v1"
 )
 
-type C struct{ Sub, DSN, Keys, IdentityURL, SpawnURL, ChannelURL, TaskURL string }
+type C struct {
+	Sub, DSN, Keys, IdentityURL, SpawnURL, ChannelURL, TaskURL string
+	WorkerSlots                                                int
+}
 
 func Env() (C, error) {
 	c := C{Sub: os.Getenv("HHUB_SUB"), DSN: os.Getenv("HHUB_DSN"), Keys: os.Getenv("HHUB_KEYS"),
@@ -17,5 +22,10 @@ func Env() (C, error) {
 			return c, fmt.Errorf("tool config: HHUB_SUB, HHUB_DSN, HHUB_KEYS, HHUB_IDENTITY_URL, HHUB_SPAWN_URL, HHUB_CHANNEL_URL, HHUB_TASK_URL required")
 		}
 	}
+	policy, err := wv1.ReadPolicy()
+	if err != nil {
+		return c, fmt.Errorf("load worker policy: %w", err)
+	}
+	c.WorkerSlots = policy.MaxTotal
 	return c, nil
 }

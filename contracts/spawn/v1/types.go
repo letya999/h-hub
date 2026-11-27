@@ -241,6 +241,7 @@ type Handlers struct {
 	SkillInventory func(context.Context, SkillInventoryReq) (SkillInventoryResp, error)
 	EditConfig     func(context.Context, EditConfigReq) (ActivateResp, error)
 	RestartRequest func(context.Context, RestartReq) (RestartResp, error)
+	Workers        WorkerHandlers
 }
 
 // Ops maps operation names to request handlers.
@@ -264,6 +265,8 @@ func Ops(h Handlers) map[string]httpapi.Handler {
 		"SkillInventory": op(h.SkillInventory),
 		"EditConfig":     op(h.EditConfig),
 		"RestartRequest": op(h.RestartRequest),
+		"ClaimWorker":    op(h.Workers.Claim),
+		"WorkerLease":    op(h.Workers.Lease),
 	}
 }
 

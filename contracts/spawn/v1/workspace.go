@@ -26,7 +26,7 @@ type WorkspaceResp struct {
 
 func (c *Client) Workspace(ctx context.Context, req WorkspaceReq) (WorkspaceResp, error) {
 	var out WorkspaceResp
-	err := c.call(ctx, "Workspace", req, &out)
+	err := call(c, ctx, "Workspace", req, &out)
 	return out, err
 }
 
@@ -41,6 +41,6 @@ type EditConfigReq struct {
 
 func (c *Client) EditConfig(ctx context.Context, req EditConfigReq) (ActivateResp, error) {
 	var out ActivateResp
-	err := c.call(ctx, "EditConfig", req, &out)
+	err := call(c, ctx, "EditConfig", req, &out)
 	return out, err
 }

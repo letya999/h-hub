@@ -117,6 +117,7 @@ services:
       HHUB_TASK_URL: http://task-engine:9000
     volumes:
       - keys-tool-hub:/etc/hhub:ro
+      - hhub-space-worker-sockets:/run/hhub-worker-slots
     depends_on:
       postgres: {condition: service_healthy}
       keydist: {condition: service_completed_successfully}
@@ -194,6 +195,7 @@ volumes:
   broker-data:
   memory-vault:
   hhub-render:
+  hhub-space-worker-sockets:
   cliproxy-auth:
   keys-identity-hub:
   keys-task-engine:

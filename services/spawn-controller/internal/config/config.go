@@ -7,6 +7,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	wv1 "github.com/letya999/h-hub/contracts/worker/v1"
 )
 
 // C is the service configuration: the declared env list.
@@ -22,6 +24,7 @@ type C struct {
 	RenderVol   string // HHUB_RENDER_VOL: volume for rendered configs
 	IdentityURL string // HHUB_IDENTITY_URL: service-token issuer
 	NetworkName string // HHUB_NETWORK: internal network for runtimes
+	Workers     wv1.Policy
 }
 
 // Env loads C from the environment; every declared variable is
@@ -46,15 +49,28 @@ func Env() (C, error) {
 			return c, fmt.Errorf("config: all declared HHUB_* values are required")
 		}
 	}
-	raw, err := os.ReadFile("/usr/share/hhub/hermes-image.ref")
+	hermes, err := hermesImage()
 	if err != nil {
-		return c, fmt.Errorf("hermes image pin: %w", err)
+		return c, err
 	}
-	c.HermesImage = strings.TrimSpace(string(raw))
-	if !hermesRelease.MatchString(c.HermesImage) {
-		return c, fmt.Errorf("invalid Hermes image pin")
+	c.HermesImage = hermes
+	c.Workers, err = wv1.ReadPolicy()
+	if err != nil {
+		return c, fmt.Errorf("load worker policy: %w", err)
 	}
 	return c, nil
+}
+
+func hermesImage() (string, error) {
+	raw, err := os.ReadFile("/usr/share/hhub/hermes-image.ref")
+	if err != nil {
+		return "", fmt.Errorf("hermes image pin: %w", err)
+	}
+	ref := strings.TrimSpace(string(raw))
+	if !hermesRelease.MatchString(ref) {
+		return "", fmt.Errorf("invalid Hermes image pin")
+	}
+	return ref, nil
 }
 
 var hermesRelease = regexp.MustCompile(`^docker\.io/nousresearch/hermes-agent:v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$`)

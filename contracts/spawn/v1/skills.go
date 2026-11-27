@@ -25,6 +25,6 @@ type SkillInventoryResp struct {
 // SkillInventory captures the skills in one effective workspace.
 func (c *Client) SkillInventory(ctx context.Context, req SkillInventoryReq) (SkillInventoryResp, error) {
 	var out SkillInventoryResp
-	err := c.call(ctx, "SkillInventory", req, &out)
+	err := call(c, ctx, "SkillInventory", req, &out)
 	return out, err
 }
