@@ -65,8 +65,13 @@ func run(ctx context.Context, l *log.L) error {
 	if err != nil {
 		return fmt.Errorf("edges: %w", err)
 	}
+	docker := backend.New(cfg.DockerSock, cfg.NetworkName)
+	workers, err := docker.ActivateWorkerProfiles(ctx, cfg.Workers)
+	if err != nil {
+		return fmt.Errorf("worker startup: %w", err)
+	}
 	s := svc.New(cfg.Sub, db, svc.Deps{
-		Docker:       backend.New(cfg.DockerSock, cfg.NetworkName),
+		Docker:       docker,
 		Hermes:       cfg.HermesImage,
 		Image:        cfg.RuntimeImg,
 		ModelURL:     cfg.ModelURL,
@@ -81,6 +86,7 @@ func run(ctx context.Context, l *log.L) error {
 		RuntimeEdges: tab.For("harness-runtime"),
 		Log:          l,
 		Now:          time.Now,
+		WorkerPolicy: workers,
 	})
 	sctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

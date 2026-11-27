@@ -13,6 +13,7 @@ import (
 
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	"github.com/letya999/h-hub/services/spawn-controller/internal/worker"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -75,6 +76,7 @@ func (s *Server) handlers() sv1.Handlers {
 		RestartRequest: func(ctx context.Context, r sv1.RestartReq) (sv1.RestartResp, error) {
 			return acceptRestart(s, ctx, r)
 		},
+		Workers: workerHandlers(s),
 	}
 }
 
@@ -231,17 +233,20 @@ func destroySpaceOp(s *Server, ctx context.Context, r sv1.DestroySpaceReq) (sv1.
 	if scope.Space == "" || scope.Space != r.ID {
 		return sv1.DestroySpaceResp{}, herrors.New(herrors.CodeNotFound, "err.not-found")
 	}
-	sp, err := getSpace(ctx, s.db, scope.Owner, scope.Space)
-	if err != nil {
-		return sv1.DestroySpaceResp{}, err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return sv1.DestroySpaceResp{}, fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // best-effort close
+	sp, err := ownedSpaceForUpdate(ctx, tx, scope.Owner, scope.Space)
+	if err != nil {
+		return sv1.DestroySpaceResp{}, err
+	}
 	if _, err := drainRuntimeTx(s, ctx, tx, sp.id, "api"); err != nil {
 		return sv1.DestroySpaceResp{}, err
+	}
+	if err := s.workers.DrainSpace(ctx, tx, sp.id); err != nil {
+		return sv1.DestroySpaceResp{}, fmt.Errorf("drain space workers: %w", err)
 	}
 	if err := deleteSpace(ctx, tx, sp.id); err != nil {
 		return sv1.DestroySpaceResp{}, err
@@ -362,7 +367,7 @@ func (s *Server) runtimeForLaunch(ctx context.Context, tx *sql.Tx, sp spaceRow) 
 		return sv1.EnsureRuntimeResp{}, err
 	}
 	if !ok {
-		return sv1.EnsureRuntimeResp{Digest: sp.digest}, claimRuntime(s, ctx, tx, sp)
+		return sv1.EnsureRuntimeResp{Digest: sp.digest}, nextRuntime(s, ctx, tx, sp, rt)
 	}
 	var st, actor string
 	if err := tx.QueryRowContext(ctx, `SELECT state, actor FROM fsm.machines
@@ -426,26 +431,37 @@ func ensureByState(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow,
 			return notReady, nil
 		}
 	case "absent", "missing", "failed":
-		if rt.digest != sp.digest {
-			return notReady, claimRuntime(s, ctx, tx, sp)
-		}
-		// Reconciliation must not observe the previous container while the new create is pending.
-		if err := setContainer(ctx, tx, rt.id, "", ""); err != nil {
-			return notReady, err
-		}
-		if err := s.runM.Transition(ctx, tx, fsm.Request{
-			ID: rt.id, Event: "claim", Actor: "api", At: s.deps.Now(),
-			Effects: []fsm.Effect{{Topic: "docker-create",
-				Payload: mustJSON(createEffect{Runtime: rt.id, Space: sp.id})}}}, nil); err != nil {
-			return sv1.EnsureRuntimeResp{}, fmt.Errorf("re-claim: %w", err)
-		}
-		return notReady, nil
+		return notReady, nextRuntime(s, ctx, tx, sp, rt)
 	}
 	// Operator-drained and quarantined runtimes refuse: an operator
 	// releases them, no silent wait.
 	conflict := herrors.New(herrors.CodeConflict, "err.machine-state").
 		With("state", st)
 	return sv1.EnsureRuntimeResp{}, conflict //nolint:wrapcheck // shared error form
+}
+
+func nextRuntime(s *Server, ctx context.Context, tx *sql.Tx, sp spaceRow, rt runtimeRow) error {
+	blocked, err := worker.BlocksWorkspace(ctx, tx, sp.id, sp.digest)
+	if err != nil {
+		return fmt.Errorf("runtime workspace: %w", err)
+	}
+	if blocked {
+		return nil
+	}
+	if rt.id == "" || rt.digest != sp.digest {
+		return claimRuntime(s, ctx, tx, sp)
+	}
+	// Reconciliation must wait for the replacement container.
+	if err := setContainer(ctx, tx, rt.id, "", ""); err != nil {
+		return err
+	}
+	if err := s.runM.Transition(ctx, tx, fsm.Request{
+		ID: rt.id, Event: "claim", Actor: "api", At: s.deps.Now(),
+		Effects: []fsm.Effect{{Topic: "docker-create",
+			Payload: mustJSON(createEffect{Runtime: rt.id, Space: sp.id})}}}, nil); err != nil {
+		return fmt.Errorf("re-claim runtime: %w", err)
+	}
+	return nil
 }
 
 func releaseRuntimeOp(s *Server, ctx context.Context, r sv1.ReleaseRuntimeReq) (sv1.ReleaseRuntimeResp, error) {

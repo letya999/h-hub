@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	wv1 "github.com/letya999/h-hub/contracts/worker/v1"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,17 +35,18 @@ type Volume struct {
 }
 
 type Service struct {
-	Name     string   `yaml:"name"`
-	Zone     string   `yaml:"zone"`
-	Image    string   `yaml:"image"`
-	Deploy   bool     `yaml:"deploy"`
-	Database string   `yaml:"database"`
-	Mem      string   `yaml:"mem"`
-	CPU      float64  `yaml:"cpu"`
-	Pids     int      `yaml:"pids"`
-	Env      []string `yaml:"env"`
-	Volumes  []Mount  `yaml:"volumes"`
-	Edges    []Edge   `yaml:"edges"`
+	Name     string     `yaml:"name"`
+	Zone     string     `yaml:"zone"`
+	Image    string     `yaml:"image"`
+	Deploy   bool       `yaml:"deploy"`
+	Database string     `yaml:"database"`
+	Mem      string     `yaml:"mem"`
+	CPU      float64    `yaml:"cpu"`
+	Pids     int        `yaml:"pids"`
+	Env      []string   `yaml:"env"`
+	Volumes  []Mount    `yaml:"volumes"`
+	Edges    []Edge     `yaml:"edges"`
+	Workers  wv1.Policy `yaml:"workers,omitempty"`
 }
 
 // Client is a non-container principal (hubctl, tests) allowed to hold
@@ -122,8 +124,21 @@ func (f *File) Validate() error {
 		if err := s.validate(seen, vol); err != nil {
 			return err
 		}
+		if err := s.checkWorkers(); err != nil {
+			return err
+		}
 	}
 	return f.checkClients()
+}
+
+func (s Service) checkWorkers() error {
+	if s.Name == "spawn-controller" {
+		return s.Workers.Validate() //nolint:wrapcheck // descriptor validation passes through the precise field error
+	}
+	if !s.Workers.Empty() {
+		return fmt.Errorf("descriptor: %s cannot own worker limits", s.Name)
+	}
+	return nil
 }
 
 func (f *File) checkVolumes() (map[string]bool, error) {

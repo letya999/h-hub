@@ -12,6 +12,7 @@ volumes:
   - name: broker-data
   - name: memory-vault
   - name: hhub-render
+  - name: hhub-space-worker-sockets
   - name: cliproxy-auth
   - name: keys-identity-hub
   - name: keys-task-engine
@@ -28,6 +29,16 @@ services:
     mem: 128m
     cpu: 0.5
     pids: 256
+    workers:
+      max_per_user: 2
+      max_total: 8
+      profiles:
+        terminal:
+          image: hhub-terminal-worker:local
+          entrypoint: /cellinit
+          memory_bytes: 268435456
+          nano_cpus: 1000000000
+          pids: 64
     env:
       - HHUB_SUB
       - HHUB_DSN
@@ -140,9 +151,12 @@ services:
     volumes:
       - name: keys-tool-hub
         path: /etc/hhub
+      - name: hhub-space-worker-sockets
+        path: /run/hhub-worker-slots
+        rw: true
     edges:
       - to: spawn-controller
-        ops: [ResolveSpec, Workspace, EditConfig, RestartRequest, SkillInventory]
+        ops: [ResolveSpec, Workspace, EditConfig, RestartRequest, SkillInventory, ClaimWorker, WorkerLease]
       - to: identity-hub
         ops: [Resolve]
       - to: channel-hub
