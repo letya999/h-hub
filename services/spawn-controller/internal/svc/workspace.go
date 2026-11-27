@@ -103,23 +103,45 @@ func prepareWorkspace(dir, space string, w WorkspacePassport) ([]backend.Workspa
 	if err := w.validateLayout(); err != nil {
 		return nil, err
 	}
+	if !fs.ValidPath(space) || space == "." || strings.ContainsAny(space, "/\\") {
+		return nil, invalidWorkspaceNode(space)
+	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, fmt.Errorf("workspace root: %w", err)
 	}
 	defer root.Close() //nolint:errcheck // directory handle
+	base := path.Join(workspaceStorage, space)
+	if err := refuseLinks(root, base); err != nil {
+		return nil, err
+	}
+	if err := root.MkdirAll(base, 0o755); err != nil {
+		return nil, fmt.Errorf("workspace space directory: %w", err)
+	}
+	spaceRoot, err := root.OpenRoot(base)
+	if err != nil {
+		return nil, fmt.Errorf("open space workspace: %w", err)
+	}
+	defer spaceRoot.Close() //nolint:errcheck // directory handle
+	return prepareWorkspaceNodes(spaceRoot, base, w)
+}
+
+func prepareWorkspaceNodes(root *os.Root, base string, w WorkspacePassport) ([]backend.WorkspaceMount, error) {
 	var mounts []backend.WorkspaceMount
 	for _, node := range w.mountNodes() {
-		source := path.Join(workspaceStorage, space, node.Path)
-		if err := root.MkdirAll(source, 0o755); err != nil {
+		rel := strings.TrimPrefix(node.Path, "/")
+		if err := refuseLinks(root, rel); err != nil {
+			return nil, err
+		}
+		if err := root.MkdirAll(rel, 0o755); err != nil {
 			return nil, fmt.Errorf("workspace mount %s: %w", node.Path, err)
 		}
 		if node.Mode == "rw" {
-			if err := root.Chmod(source, 0o777); err != nil {
+			if err := root.Chmod(rel, 0o777); err != nil {
 				return nil, fmt.Errorf("workspace write mode %s: %w", node.Path, err)
 			}
 		}
-		mounts = append(mounts, backend.WorkspaceMount{Subpath: source, Path: node.Path, ReadOnly: node.Mode != "rw"})
+		mounts = append(mounts, backend.WorkspaceMount{Subpath: path.Join(base, rel), Path: node.Path, ReadOnly: node.Mode != "rw"})
 	}
 	return mounts, nil
 }
