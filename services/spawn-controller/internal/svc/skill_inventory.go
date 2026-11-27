@@ -22,6 +22,10 @@ func skillInventory(s *Server, ctx context.Context, r sv1.SkillInventoryReq) (sv
 	for name, body := range w.Skills {
 		out.Entries[sv1.LayerSkillPrefix+name] = body
 	}
+	out.Capabilities = make(map[string]string, len(catalog))
+	for name, entry := range catalog {
+		out.Capabilities[name] = entry.Summary
+	}
 	hasOwn := slices.ContainsFunc(w.mountNodes(), func(node sv1.WorkspaceNode) bool {
 		return node.Path == ownSkillRoot
 	})

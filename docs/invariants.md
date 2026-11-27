@@ -47,7 +47,10 @@ checks their `testkit.Req` and `testkit.Deny` markers against executed tests.
 | `sys.grant-revocation` | proved | tool-hub | [TestGrantRevocation](../test/e2e/capability/capability_test.go#TestGrantRevocation) | A call on a revoked grant must be refused on the next call. |
 | `cap.tools.use` | proved | tool-hub | [TestCapabilityTriples](../test/e2e/capability/capability_test.go#TestCapabilityTriples) | A call without the tools.use grant must be refused and the tool absent from the projection. |
 | `cap.config.edit_own` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the config.edit_own grant must be refused and the tool absent from the projection. |
-| `cap.persona.edit_own` | deferred:13 | tool-hub | — | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
+| `cap.persona.edit_own` | proved | tool-hub | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A call without the persona.edit_own grant must be refused and the tool absent from the projection. |
+| `sys.skill-showcase` | proved | spawn-controller | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A runtime refuses to start without its read-only showcase. |
+| `sys.skill-scan` | proved | spawn-controller | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A skill write refused by the scanner must leave the prior content intact. |
+| `sys.skill-catalog` | proved | tool-hub | [TestPhase13Skills](../test/e2e/channel/skills_test.go#TestPhase13Skills) | A session cannot read a skill outside its pinned catalog revision. |
 | `cap.workspace.read` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the workspace.read grant must be refused and the tool absent from the projection. |
 | `cap.workspace.write` | proved | tool-hub | [TestPhase12Workspace](../test/e2e/channel/workspace_test.go#TestPhase12Workspace) | A call without the workspace.write grant must be refused and the tool absent from the projection. |
 | `cap.memory.capture` | deferred:17 | tool-hub | — | A call without the memory.capture grant must be refused and the tool absent from the projection. |

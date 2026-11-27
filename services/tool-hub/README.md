@@ -8,7 +8,7 @@ Owns the single admission point for tool calls: `AdmitCall` decides,
 
 ## Zone and neighbors
 
-Agent zone. The space runtime calls all three ops with a run token
+Agent zone. The space runtime calls the tool ops with a run token
 naming tool-hub in its audience; the run token binds the caller to
 one run and one spec digest. The hub reads the caller's effective
 spec from spawn-controller per call — grants are never copied
@@ -23,14 +23,20 @@ the digest pair and the capabilities checked — and the
 registry ships embedded as `platform/toolsets.yaml`: toolset, its
 executor, the provider behind it ([TestRegistryLoads](internal/svc/toolsets_test.go)).
 
+Tool-hub records one skill catalog revision per conversation and
+applies the prompt budget to that revision. Its platform guide uses
+the effective tool projection. [Catalog and guide tests](internal/svc/skills_test.go).
+
 ## Contracts
 
 Implements `contracts/toolhub/v1` (`AdmitCall`, `Projection`,
-`Invoke`) and consumes `contracts/identity/v1` (run-token verify)
+`Invoke`, `SkillPrompt`) and consumes `contracts/identity/v1` (run-token verify)
 and `contracts/spawn/v1` (`ResolveSpec`). It owns `contracts/ownerreq/v1`,
 calls task-engine's service-only `GetRequestTurn` and delivers or retracts
 questions through `contracts/channel/v1`.
 [Question and choice round trips](../../test/e2e/channel/ownerreq_test.go)
+The skill catalog uses task-engine's `GetRunSession` binding and
+spawn-controller's `SkillInventory`. [Skill scenario](../../test/e2e/channel/skills_test.go).
 
 ## Does not do
 

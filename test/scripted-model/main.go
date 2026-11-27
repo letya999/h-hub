@@ -59,7 +59,7 @@ func (m *model) completions(w http.ResponseWriter, r *http.Request) {
 		input = "tools [" + strings.Join(names, ",") + "]"
 	}
 	if strings.HasPrefix(input, "scenario:") {
-		m.scriptCompletion(w, r, input, req.Messages[len(req.Messages)-1])
+		m.scriptCompletion(w, r, input, req.Messages)
 		return
 	}
 	defaultCompletion(w, r, input)

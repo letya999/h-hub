@@ -108,6 +108,12 @@ func invokeSkills(s *Server, ctx context.Context, c toolCall) (json.RawMessage, 
 		if !found {
 			return nil, herrors.New(herrors.CodeNotFound, "err.not-found")
 		}
+		if value == guideSkillName {
+			body, err = currentSkillGuide(s, ctx, c, pin.inventory.Capabilities)
+			if err != nil {
+				return nil, err
+			}
+		}
 		result = map[string]string{"name": value, "markdown": body}
 	default:
 		return nil, herrors.New(herrors.CodeInvalid, "err.invalid-arg")

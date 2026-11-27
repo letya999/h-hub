@@ -39,7 +39,7 @@ survived eight phases.
 | 10 | v0.0.10 | owner request, approval modes, `job.waiting_owner` | done |
 | 11 | v0.0.11 | **Hermes in the loop: adapter over the pinned image** | done |
 | 12 | v0.0.12 | [Tool-hub files, workspace layout, reviewed self-edit, idle respawn, and approval mode tests](12-report.md) | done |
-| 13 | v0.0.13 | skills | planned |
+| 13 | v0.0.13 | [Skills](13-report.md) | done |
 | 14 | v0.0.14 | worker machine, terminal, cellinit, janitor | planned |
 | 15 | v0.0.15 | MCP and CLI in a worker, `oci` recipes | planned |
 | 16 | v0.0.16 | recipes, connectors, registry search | planned |

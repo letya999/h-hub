@@ -18,7 +18,8 @@ type SkillInventoryReq struct {
 }
 
 type SkillInventoryResp struct {
-	Entries map[string]string `json:"entries"`
+	Entries      map[string]string `json:"entries"`
+	Capabilities map[string]string `json:"capabilities"`
 }
 
 // SkillInventory captures the skills in one effective workspace.
