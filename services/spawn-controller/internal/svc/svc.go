@@ -13,7 +13,9 @@ import (
 	"time"
 
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	wv1 "github.com/letya999/h-hub/contracts/worker/v1"
 	"github.com/letya999/h-hub/services/spawn-controller/internal/backend"
+	"github.com/letya999/h-hub/services/spawn-controller/internal/worker"
 	"github.com/letya999/h-hub/shared/edges"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/httpapi"
@@ -43,19 +45,22 @@ type Deps struct {
 	RuntimeEdges edges.Table
 	Log          *log.L // op errors are logged, never swallowed
 	Now          func() time.Time
+	WorkerPolicy wv1.Policy
 }
 
 // Server owns the operation table.
 type Server struct {
-	sub  string
-	db   *sql.DB
-	deps Deps
-	runM *fsm.Machine
+	sub     string
+	db      *sql.DB
+	deps    Deps
+	runM    *fsm.Machine
+	workers *worker.Registry
 }
 
 // New builds the server.
 func New(sub string, db *sql.DB, deps Deps) *Server {
-	return &Server{sub: sub, db: db, deps: deps, runM: RuntimeMachine()}
+	return &Server{sub: sub, db: db, deps: deps, runM: RuntimeMachine(),
+		workers: worker.New(db, deps.Now, deps.WorkerPolicy.Limits)}
 }
 
 // Mux mounts /v1 ops and /healthz. Space ops require owner tokens;

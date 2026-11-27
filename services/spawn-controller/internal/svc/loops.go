@@ -16,6 +16,7 @@ import (
 
 	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	"github.com/letya999/h-hub/services/spawn-controller/internal/backend"
+	"github.com/letya999/h-hub/services/spawn-controller/internal/worker"
 	"github.com/letya999/h-hub/shared/edges"
 	"github.com/letya999/h-hub/shared/fsm"
 	"github.com/letya999/h-hub/shared/log"
@@ -44,6 +45,7 @@ type rmEffect struct {
 func (s *Server) Loops(ctx context.Context, l *log.L) {
 	go every(ctx, outboxEvery, func() { s.outboxPass(ctx, l) })
 	go every(ctx, reconcileEvery, func() { s.reconcilePass(ctx, l) })
+	go every(ctx, reconcileEvery, func() { reconcileWorkers(s, ctx, l) })
 	go every(ctx, tickEvery, func() {
 		if err := fsm.WriteTick(ctx, s.db, "fsm", tickName, s.deps.Now()); err != nil {
 			l.Error(ctx, "watchdog tick", err)
@@ -108,6 +110,8 @@ func (s *Server) execEffect(ctx context.Context, f fsm.OutEffect) error {
 		return s.dockerRemove(ctx, e)
 	case "render-reset", "remove-sessions":
 		return resetSpace(s, ctx, f)
+	case worker.StopTopic:
+		return reapWorkerEffect(s, ctx, f)
 	default:
 		return fmt.Errorf("unknown topic %q", f.Topic)
 	}
@@ -120,6 +124,13 @@ func resetSpace(s *Server, ctx context.Context, f fsm.OutEffect) error {
 	}
 	dir := filepath.Join(s.deps.RenderDir, e.Space)
 	if f.Topic == "remove-sessions" {
+		live, err := s.workers.SpaceHasLive(ctx, e.Space)
+		if err != nil {
+			return fmt.Errorf("check workspace mounts: %w", err)
+		}
+		if live {
+			return fmt.Errorf("space %s still has a worker generation", e.Space)
+		}
 		if err := s.deps.Docker.RemoveSessions(ctx, e.Space); err != nil {
 			return fmt.Errorf("remove space sessions: %w", err)
 		}

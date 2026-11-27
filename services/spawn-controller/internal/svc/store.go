@@ -45,6 +45,14 @@ func getSpace(ctx context.Context, db *sql.DB, owner, id string) (spaceRow, erro
 	return s, nil
 }
 
+func ownedSpaceForUpdate(ctx context.Context, tx *sql.Tx, owner, id string) (spaceRow, error) {
+	sp, err := spaceForUpdate(ctx, tx, id)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && sp.owner != owner) {
+		return spaceRow{}, herrors.New(herrors.CodeNotFound, "err.not-found")
+	}
+	return sp, err
+}
+
 // spaceByName reads a space by its natural key; the zero row with an
 // empty id means "no such space".
 func spaceByName(ctx context.Context, db *sql.DB, owner, name string) (spaceRow, error) {
@@ -171,7 +179,7 @@ type intentRow struct {
 // used by tests and the reconcile pass.
 func deleteSpace(ctx context.Context, tx *sql.Tx, id string) error {
 	if _, err := tx.ExecContext(ctx,
-		"DELETE FROM intents WHERE space=$1", id); err != nil {
+		"DELETE FROM intents WHERE space=$1 AND kind='runtime'", id); err != nil {
 		return fmt.Errorf("delete intents: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
