@@ -125,7 +125,11 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 		return "", fmt.Errorf("inspect pinned Hermes: %w", err)
 	}
 	spec.Env = append(slices.Clone(l.Env), upstream.Config.Env...)
-	id, running, err := d.existingLaunch(ctx, l.Name, spec)
+	return d.ensureStarted(ctx, l.Name, spec)
+}
+
+func (d *Docker) ensureStarted(ctx context.Context, name string, spec createReq) (string, error) {
+	id, running, err := d.existingLaunch(ctx, name, spec)
 	if err != nil {
 		return "", err
 	}
@@ -139,7 +143,7 @@ func (d *Docker) CreateAndStart(ctx context.Context, l Launch) (string, error) {
 	}
 	var out struct{ ID string }
 	if err := d.req(ctx, http.MethodPost,
-		"/containers/create?name="+l.Name, spec, &out); err != nil {
+		"/containers/create?name="+url.QueryEscape(name), spec, &out); err != nil {
 		return "", err
 	}
 	if err := d.req(ctx, http.MethodPost,
@@ -182,7 +186,7 @@ func runtimeSpec(l Launch) createReq {
 				{Type: "image", Source: l.Adapter, Target: "/var/tmp/.op.env", ReadOnly: true, ImageOptions: &mountPath{"hhub-empty-env"}},
 				{Type: "volume", Source: l.RenderVol, Target: "/etc/hhub/render", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir}},
 				{Type: "volume", Source: l.RenderVol, Target: "/var/tmp/config.yaml", ReadOnly: true, VolumeOptions: &mountPath{l.ConfigDir + "/config.yaml"}},
-			}, workspaceMounts(l)...),
+			}, workspaceMounts(l.RenderVol, l.Workspace)...),
 			SecurityOpt: []string{"no-new-privileges"},
 		},
 		Healthcheck: healthCheck{
@@ -196,10 +200,10 @@ func runtimeSpec(l Launch) createReq {
 	}
 }
 
-func workspaceMounts(l Launch) []mount {
-	out := make([]mount, 0, len(l.Workspace))
-	for _, node := range l.Workspace {
-		out = append(out, mount{Type: "volume", Source: l.RenderVol, Target: "/workspace" + node.Path,
+func workspaceMounts(vol string, nodes []WorkspaceMount) []mount {
+	var out []mount
+	for _, node := range nodes {
+		out = append(out, mount{Type: "volume", Source: vol, Target: "/workspace" + node.Path,
 			ReadOnly: node.ReadOnly, VolumeOptions: &mountPath{node.Subpath}})
 	}
 	return out
@@ -234,8 +238,8 @@ func (d *Docker) existingLaunch(ctx context.Context, name string, spec createReq
 	if err != nil {
 		return "", false, err
 	}
-	if out.ID == "" || !out.matches(spec) || !d.onNetwork(out.NetworkSettings.Networks) {
-		return "", false, fmt.Errorf("docker container %s does not match runtime intent", name)
+	if out.ID == "" || !out.matches(spec) {
+		return "", false, fmt.Errorf("docker container %s does not match launch intent", name)
 	}
 	return out.ID, out.State.Running, nil
 }
@@ -246,7 +250,8 @@ func (out containerInspect) matches(spec createReq) bool {
 			return false
 		}
 	}
-	return out.Config.Image == spec.Image && out.Config.User == spec.User &&
+	_, onNetwork := out.NetworkSettings.Networks[spec.HostConfig.NetworkMode]
+	return onNetwork && out.Config.Image == spec.Image && out.Config.User == spec.User &&
 		slices.Equal(out.Config.Env, spec.Env) && slices.Equal(out.Config.Entrypoint, spec.Entrypoint) &&
 		reflect.DeepEqual(out.HostConfig, spec.HostConfig) && len(out.NetworkSettings.Networks) == 1
 }

@@ -47,6 +47,25 @@ func TestWorkspaceMountModesDriveExplain(t *testing.T) {
 	checkWorkspaceTree(t, w.tree())
 }
 
+func TestWorkspaceMountRefusesAnotherSpacesSymlink(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	owned := filepath.Join(root, workspaceStorage, "space-owned")
+	foreign := filepath.Join(root, workspaceStorage, "space-foreign", "files")
+	for _, dir := range []string{owned, foreign} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join("..", "space-foreign", "files"), filepath.Join(owned, "files")); err != nil {
+		t.Fatal(err)
+	}
+	w := WorkspacePassport{Layout: WorkspaceLayout{Nodes: []sv1.WorkspaceNode{{Path: "/files"}}}}
+	if _, err := prepareWorkspace(root, "space-owned", w); err == nil {
+		t.Fatal("worker mounted another space through a workspace symlink")
+	}
+}
+
 func checkWorkspaceTree(t *testing.T, branches []sv1.WorkspaceBranch) {
 	t.Helper()
 	if len(branches) != 1 || branches[0].Path != "/docs" || len(branches[0].Children) != 2 {
