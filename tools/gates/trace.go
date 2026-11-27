@@ -26,6 +26,7 @@ var sysIDs = map[string]bool{
 	"owner-request-single-use": true, "owner-request-timeout": true,
 	"owner-request-self-answer": true,
 	"harness-pinned":            true, "harness-tool-list": true,
+	"skill-showcase": true, "skill-scan": true, "skill-catalog": true,
 }
 
 var (

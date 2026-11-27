@@ -14,6 +14,9 @@ model requests through model-gateway and h-hub tool calls through tool-hub.
 The model receives the space instructions, the conversation and the tool
 names offered on this turn, including an explicit empty list.
 [Model request boundary](internal/svc/model_context_test.go).
+When the effective projection includes skill search, the adapter
+includes the conversation's budgeted catalog in the system prompt.
+[Skill scenario](../../test/e2e/channel/skills_test.go).
 
 ## Owns
 
@@ -33,6 +36,8 @@ refuses startup on an inventory mismatch and constrains each reply to the
 tools offered on that request.
 [Startup probe](../../test/e2e/lifecycle/hermes_test.go#L69) and
 [nested requests](internal/svc/nested_tools_test.go).
+Startup requires the layer skill showcase on the read-only render mount.
+[Startup config test](internal/config/config_test.go).
 
 ## Machines
 

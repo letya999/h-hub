@@ -26,7 +26,7 @@ func TestPhase12Workspace(t *testing.T) {
 	testkit.Req(t, "cap.workspace.read")
 	testkit.Req(t, "cap.workspace.write")
 	testkit.Req(t, "cap.config.edit_own")
-	f := newWorkspaceProof(t)
+	f := newWorkspaceProof(t, "workspace_"+Nonce)
 	f.activate("platform", `{"tools":{"core":["files","config","probe"]}}`)
 	f.activate("user", `{"config":{"approvals":{"mode":"auto"}}}`)
 	f.autoFiles()
@@ -43,9 +43,8 @@ type workspaceProof struct {
 	cursor int64
 }
 
-func newWorkspaceProof(t *testing.T) *workspaceProof {
+func newWorkspaceProof(t *testing.T, owner string) *workspaceProof {
 	t.Helper()
-	owner := "workspace_" + Nonce
 	space, code := AddUser(t, owner)
 	f := &workspaceProof{t: t, scope: OwnerSpace{Owner: owner, Space: space}}
 	f.chat("link", "/start "+code, "Account linked")
@@ -60,7 +59,7 @@ func (f *workspaceProof) activate(role, patch string) sv1.ActivateResp {
 	if _, err := c.SubmitLayers(ctx, sv1.SubmitLayersReq{
 		Space: f.scope.Space, Role: role, Docs: json.RawMessage(patch),
 	}); err != nil {
-		f.t.Fatalf("submit phase 12 passport: %v", err)
+		f.t.Fatalf("submit workspace passport: %v", err)
 	}
 	p, err := c.Preview(ctx, sv1.PreviewReq{Space: f.scope.Space})
 	if err != nil {
@@ -108,10 +107,12 @@ type workspaceCall struct {
 }
 
 type workspaceStep struct {
-	Expect     string          `yaml:"expect"`
-	ToolResult string          `yaml:"expect_tool_result,omitempty"`
-	Respond    string          `yaml:"respond,omitempty"`
-	Calls      []workspaceCall `yaml:"tool_calls,omitempty"`
+	Expect      string          `yaml:"expect"`
+	ToolResult  string          `yaml:"expect_tool_result,omitempty"`
+	SystemHas   []string        `yaml:"expect_system_contains,omitempty"`
+	SystemLacks []string        `yaml:"expect_system_excludes,omitempty"`
+	Respond     string          `yaml:"respond,omitempty"`
+	Calls       []workspaceCall `yaml:"tool_calls,omitempty"`
 }
 
 type workspaceCheck struct {

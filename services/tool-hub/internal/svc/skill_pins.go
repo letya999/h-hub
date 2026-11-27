@@ -12,6 +12,7 @@ import (
 	idv1 "github.com/letya999/h-hub/contracts/identity/v1"
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
 	tv1 "github.com/letya999/h-hub/contracts/task/v1"
+	"github.com/letya999/h-hub/shared/locale"
 )
 
 type skillPin struct {
@@ -52,6 +53,7 @@ func captureSkillPin(s *Server, ctx context.Context, c idv1.RunClaims, digest, s
 	if inventory.Entries == nil {
 		return pin, fmt.Errorf("skill inventory did not include entries")
 	}
+	inventory.Entries[guideSkillName] = locale.T(locale.EN, "tool.skills.guide-title")
 	raw, err := json.Marshal(inventory)
 	if err != nil {
 		return pin, fmt.Errorf("encode skill inventory: %w", err)

@@ -22,7 +22,7 @@ var catalog = mustCatalog()
 
 // mustCatalog loads the capability names once; a grant may hold only
 // names from this set (rule 5).
-func mustCatalog() map[string]bool {
+func mustCatalog() map[string]catalogEntry {
 	data, err := platformFS.ReadFile("platform/capabilities.yaml")
 	if err != nil {
 		panic(fmt.Sprintf("catalog: %v", err))
@@ -31,12 +31,12 @@ func mustCatalog() map[string]bool {
 	if err := yaml.Unmarshal(data, &c); err != nil {
 		panic(fmt.Sprintf("catalog parse: %v", err))
 	}
-	names := map[string]bool{}
+	names := map[string]catalogEntry{}
 	for _, e := range c.Capabilities {
-		if e.Name == "" || names[e.Name] {
+		if e.Name == "" || names[e.Name].Name != "" {
 			panic(fmt.Sprintf("catalog: bad or duplicate entry %q", e.Name))
 		}
-		names[e.Name] = true
+		names[e.Name] = e
 	}
 	return names
 }
@@ -46,7 +46,7 @@ func mustCatalog() map[string]bool {
 // invalid passport rather than letting the name sit inert.
 func validateGrants(g GrantsPassport, space string) error {
 	for _, name := range g.Allow {
-		if !catalog[name] {
+		if _, ok := catalog[name]; !ok {
 			err := herrors.New(herrors.CodeInvalid,
 				"err.invalid-arg").With("grant", name).With("space", space)
 			return fmt.Errorf("space %s: unknown grant %s: %w", space, name, err)

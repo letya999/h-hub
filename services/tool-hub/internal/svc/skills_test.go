@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	sv1 "github.com/letya999/h-hub/contracts/spawn/v1"
+	thv1 "github.com/letya999/h-hub/contracts/toolhub/v1"
 	herrors "github.com/letya999/h-hub/shared/errors"
 	"github.com/letya999/h-hub/shared/locale"
 )
@@ -49,5 +50,22 @@ func TestSkillSearchRequiresOneQuery(t *testing.T) {
 	}
 	if result, err := skillArgument([]byte(`{"query":""}`), "query", 256); err != nil || result != "" {
 		t.Fatalf("explicit empty query refused: %q %v", result, err)
+	}
+}
+
+func TestPlatformGuideUsesEffectiveToolProjection(t *testing.T) {
+	t.Parallel()
+	ask, ok := tool("ownerreq", "ask")
+	if !ok {
+		t.Fatal("ask missing from registry")
+	}
+	projection := thv1.ProjectionResp{Core: []thv1.ToolInfo{toolInfo("ownerreq", ask)}}
+	guide := renderSkillGuide(projection, map[string]string{"tools.use": "Fixture capability summary", "other.unused": "Unimplemented capability"})
+	if !strings.Contains(guide, ask.Description) ||
+		!strings.Contains(guide, "Fixture capability summary") ||
+		!strings.Contains(guide, locale.T(locale.EN, "tool.skills.guide-ask")) ||
+		strings.Contains(guide, "Unimplemented capability") ||
+		strings.Contains(guide, "`files_write`") {
+		t.Fatal("platform guide did not reflect the capability catalog and the agent's available tools")
 	}
 }

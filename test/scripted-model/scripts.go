@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -18,6 +19,8 @@ type toolCall struct {
 type step struct {
 	Expect        string     `yaml:"expect"`
 	ToolResult    string     `yaml:"expect_tool_result"`
+	SystemHas     []string   `yaml:"expect_system_contains"`
+	SystemLacks   []string   `yaml:"expect_system_excludes"`
 	Respond       string     `yaml:"respond"`
 	ToolCalls     []toolCall `yaml:"tool_calls"`
 	ProviderError int        `yaml:"provider_error"`
@@ -130,7 +133,7 @@ func (m *model) verifyScenario(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *scriptStore) next(id, input string, last message) (step, error) {
+func (s *scriptStore) next(id, input string, last message, system string) (step, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sc := s.byID[id]
@@ -153,17 +156,41 @@ func (s *scriptStore) next(id, input string, last message) (step, error) {
 		sc.failure = fmt.Sprintf("step %d: expected tool result containing %q", sc.next, want.ToolResult)
 		return step{}, fmt.Errorf("%s", sc.failure)
 	}
+	if err := want.checkSystem(system); err != nil {
+		sc.failure = fmt.Sprintf("step %d: %s", sc.next, err)
+		return step{}, err
+	}
 	sc.next++
 	return want, nil
 }
 
-func (m *model) scriptCompletion(w http.ResponseWriter, r *http.Request, input string, last message) {
+func (s step) checkSystem(system string) error {
+	if !matchesMarkers(system, s.SystemHas, true) {
+		return fmt.Errorf("system prompt omitted a required marker")
+	}
+	if !matchesMarkers(system, s.SystemLacks, false) {
+		return fmt.Errorf("system prompt included a forbidden marker")
+	}
+	return nil
+}
+
+func matchesMarkers(system string, markers []string, want bool) bool {
+	return !slices.ContainsFunc(markers, func(marker string) bool {
+		return strings.Contains(system, marker) != want
+	})
+}
+
+func (m *model) scriptCompletion(w http.ResponseWriter, r *http.Request, input string, messages []message) {
 	name, _, ok := strings.Cut(strings.TrimPrefix(input, "scenario:"), " ")
 	if !ok {
 		http.Error(w, "scenario id missing", http.StatusBadRequest)
 		return
 	}
-	st, err := m.scripts.next(name, input, last)
+	var system string
+	if messages[0].Role == "system" {
+		system = messages[0].Content
+	}
+	st, err := m.scripts.next(name, input, messages[len(messages)-1], system)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

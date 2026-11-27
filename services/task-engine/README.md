@@ -15,6 +15,8 @@ harness-runtime (`ReportRun`). Calls identity-hub (`MintRunToken`,
 `ReleaseRuntime`) and harness-runtime (`SubmitRun`, `CancelRun`).
 Owner scope is verified before reads and writes; space ownership is
 checked through `ResolveSpec` ([TestJobToAnswer](../../test/e2e/lifecycle/e2e_test.go)).
+Tool-hub uses `GetRunSession` to resolve the conversation bound
+to an authenticated run. [Session pin scenario](../../test/e2e/channel/skills_test.go).
 
 ## Owns
 

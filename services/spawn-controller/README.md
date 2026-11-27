@@ -23,11 +23,17 @@ worker-intent registry in its own database; the Docker socket (the
 only holder); the Runtime FSM; rendered harness configs under the
 `hhub-render` volume; the watchdog tick row in `fsm`.
 
+The controller renders the combined layer skill showcase on the
+read-only mount. It checks the complete candidate body before replacing
+an agent's Markdown skill. [Skill boundary tests](internal/svc/skills_test.go).
+
 ## Contracts
 
 Implements `contracts/spawn/v1` (`CreateSpace`, `DestroySpace`,
 `GetSpace`, `ResolveSpec`, `EnsureRuntime`, `ReleaseRuntime`). Fake at
 `contracts/spawn/v1/fake.go`.
+Tool-hub reads the workspace skill inventory through `SkillInventory`.
+[Skill scenario](../../test/e2e/channel/skills_test.go).
 
 ## Does not do
 
