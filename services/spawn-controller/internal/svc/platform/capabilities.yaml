@@ -26,6 +26,9 @@ capabilities:
     summary: Write files in own workspace.
     why: Durable notes and artifacts need a write path that is
       separate from reading.
+  - name: terminal.exec
+    summary: Run bounded commands in an isolated worker for the current space.
+    why: Terminal execution needs an explicit grant independent of file tools.
   - name: memory.capture
     summary: Store a memory entry.
     why: Remembering is a write into shared recall and must be

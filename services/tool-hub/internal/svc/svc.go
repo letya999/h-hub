@@ -147,7 +147,10 @@ func (s *Server) Mux() *http.ServeMux {
 }
 
 // Loops runs the owner-request module's outbox executor and sweeper.
-func (s *Server) Loops(ctx context.Context, l *log.L) { s.oreq.Loops(ctx, l) }
+func (s *Server) Loops(ctx context.Context, l *log.L) {
+	go sweepTerminals(s, ctx, l)
+	s.oreq.Loops(ctx, l)
+}
 
 func (s *Server) opErr(w http.ResponseWriter, r *http.Request,
 	name string, op httpapi.Handler) error {

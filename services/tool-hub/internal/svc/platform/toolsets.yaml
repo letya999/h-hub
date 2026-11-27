@@ -73,6 +73,22 @@ toolsets:
           properties:
             name: {type: string}
           required: [name]
+  - name: terminal
+    provider: terminal
+    tools:
+      - name: terminal_exec
+        description: Run an argument vector in the space's isolated terminal and return bounded output.
+        capability: terminal.exec
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            argv: {type: array, items: {type: string}, minItems: 1, maxItems: 64}
+            workdir: {type: string}
+            env: {type: object, additionalProperties: {type: string}}
+            stdin: {type: string}
+            timeout_ms: {type: integer, minimum: 1, maximum: 60000}
+          required: [argv, timeout_ms]
   - name: files
     provider: files
     tools:

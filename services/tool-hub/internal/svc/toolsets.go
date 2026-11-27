@@ -173,6 +173,7 @@ type toolCall struct {
 	args       json.RawMessage
 	receipt    thv1.Receipt
 	specDigest string
+	key        string
 }
 
 // toolhubExec is the toolhub executor's provider dispatch: builtin
@@ -185,6 +186,8 @@ func toolhubExec(ctx context.Context, s *Server, c toolCall) (json.RawMessage, e
 		return s.invokeFiles(ctx, c)
 	case "skills":
 		return invokeSkills(s, ctx, c)
+	case "terminal":
+		return invokeTerminal(s, ctx, c)
 	case "config":
 		return s.invokeConfigEdit(ctx, c)
 	case "ownerreq":

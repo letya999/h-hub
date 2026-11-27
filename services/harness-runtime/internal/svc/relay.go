@@ -175,6 +175,7 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 	var call struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
+		Key       string          `json:"key"`
 	}
 	if err := httpapi.Decode(r, &call); err != nil {
 		return fmt.Errorf("decode Hermes tool request: %w", err)
@@ -183,12 +184,16 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 	if !ok || set == "" || a.probe != nil {
 		return fmt.Errorf("tool is outside the admitted projection")
 	}
-	c := &thv1.Client{T: thv1.HTTP{C: httpapi.NewClient(s.deps.Rendered.ToolURL, a.Token)}}
-	res, err := c.Invoke(a.ctx, thv1.InvokeReq{Run: a.Run, Digest: a.Digest, Toolset: set, Tool: call.Name, Arguments: call.Arguments})
+	c := toolClient(s, a, set)
+	res, err := c.Invoke(a.ctx, thv1.InvokeReq{Run: a.Run, Digest: a.Digest, Toolset: set,
+		Tool: call.Name, Arguments: call.Arguments, Key: call.Key})
 	if err != nil {
+		if set == "terminal" && herrors.CodeOf(err) == herrors.CodeUnavailable {
+			err = herrors.New(herrors.CodeUncertain, "err.terminal-uncertain")
+		}
 		return writeToolRefusal(w, err)
 	}
-	if set == "ownerreq" || set == "files" {
+	if set == "ownerreq" || set == "files" || set == "terminal" {
 		if err := s.ownerEvent(a, res.Result); err != nil {
 			return err
 		}
@@ -197,12 +202,23 @@ func (s *Server) serveTool(w http.ResponseWriter, r *http.Request, a *Admission)
 	return nil
 }
 
+func toolClient(s *Server, a *Admission, set string) *thv1.Client {
+	timeout := 5 * time.Second
+	if set == "terminal" {
+		timeout = 75 * time.Second
+	}
+	return &thv1.Client{T: thv1.HTTP{C: httpapi.NewClientTimeout(s.deps.Rendered.ToolURL, a.Token, timeout)}}
+}
+
 func writeToolRefusal(w http.ResponseWriter, err error) error {
 	var refusal *herrors.Error
 	if !errors.As(err, &refusal) || refusal.Code == herrors.CodeUnavailable {
 		return fmt.Errorf("tool hub: %w", err)
 	}
 	result := map[string]any{"reason": refusal.Key, "error": locale.T(locale.EN, refusal.Key)}
+	if refusal.Code == herrors.CodeUncertain {
+		result["code"], result["retryable"] = string(refusal.Code), false
+	}
 	if finding := skillFindingDetails(refusal.Details); finding != nil {
 		result["details"] = finding
 	}

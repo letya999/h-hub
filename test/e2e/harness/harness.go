@@ -324,6 +324,41 @@ func TaskServiceSpawnClient(t *testing.T, space string) *sv1.Client {
 	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, tok.Token)}}
 }
 
+func WorkerControlClient(t *testing.T) *sv1.Client {
+	t.Helper()
+	key, err := auth.LoadPrivateKey("/etc/hhub/services/tool-hub/service.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, "")}}
+	tok, err := id.IssueServiceToken(t.Context(), "tool-hub", "spawn-controller", Idem("worker-token", rand.Text()), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &sv1.Client{T: sv1.HTTP{C: httpapi.NewClient(SpawnURL, tok.Token)}}
+}
+
+func MintRunToken(t *testing.T, scope OwnerSpace, job, run, digest string) string {
+	t.Helper()
+	key, err := auth.LoadPrivateKey("/etc/hhub/services/task-engine/service.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, "")}}
+	svc, err := id.IssueServiceToken(t.Context(), "task-engine", "identity-hub", Idem("mint", run, rand.Text()), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mint := &idv1.Client{T: idv1.HTTP{C: httpapi.NewClient(IdentityURL, svc.Token)}}
+	tok, err := mint.MintRunToken(t.Context(), idv1.MintRunTokenReq{
+		Job: job, Run: run, Space: scope.Space, Owner: scope.Owner,
+		Digest: digest, Aud: []string{"tool-hub"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok.Token
+}
+
 // HubctlExit runs a hubctl subcommand and fails the test on nonzero
 // exit; the runner mounts the sources read-only at /src.
 func HubctlExit(t *testing.T, args ...string) string {

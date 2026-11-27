@@ -97,6 +97,7 @@ type InvokeReq struct {
 	Toolset   string          `json:"toolset"`
 	Tool      string          `json:"tool"`
 	Arguments json.RawMessage `json:"arguments"`
+	Key       string          `json:"key,omitempty"`
 }
 
 // InvokeResp is the executor result plus the admission receipt.
