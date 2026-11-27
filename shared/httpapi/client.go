@@ -28,10 +28,15 @@ func NewClient(base, token string) *Client {
 // NewClientTimeout is NewClient with a caller-chosen timeout — model
 // calls can legitimately take minutes, unlike contract ops.
 func NewClientTimeout(base, token string, d time.Duration) *Client {
+	return NewClientTransport(base, token, d, nil)
+}
+
+// NewClientTransport uses the same wire contract on a caller-supplied transport.
+func NewClientTransport(base, token string, d time.Duration, transport http.RoundTripper) *Client {
 	return &Client{
 		base:  base,
 		token: token,
-		hc:    &http.Client{Timeout: d},
+		hc:    &http.Client{Timeout: d, Transport: transport},
 	}
 }
 
@@ -42,6 +47,7 @@ type Call struct {
 	Req    any
 	Resp   any
 	Limit  int64
+	Key    string
 }
 
 // Do performs a JSON request with the default body limit.
@@ -63,6 +69,9 @@ func (c *Client) DoLimit(ctx context.Context, call Call) error {
 	}
 	r.Header.Set("Authorization", "Bearer "+c.token)
 	r.Header.Set("Content-Type", "application/json")
+	if call.Key != "" {
+		r.Header.Set("Idempotency-Key", call.Key)
+	}
 	res, err := c.hc.Do(r)
 	if err != nil {
 		return herrors.Wrap(herrors.CodeUnavailable, "err.unavailable", err)

@@ -18,6 +18,7 @@ func TestStatusTable(t *testing.T) {
 		{CodeForbidden, http.StatusForbidden},
 		{CodeNotFound, http.StatusNotFound},
 		{CodeConflict, http.StatusConflict},
+		{CodeCapacity, http.StatusTooManyRequests},
 		{CodeStale, http.StatusConflict},
 		{CodeUnavailable, http.StatusServiceUnavailable},
 		{CodeUncertain, http.StatusServiceUnavailable},
@@ -31,7 +32,7 @@ func TestStatusTable(t *testing.T) {
 
 func TestRetryableByCode(t *testing.T) {
 	t.Parallel()
-	for _, c := range []Code{CodeStale, CodeUnavailable, CodeUncertain} {
+	for _, c := range []Code{CodeStale, CodeUnavailable, CodeUncertain, CodeCapacity} {
 		if !New(c, "err.x").Retryable {
 			t.Errorf("%s must be retryable", c)
 		}

@@ -19,6 +19,7 @@ const (
 	CodeUnauthorized Code = "unauthorized"
 	CodeForbidden    Code = "forbidden"
 	CodeConflict     Code = "conflict"
+	CodeCapacity     Code = "capacity"
 	CodeStale        Code = "stale"
 	CodeUnavailable  Code = "unavailable"
 	CodeUncertain    Code = "uncertain"
@@ -98,6 +99,8 @@ func Status(c Code) int {
 		return http.StatusNotFound
 	case CodeConflict, CodeStale:
 		return http.StatusConflict
+	case CodeCapacity:
+		return http.StatusTooManyRequests
 	case CodeUnavailable, CodeUncertain:
 		return http.StatusServiceUnavailable
 	}
@@ -106,7 +109,7 @@ func Status(c Code) int {
 
 func retryable(c Code) bool {
 	switch c {
-	case CodeStale, CodeUnavailable, CodeUncertain:
+	case CodeStale, CodeUnavailable, CodeUncertain, CodeCapacity:
 		return true
 	case CodeInvalid, CodeNotFound, CodeUnauthorized, CodeForbidden, CodeConflict:
 		return false

@@ -76,6 +76,7 @@ images: hermes-image
     docker build -f deploy/svc.Dockerfile --build-arg SVC=channel-hub -t hhub-channel-hub:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=task-engine -t hhub-task-engine:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=spawn-controller -t hhub-spawn-controller:local .
+    docker build -f deploy/terminal-worker.Dockerfile -t hhub-terminal-worker:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=harness-runtime -t hhub-harness-runtime:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=model-gateway -t hhub-model-gateway:local .
     docker build -f deploy/svc.Dockerfile --build-arg SVC=tool-hub -t hhub-tool-hub:local .
